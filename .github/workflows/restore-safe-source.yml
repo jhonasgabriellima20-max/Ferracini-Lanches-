@@ -1,0 +1,94 @@
+name: Restore safe production source
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/restore-safe-source.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  restore:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore verified source archive
+        env:
+          SOURCE_ARCHIVE_URL: "https://oaisdmntprbrazilsouth.blob.core.windows.net/files/00000000-0494-820e-922d-01dc8fc8ca37/raw?se=2026-09-14T16%3A52%3A13Z&sp=r&sv=2026-02-06&sr=b&scid=01a0a09a-1af7-7ac2-8d40-b9b2dc203b35&skoid=68f37fa7-4e08-478b-93f3-c72d563a0ab3&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-09-14T11%3A19%3A45Z&ske=2026-09-15T11%3A19%3A45Z&sks=b&skv=2026-02-06&sig=2m3QbCnX5e%2Bmet/2SPzNwDi/7dXl4DwxeWfF6BOI7Rw%3D"
+        run: |
+          set -euo pipefail
+          work_dir="$(mktemp -d)"
+          trap 'rm -rf "$work_dir"' EXIT
+          curl --fail --silent --show-error --location "$SOURCE_ARCHIVE_URL" --output "$work_dir/source.zip"
+          unzip -q "$work_dir/source.zip" -d "$work_dir/extracted"
+
+          source_dir="$work_dir/extracted"
+          mapfile -t top_entries < <(find "$source_dir" -mindepth 1 -maxdepth 1 ! -name "__MACOSX" -print)
+          if [ "${#top_entries[@]}" -eq 1 ] && [ -d "${top_entries[0]}" ]; then
+            source_dir="${top_entries[0]}"
+          fi
+
+          find . -mindepth 1 -maxdepth 1 ! -name .git ! -name .github -exec rm -rf -- {} +
+          cp -a "$source_dir"/. .
+
+      - name: Apply security baseline
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('fs');
+          const path = 'vercel.json';
+          let config = {};
+          if (fs.existsSync(path)) config = JSON.parse(fs.readFileSync(path, 'utf8'));
+
+          if (config.git && typeof config.git === 'object') {
+            delete config.git.deploymentEnabled;
+            if (Object.keys(config.git).length === 0) delete config.git;
+          }
+
+          const securityHeaders = [
+            { key: 'X-Content-Type-Options', value: 'nosniff' },
+            { key: 'X-Frame-Options', value: 'DENY' },
+            { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+            { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=(), payment=()' },
+            { key: 'Cross-Origin-Opener-Policy', value: 'same-origin-allow-popups' },
+            { key: 'X-Permitted-Cross-Domain-Policies', value: 'none' },
+            { key: 'Content-Security-Policy', value: "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data:; connect-src 'self' https://viacep.com.br; upgrade-insecure-requests" }
+          ];
+          const apiHeaders = [
+            { key: 'Cache-Control', value: 'no-store, max-age=0' },
+            { key: 'X-Robots-Tag', value: 'noindex, nofollow' }
+          ];
+          const adminHeaders = [
+            { key: 'Cache-Control', value: 'no-store, max-age=0' },
+            { key: 'X-Robots-Tag', value: 'noindex, nofollow' }
+          ];
+
+          const preserved = Array.isArray(config.headers)
+            ? config.headers.filter(item => !['/(.*)', '/api/(.*)', '/admin.html'].includes(item.source))
+            : [];
+          config.headers = [
+            ...preserved,
+            { source: '/(.*)', headers: securityHeaders },
+            { source: '/api/(.*)', headers: apiHeaders },
+            { source: '/admin.html', headers: adminHeaders }
+          ];
+          fs.writeFileSync(path, JSON.stringify(config, null, 2) + '\n');
+          NODE
+
+          touch .gitignore
+          for entry in '.env' '.env.*' '!.env.example' 'node_modules/' '.vercel/'; do
+            grep -qxF "$entry" .gitignore || printf '%s\n' "$entry" >> .gitignore
+          done
+
+      - name: Commit restored project
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "restore: complete secure Ferracini production source"
+          git push origin main
