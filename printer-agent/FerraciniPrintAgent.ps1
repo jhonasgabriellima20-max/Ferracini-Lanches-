@@ -6,7 +6,8 @@ param(
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 
-$BaseDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$ScriptPath = $PSCommandPath
+$BaseDir = Split-Path -Parent $ScriptPath
 $ConfigPath = Join-Path $BaseDir 'config.json'
 $TokenPath = Join-Path $BaseDir 'token.dat'
 $LogPath = Join-Path $BaseDir 'ferracini-print.log'
@@ -28,25 +29,25 @@ function Write-Log([string]$Message, [string]$Level = 'INFO') {
 
 function Read-Config {
   if (-not (Test-Path $ConfigPath)) {
-    throw 'Configuração não encontrada. Execute primeiro com -Mode Setup.'
+    throw 'Configuracao nao encontrada. Execute primeiro com -Mode Setup.'
   }
   $cfg = Get-Content $ConfigPath -Raw -Encoding UTF8 | ConvertFrom-Json
   if (-not $cfg.siteUrl -or -not $cfg.printerName) {
-    throw 'Configuração incompleta. Execute novamente com -Mode Setup.'
+    throw 'Configuracao incompleta. Execute novamente com -Mode Setup.'
   }
   return $cfg
 }
 
 function Get-AgentToken {
   if (-not (Test-Path $TokenPath)) {
-    throw 'Token do agente não encontrado. Execute primeiro com -Mode Setup.'
+    throw 'Token do agente nao encontrado. Execute primeiro com -Mode Setup.'
   }
   try {
     $secure = (Get-Content $TokenPath -Raw -Encoding UTF8).Trim() | ConvertTo-SecureString
-    $cred = New-Object System.Management.Automation.PSCredential('FerraciniAgent', $secure)
+    $cred = [System.Management.Automation.PSCredential]::new('FerraciniAgent', $secure)
     return $cred.GetNetworkCredential().Password
   } catch {
-    throw 'Não foi possível abrir o token. Configure novamente usando o mesmo usuário do Windows que executará o agente.'
+    throw 'Nao foi possivel abrir o token. Configure novamente usando o mesmo usuario do Windows que executara o agente.'
   }
 }
 
@@ -63,13 +64,13 @@ function Get-PrinterNames {
   try {
     return @(Get-Printer -ErrorAction Stop | Sort-Object Name | Select-Object -ExpandProperty Name)
   } catch {
-    throw 'O Windows não conseguiu listar as impressoras. Instale o driver da impressora primeiro.'
+    throw 'O Windows nao conseguiu listar as impressoras. Instale o driver da impressora primeiro.'
   }
 }
 
 function Setup-Agent {
   Write-Host ''
-  Write-Host '=== Ferracini Lanches - Configuração da impressão ===' -ForegroundColor Yellow
+  Write-Host '=== Ferracini Lanches - Configuracao da impressao ===' -ForegroundColor Yellow
   Write-Host ''
 
   $printers = Get-PrinterNames
@@ -83,39 +84,48 @@ function Setup-Agent {
   }
 
   do {
-    $choice = Read-Host 'Digite o número da impressora que receberá as comandas'
+    $choice = Read-Host 'Digite o numero da impressora que recebera as comandas'
     $index = 0
-    $ok = [int]::TryParse($choice, [ref]$index) -and $index -ge 1 -and $index -le $printers.Count
+    $ok = [int]::TryParse([string]$choice, [ref]$index) -and $index -ge 1 -and $index -le $printers.Count
   } until ($ok)
 
   $printerName = $printers[$index - 1]
-  $poll = Read-Host 'Intervalo de consulta em segundos [5]'
-  if (-not [int]::TryParse($poll, [ref]$poll) -or $poll -lt 3 -or $poll -gt 60) { $poll = 5 }
-  $width = Read-Host 'Largura aproximada da comanda em caracteres [42]'
-  if (-not [int]::TryParse($width, [ref]$width) -or $width -lt 30 -or $width -gt 64) { $width = 42 }
+
+  $pollInput = Read-Host 'Intervalo de consulta em segundos [5]'
+  $pollValue = 0
+  if (-not [int]::TryParse([string]$pollInput, [ref]$pollValue) -or $pollValue -lt 3 -or $pollValue -gt 60) {
+    $pollValue = 5
+  }
+
+  $widthInput = Read-Host 'Largura aproximada da comanda em caracteres [42]'
+  $widthValue = 0
+  if (-not [int]::TryParse([string]$widthInput, [ref]$widthValue) -or $widthValue -lt 30 -or $widthValue -gt 64) {
+    $widthValue = 42
+  }
 
   $config = [ordered]@{
     siteUrl = $SitePadrao
     printerName = $printerName
-    pollSeconds = [int]$poll
-    paperWidthChars = [int]$width
+    pollSeconds = $pollValue
+    paperWidthChars = $widthValue
   }
   $config | ConvertTo-Json | Set-Content -Path $ConfigPath -Encoding UTF8
   Save-AgentToken
 
   Write-Log "Agente configurado para impressora: $printerName"
   Write-Host ''
-  Write-Host "Configuração salva. Impressora: $printerName" -ForegroundColor Green
-  Write-Host 'O token foi salvo criptografado para este usuário do Windows.' -ForegroundColor Green
+  Write-Host "Configuracao salva. Impressora: $printerName" -ForegroundColor Green
+  Write-Host 'O token foi salvo criptografado para este usuario do Windows.' -ForegroundColor Green
   Write-Host 'Agora execute -Mode Test para imprimir uma comanda de teste.' -ForegroundColor Cyan
 }
 
 function Wrap-Text([string]$Text, [int]$Width) {
   $text = ($Text -replace '\s+', ' ').Trim()
   if (-not $text) { return @('') }
-  $result = New-Object System.Collections.Generic.List[string]
+  $result = New-Object 'System.Collections.Generic.List[string]'
   while ($text.Length -gt $Width) {
-    $cut = $text.LastIndexOf(' ', [Math]::Min($Width, $text.Length - 1))
+    $startIndex = [Math]::Min($Width, $text.Length - 1)
+    $cut = $text.LastIndexOf(' ', $startIndex)
     if ($cut -lt [Math]::Floor($Width * 0.5)) { $cut = $Width }
     $result.Add($text.Substring(0, $cut).Trim())
     $text = $text.Substring($cut).Trim()
@@ -133,18 +143,20 @@ function Add-WrappedLine($Lines, [string]$Text, [int]$Width, [string]$Prefix = '
   $usable = [Math]::Max(10, $Width - $Prefix.Length)
   $wrapped = @(Wrap-Text $Text $usable)
   for ($i = 0; $i -lt $wrapped.Count; $i++) {
-    $Lines.Add((if ($i -eq 0) { $Prefix } else { ' ' * $Prefix.Length }) + $wrapped[$i])
+    $currentPrefix = $Prefix
+    if ($i -gt 0) { $currentPrefix = ' ' * $Prefix.Length }
+    $Lines.Add($currentPrefix + $wrapped[$i])
   }
 }
 
 function Format-Receipt($Pedido, [int]$Width) {
-  $lines = New-Object System.Collections.Generic.List[string]
+  $lines = New-Object 'System.Collections.Generic.List[string]'
   $sep = '-' * $Width
   $doubleSep = '=' * $Width
 
   $lines.Add($doubleSep)
   $lines.Add('FERRACINI LANCHES')
-  $lines.Add(('COMANDA ' + [string]$Pedido.numero).PadLeft([Math]::Min($Width, 18)))
+  $lines.Add('COMANDA ' + [string]$Pedido.numero)
   $lines.Add($doubleSep)
 
   try {
@@ -178,7 +190,9 @@ function Format-Receipt($Pedido, [int]$Width) {
     if ($end.complemento) { Add-WrappedLine $lines ([string]$end.complemento) $Width }
     Add-WrappedLine $lines (([string]$end.bairro) + ' - ' + ([string]$end.cidade)) $Width
     if ($end.cep) { $lines.Add('CEP: ' + [string]$end.cep) }
-    if ($Pedido.atendimento.distanciaKm) { $lines.Add(('Distancia: {0:N1} km' -f [double]$Pedido.atendimento.distanciaKm)) }
+    if ($Pedido.atendimento.distanciaKm) {
+      $lines.Add(('Distancia: {0:N1} km' -f [double]$Pedido.atendimento.distanciaKm))
+    }
     if ($Pedido.atendimento.estimativaMinutos) {
       $lines.Add(('Previsao: {0} a {1} min' -f $Pedido.atendimento.estimativaMinutos.minimo, $Pedido.atendimento.estimativaMinutos.maximo))
     }
@@ -195,8 +209,13 @@ function Format-Receipt($Pedido, [int]$Width) {
     if ($item.observacao) {
       Add-WrappedLine $lines ([string]$item.observacao) $Width '  OBS: '
     }
-    $unit = [int64]$item.precoUnitarioCentavos + (@($item.adicionais) | ForEach-Object { [int64]$_.precoCentavos } | Measure-Object -Sum).Sum
-    $itemTotal = [int64]$item.quantidade * [int64]$unit
+
+    $addonsTotal = 0L
+    foreach ($adicional in @($item.adicionais)) {
+      $addonsTotal += [int64]$adicional.precoCentavos
+    }
+    $unit = [int64]$item.precoUnitarioCentavos + $addonsTotal
+    $itemTotal = [int64]$item.quantidade * $unit
     $lines.Add('  Total item: ' + (Money $itemTotal))
     $lines.Add($sep)
   }
@@ -230,8 +249,7 @@ function Format-Receipt($Pedido, [int]$Width) {
 }
 
 function Send-ToPrinter([string]$Text, [string]$PrinterName) {
-  $printer = Get-Printer -Name $PrinterName -ErrorAction Stop
-  if (-not $printer) { throw "Impressora não encontrada: $PrinterName" }
+  Get-Printer -Name $PrinterName -ErrorAction Stop | Out-Null
   $Text | Out-Printer -Name $PrinterName
 }
 
@@ -259,8 +277,11 @@ function Update-OrderStatus($Config, [string]$Token, $Pedido, [string]$Status, [
     pathname = [string]$Pedido.pathname
     status = $Status
   }
-  if ($Erro) { $body.erro = $Erro.Substring(0, [Math]::Min(280, $Erro.Length)) }
-  Invoke-Api 'PATCH' ($Config.siteUrl.TrimEnd('/') + '/api/pedidos') $Token $body | Out-Null
+  if ($Erro) {
+    $max = [Math]::Min(280, $Erro.Length)
+    $body.erro = $Erro.Substring(0, $max)
+  }
+  Invoke-Api 'PATCH' (([string]$Config.siteUrl).TrimEnd('/') + '/api/pedidos') $Token $body | Out-Null
 }
 
 function Print-Test {
@@ -291,24 +312,27 @@ function Print-Test {
 function Install-Startup {
   $null = Read-Config
   $null = Get-AgentToken
+  if (-not $ScriptPath) { throw 'Nao foi possivel localizar o arquivo do agente.' }
+
   $startup = [Environment]::GetFolderPath('Startup')
   $shortcutPath = Join-Path $startup 'Ferracini Print Agent.lnk'
   $shell = New-Object -ComObject WScript.Shell
   $shortcut = $shell.CreateShortcut($shortcutPath)
   $shortcut.TargetPath = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
-  $shortcut.Arguments = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$($MyInvocation.MyCommand.Path)`" -Mode Run"
+  $shortcut.Arguments = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$ScriptPath`" -Mode Run"
   $shortcut.WorkingDirectory = $BaseDir
   $shortcut.IconLocation = "$env:SystemRoot\System32\shell32.dll,16"
   $shortcut.Save()
-  Write-Host 'Inicialização automática instalada para este usuário do Windows.' -ForegroundColor Green
-  Write-Log 'Atalho de inicialização automática criado.'
+  Write-Host 'Inicializacao automatica instalada para este usuario do Windows.' -ForegroundColor Green
+  Write-Log 'Atalho de inicializacao automatica criado.'
 }
 
 function Run-Agent {
   $createdNew = $false
-  $mutex = New-Object System.Threading.Mutex($true, $MutexName, [ref]$createdNew)
+  $mutex = [System.Threading.Mutex]::new($true, $MutexName, [ref]$createdNew)
   if (-not $createdNew) {
-    Write-Log 'Outra instância do agente já está rodando.' 'WARN'
+    Write-Log 'Outra instancia do agente ja esta rodando.' 'WARN'
+    $mutex.Dispose()
     return
   }
 
