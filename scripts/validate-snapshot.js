@@ -3,7 +3,7 @@ const path = require('path');
 
 const required = [
   'index.html', 'admin.html', 'mesa.html', 'vercel.json', 'package.json',
-  'api/comanda.js', 'api/distancia.js', 'api/disponibilidade.js', 'api/pedidos.js'
+  'api/catalogo.json', 'api/comanda.js', 'api/distancia.js', 'api/disponibilidade.js', 'api/pedidos.js'
 ];
 
 let failed = false;
@@ -51,6 +51,8 @@ checkHtml('mesa.html', true);
 if(fs.existsSync('api/pedidos.js')){
   const api = fs.readFileSync('api/pedidos.js', 'utf8');
   const securityChecks = [
+    ["require('./catalogo.json')", 'catálogo canônico no servidor'],
+    ['CATALOGO.produtos', 'validação de preços no servidor'],
     ['PRINT_AGENT_TOKEN', 'token privado do agente de impressão'],
     ['timingSafeEqual', 'comparação segura de token'],
     ['origemPermitida', 'validação de origem'],
@@ -63,6 +65,32 @@ if(fs.existsSync('api/pedidos.js')){
   for(const [needle, label] of securityChecks){
     if(!api.includes(needle)) fail(`api/pedidos.js: ${label}`);
   }
+}
+
+if(fs.existsSync('api/catalogo.json')){
+  try{
+    const catalogo = JSON.parse(fs.readFileSync('api/catalogo.json', 'utf8'));
+    const nomesProdutos = Object.keys(catalogo.produtos || {});
+    const nomesAdicionais = Object.keys(catalogo.adicionais || {});
+    if(nomesProdutos.length !== 23) fail('api/catalogo.json: quantidade de produtos inesperada');
+    if(nomesAdicionais.length !== 17) fail('api/catalogo.json: quantidade de adicionais inesperada');
+
+    for(const file of ['index.html', 'mesa.html']){
+      if(!fs.existsSync(file)) continue;
+      const html = fs.readFileSync(file, 'utf8');
+      for(const nome of nomesProdutos){
+        const preco = catalogo.produtos[nome].precoCentavos / 100;
+        const trecho = `nome:"${nome}", preco:${preco.toFixed(2)}`;
+        if(!html.includes(trecho)) fail(`${file}: catálogo divergente para ${nome}`);
+      }
+      for(const nome of nomesAdicionais){
+        const escaped = nome.replace(/[.*+?^${}()|[\]\\]/g, '\\if(fs.existsSync('vercel.json')){');
+        const preco = catalogo.adicionais[nome] / 100;
+        const pattern = new RegExp(`nome: ["']${escaped}["'][^}]+preco: ${preco.toFixed(2)}`);
+        if(!pattern.test(html)) fail(`${file}: adicional divergente para ${nome}`);
+      }
+    }
+  }catch(err){ fail(`api/catalogo.json inválido — ${err.message}`); }
 }
 
 if(fs.existsSync('vercel.json')){
