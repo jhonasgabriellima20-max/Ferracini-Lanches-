@@ -415,18 +415,27 @@ module.exports = async function handler(req, res){
       });
     }catch(err){
       const message = err instanceof SyntaxError ? 'JSON inválido.' : (err?.message || 'Não foi possível registrar o pedido.');
-      if([
-        'limite_de_reservas_excedido',
-      ].includes(message)){
-        console.error('[pedidos] criacao_falhou', { error: message });
-        return res.status(503).json({ error: 'Não foi possível registrar a comanda agora.' });
-      }
-      if(!message.endsWith('.') && !message.includes('inválid') && !message.includes('incompleto') &&
-         !message.includes('Londrina') && !message.includes('confere') && !message.includes('entre')){
-        console.error('[pedidos] criacao_falhou', { error: String(err) });
-        return res.status(503).json({ error: 'Não foi possível registrar a comanda agora.' });
-      }
-      return res.status(400).json({ error: message });
+      const erroDoCliente = err instanceof SyntaxError || [
+        'Pedido inválido.',
+        'Identificador do pedido inválido.',
+        'Informe o nome do cliente.',
+        'Informe um telefone válido.',
+        'O pedido precisa ter entre 1 e 40 itens.',
+        'Há um item inválido no pedido.',
+        'Tipo de atendimento inválido.',
+        'Número da mesa inválido.',
+        'Endereço de entrega incompleto.',
+        'A entrega automática atende somente Londrina.',
+        'Frete inválido. Calcule novamente.',
+        'A taxa de entrega não confere. Calcule novamente.',
+        'Forma de pagamento inválida.',
+        'Valor do pedido inválido.',
+        'Valor do troco inválido.',
+        'JSON inválido.',
+      ].includes(message);
+      if(erroDoCliente) return res.status(400).json({ error: message });
+      console.error('[pedidos] criacao_falhou', { error: String(err) });
+      return res.status(503).json({ error: 'Não foi possível registrar a comanda agora.' });
     }
   }
 
