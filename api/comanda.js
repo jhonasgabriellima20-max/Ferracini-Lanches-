@@ -3,6 +3,41 @@ const crypto = require('crypto');
 const COUNTER_PATH = 'config/comanda-sequencia.json';
 const RESERVA_DIR = 'comandas';
 const TIME_ZONE = 'America/Sao_Paulo';
+const RATE_WINDOW_MS = 60 * 1000;
+const RATE_MAX = 15;
+const buckets = new Map();
+
+function origemPermitida(req){
+  if(String(req.headers['sec-fetch-site'] || '').toLowerCase() === 'cross-site') return false;
+  const origin = String(req.headers.origin || '').trim();
+  if(!origin) return true;
+  try{
+    const url = new URL(origin);
+    if(url.protocol !== 'https:' && url.hostname !== 'localhost') return false;
+    return url.hostname === 'ferracinilanches.com.br' ||
+      url.hostname === 'www.ferracinilanches.com.br' ||
+      /^ferracini-lanches(?:-[a-z0-9-]+)?(?:-jho-n)?\.vercel\.app$/i.test(url.hostname) ||
+      url.hostname === 'localhost';
+  }catch{
+    return false;
+  }
+}
+
+function rateLimit(req){
+  const now = Date.now();
+  const forwarded = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+  const key = forwarded || String(req.headers['x-real-ip'] || 'unknown').slice(0, 100);
+  const current = buckets.get(key);
+  if(!current || current.resetAt <= now){
+    buckets.set(key, { count: 1, resetAt: now + RATE_WINDOW_MS });
+    return { ok: true, retryAfter: 0 };
+  }
+  current.count += 1;
+  return {
+    ok: current.count <= RATE_MAX,
+    retryAfter: Math.max(1, Math.ceil((current.resetAt - now) / 1000)),
+  };
+}
 
 function dataOperacao(){
   return new Intl.DateTimeFormat('en-CA', {
@@ -76,6 +111,14 @@ module.exports = async function handler(req, res){
   if(req.method !== 'POST'){
     res.setHeader('Allow', 'POST');
     return res.status(405).json({ error: 'Método não permitido.' });
+  }
+
+  if(!origemPermitida(req)) return res.status(403).json({ error: 'Origem não permitida.' });
+  const limit = rateLimit(req);
+  res.setHeader('X-RateLimit-Limit', String(RATE_MAX));
+  if(!limit.ok){
+    res.setHeader('Retry-After', String(limit.retryAfter));
+    return res.status(429).json({ error: 'Muitas solicitações. Aguarde um minuto e tente novamente.' });
   }
 
   try{
