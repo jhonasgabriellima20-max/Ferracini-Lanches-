@@ -1,11 +1,11 @@
 # Ferracini Lanches — política de publicação segura
 
 ## Regra principal
-Nunca publicar alteração diretamente no domínio de produção durante o atendimento da loja.
+Evitar publicar alterações diretamente no domínio durante o atendimento da loja.
 
 ## Fluxo obrigatório
-1. Alterar código em uma branch `preview/*` ou `preview`.
-2. Rodar validação automática.
+1. Alterar código em uma branch de preview.
+2. Rodar a validação automática.
 3. Criar deployment Preview na Vercel.
 4. Conferir página inicial, cardápio, disponibilidade, retirada, entrega, frete e registro de pedidos.
 5. Conferir logs do Preview.
@@ -14,15 +14,15 @@ Nunca publicar alteração diretamente no domínio de produção durante o atend
 
 ## Frete
 - Google Routes é o provedor principal.
-- Photon + OSRM é apenas contingência.
-- HTTP 200 ou uma distância plausível não provam que o número exato da casa foi confirmado.
-- HTTP 422 deve ser classificado: pode ser bloqueio esperado de cidade fora da área ou falha real de endereço válido.
-- Nunca inventar distância quando os provedores não confirmarem o endereço.
+- Photon + OSRM é contingência.
+- A taxa é arredondada para reais inteiros no navegador e conferida novamente pelo servidor.
+- HTTP 422 pode representar endereço fora da área ou endereço não confirmado; nunca inventar distância.
 
-## Produção de referência ao criar esta pasta
-- Domínio: https://ferracinilanches.com.br
-- Deployment observado como estável: dpl_9rzLFfwnDRYBRz369vYzNJ8ZGQMp
-- Estado observado: READY / domínio 200 OK
+## Pedidos e impressão
+- O navegador registra o pedido em POST /api/pedidos antes de abrir o WhatsApp.
+- GET e PATCH /api/pedidos exigem PRINT_AGENT_TOKEN.
+- A fila é privada, idempotente e limitada contra abuso.
+- O agente local deve marcar cada pedido como imprimindo, impresso ou falhou.
 
-## Atenção sobre este snapshot
-Este pacote foi salvo antes da última evolução do registro automático de pedidos. A produção atual possui `/api/pedidos` e lógica posterior ao antigo `/api/comanda`. Portanto, este snapshot é backup de recuperação e base de versionamento; não deve ser promovido diretamente sem sincronizar a API de pedidos que está atualmente em produção.
+## Estado sincronizado
+O GitHub voltou a ser a fonte versionada do projeto em 14/09/2026. O snapshot restaurado foi atualizado com a API de pedidos e com o fluxo de impressão antes da nova publicação.
