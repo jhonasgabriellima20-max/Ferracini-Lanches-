@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const CATALOGO = require('./catalogo.json');
 
 const TIME_ZONE = 'America/Sao_Paulo';
 const COUNTER_PATH = 'config/pedidos-sequencia.json';
@@ -165,13 +166,26 @@ function validarItem(raw){
   const quantidade = inteiro(raw?.quantidade, 1, 20);
   const precoUnitarioCentavos = inteiro(raw?.precoUnitarioCentavos, 0, 100000);
   const adicionaisRaw = Array.isArray(raw?.adicionais) ? raw.adicionais : [];
-  if(!nome || quantidade === null || precoUnitarioCentavos === null || adicionaisRaw.length > 20) return null;
+  const produto = CATALOGO.produtos[nome];
+
+  if(!produto || quantidade === null || precoUnitarioCentavos !== produto.precoCentavos ||
+     adicionaisRaw.length > 20 || (!produto.aceitaAdicionais && adicionaisRaw.length > 0)){
+    return null;
+  }
 
   const adicionais = adicionaisRaw.map(item => ({
     nome: texto(item?.nome, 80),
     precoCentavos: inteiro(item?.precoCentavos, 0, 50000),
   }));
-  if(adicionais.some(item => !item.nome || item.precoCentavos === null)) return null;
+  const nomesAdicionais = new Set(adicionais.map(item => item.nome));
+  if(nomesAdicionais.size !== adicionais.length) return null;
+  if(adicionais.some(item =>
+    !item.nome ||
+    item.precoCentavos === null ||
+    CATALOGO.adicionais[item.nome] !== item.precoCentavos
+  )){
+    return null;
+  }
 
   return {
     nome,
