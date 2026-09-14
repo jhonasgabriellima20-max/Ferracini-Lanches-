@@ -1501,7 +1501,7 @@ function validarCheckout(){
 btnEnviarPedidoEl.addEventListener('click', async () => {
   const erros = validarCheckout();
   if(erros.length){
-    checkoutErrorBoxEl.innerHTML = erros.map(e => \`<div class="checkout-error">⚠️ \${escapeHTML(e)}</div>\`).join('');
+    checkoutErrorBoxEl.innerHTML = erros.map(e => `<div class="checkout-error">⚠️ ${escapeHTML(e)}</div>`).join('');
     return;
   }
   checkoutErrorBoxEl.innerHTML = '';
@@ -1532,8 +1532,8 @@ btnEnviarPedidoEl.addEventListener('click', async () => {
 
   checkoutConfirmEl.innerHTML = numeroPedido
     ? registro?.impressaoAtiva
-      ? \`✅ Pedido <strong>\${escapeHTML(numeroPedido)}</strong> registrado e enviado para a fila de impressão. Confirme também a mensagem aberta no WhatsApp.\`
-      : \`✅ Pedido <strong>\${escapeHTML(numeroPedido)}</strong> numerado. Confirme e envie a mensagem aberta no WhatsApp para concluir.\`
+      ? `✅ Pedido <strong>${escapeHTML(numeroPedido)}</strong> registrado e enviado para a fila de impressão. Confirme também a mensagem aberta no WhatsApp.`
+      : `✅ Pedido <strong>${escapeHTML(numeroPedido)}</strong> numerado. Confirme e envie a mensagem aberta no WhatsApp para concluir.`
     : '⚠️ O registro automático não respondeu. Para não perder o pedido, confirme e envie a mensagem aberta no WhatsApp.';
   checkoutConfirmEl.style.display = 'block';
   btnEnviarPedidoEl.style.display = 'none';
