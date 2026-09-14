@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#14100c">
+<title>Ferracini — Disponibilidade</title>
+<style>
+:root{--bg:#14100c;--surface:#1e1812;--surface2:#282019;--line:#3a2e23;--text:#f7f0e8;--dim:#b9aa9b;--orange:#f04b23;--green:#2dbb68;--red:#df4e4e;--yellow:#d9a727;--radius:18px}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,system-ui,-apple-system,Segoe UI,sans-serif}.wrap{width:min(100% - 28px,980px);margin:0 auto;padding:28px 0 70px}.head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:24px}.brand{font-weight:900;letter-spacing:.08em}.brand span{color:var(--orange)}h1{font-size:clamp(26px,6vw,42px);line-height:1.05;margin:8px 0 8px}.sub{color:var(--dim);font-size:14px;line-height:1.55;margin:0}.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:18px;margin:16px 0}.login{max-width:460px;margin:70px auto}.field{display:grid;gap:7px}.field label{font-size:13px;color:var(--dim);font-weight:700}.field input,.field select{width:100%;padding:14px 15px;border-radius:12px;border:1px solid var(--line);background:var(--surface2);color:var(--text);font-size:16px;outline:none}.btn{border:0;border-radius:12px;padding:13px 16px;font-weight:850;font-size:14px;cursor:pointer}.btn-primary{background:var(--orange);color:white;width:100%;margin-top:12px}.btn-save{background:var(--green);color:#06180d;min-width:150px}.btn-ghost{background:var(--surface2);border:1px solid var(--line);color:var(--text)}.toolbar{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--bg) 91%,transparent);backdrop-filter:blur(12px);padding:12px 0;display:flex;align-items:center;justify-content:space-between;gap:12px}.status{font-size:12px;color:var(--dim)}.section-title{display:flex;align-items:end;justify-content:space-between;gap:12px;margin:26px 0 10px}.section-title h2{margin:0;font-size:20px}.section-title p{margin:0;color:var(--dim);font-size:12px}.grid{display:grid;gap:10px}.row{display:flex;align-items:center;justify-content:space-between;gap:14px;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px 15px}.row-main{min-width:0}.row-name{font-weight:850;font-size:14px}.row-note{color:var(--dim);font-size:11.5px;line-height:1.45;margin-top:4px}.toggle{position:relative;width:58px;height:32px;flex:0 0 58px}.toggle input{opacity:0;width:0;height:0}.slider{position:absolute;inset:0;background:var(--red);border-radius:999px;cursor:pointer;transition:.18s}.slider:before{content:"";position:absolute;width:24px;height:24px;left:4px;top:4px;background:white;border-radius:50%;transition:.18s;box-shadow:0 2px 6px #0006}.toggle input:checked+.slider{background:var(--green)}.toggle input:checked+.slider:before{transform:translateX(26px)}.cat{margin:18px 0 8px;color:#f1b04e;font-size:13px;font-weight:900;letter-spacing:.03em}.pill{display:inline-flex;padding:4px 8px;border-radius:999px;background:#ffffff0b;border:1px solid var(--line);font-size:10px;color:var(--dim);margin-right:4px;margin-top:5px}.notice{padding:12px 14px;border-radius:12px;font-size:12.5px;line-height:1.5;margin:12px 0}.notice.ok{background:#143420;border:1px solid #245d38;color:#bff1cf}.notice.warn{background:#3a2b11;border:1px solid #6b5220;color:#f7d985}.notice.err{background:#3c1919;border:1px solid #6b2929;color:#ffc7c7}.hidden{display:none!important}@media(min-width:720px){.grid.ingredients{grid-template-columns:1fr 1fr}.row{padding:15px 17px}.wrap{padding-top:34px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <section id="loginView" class="login card">
+    <div class="brand">FERRACINI<span>.</span></div>
+    <h1>Painel de disponibilidade</h1>
+    <p class="sub">Entre com a senha administrativa para ativar ou desativar lanches e ingredientes.</p>
+    <div class="field" style="margin-top:18px"><label for="senha">Senha</label><input id="senha" type="password" autocomplete="current-password" placeholder="Digite a senha"></div>
+    <button class="btn btn-primary" id="entrar">Entrar</button>
+    <div id="loginMsg"></div>
+  </section>
+
+  <main id="appView" class="hidden">
+    <div class="head"><div><div class="brand">FERRACINI<span>.</span></div><h1>Disponibilidade</h1><p class="sub">Desligue um ingrediente para bloquear automaticamente todos os lanches que dependem dele. Você também pode desligar um lanche específico.</p></div><button class="btn btn-ghost" id="sair">Sair</button></div>
+    <div id="systemMsg"></div>
+    <div class="toolbar"><div class="status" id="status">Carregando…</div><button class="btn btn-save" id="salvar">Salvar alterações</button></div>
+
+    <div class="section-title"><div><h2>Demanda / tempo de entrega</h2><p>Ajusta automaticamente a previsão mostrada ao cliente</p></div></div>
+    <div class="card">
+      <div class="field">
+        <label for="demanda">Movimento da cozinha</label>
+        <select id="demanda">
+          <option value="baixa">Baixa — previsão menor</option>
+          <option value="normal">Normal</option>
+          <option value="alta">Alta — previsão maior</option>
+        </select>
+        <div class="row-note">A distância continua sendo considerada. Depois da meia-noite o sistema reduz automaticamente a estimativa.</div>
+      </div>
+    </div>
+
+    <div class="section-title"><div><h2>Ingredientes</h2><p>ON = disponível · OFF = em falta</p></div></div>
+    <div id="ingredientes" class="grid ingredients"></div>
+
+    <div class="section-title"><div><h2>Lanches e produtos</h2><p>Controle individual do cardápio</p></div></div>
+    <div id="produtos"></div>
+  </main>
+</div>
+<script>
+let senhaAdmin = sessionStorage.getItem('ferracini_admin_password') || '';
+let estado = { ingredientes:{}, produtos:{}, operacao:{demanda:'normal'} };
+let catalogo = { ingredientes:[], produtos:[] };
+let storageReady = true;
+
+const $ = id => document.getElementById(id);
+function esc(s){ return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function notice(text,type='ok'){ return `<div class="notice ${type}">${esc(text)}</div>`; }
+
+async function buscar(){
+  const r = await fetch('/api/disponibilidade?t='+Date.now(),{cache:'no-store',headers:{'X-Admin-Password':senhaAdmin}});
+  if(!r.ok) throw new Error('Falha ao carregar disponibilidade.');
+  const data = await r.json();
+  if(!data.adminConfigured) throw new Error('A senha administrativa ainda não foi configurada na Vercel.');
+  if(data.authenticated !== true) throw new Error('Senha administrativa incorreta.');
+  return data;
+}
+
+function renderIngredientes(){
+  $('ingredientes').innerHTML = catalogo.ingredientes.map(i=>{
+    const checked = estado.ingredientes[i.id] !== false;
+    const afetados = (i.afeta||[]).map(n=>`<span class="pill">${esc(n)}</span>`).join('');
+    return `<div class="row"><div class="row-main"><div class="row-name">${esc(i.nome)}</div>${afetados?`<div class="row-note">Ao faltar, bloqueia:</div><div>${afetados}</div>`:'<div class="row-note">Usado como adicional.</div>'}</div><label class="toggle"><input type="checkbox" data-kind="ingrediente" data-key="${esc(i.id)}" ${checked?'checked':''}><span class="slider"></span></label></div>`;
+  }).join('');
+}
+
+function renderProdutos(){
+  const grupos = {};
+  catalogo.produtos.forEach(p => (grupos[p.categoria] ||= []).push(p));
+  $('produtos').innerHTML = Object.entries(grupos).map(([cat,items])=>`<div class="cat">${esc(cat)}</div><div class="grid">${items.map(p=>`<div class="row"><div class="row-main"><div class="row-name">${esc(p.nome)}</div><div class="row-note">${estado.produtos[p.nome]!==false?'Disponível individualmente':'Desativado manualmente'}</div></div><label class="toggle"><input type="checkbox" data-kind="produto" data-key="${esc(p.nome)}" ${estado.produtos[p.nome]!==false?'checked':''}><span class="slider"></span></label></div>`).join('')}</div>`).join('');
+}
+
+function render(){
+  renderIngredientes(); renderProdutos();
+  $('demanda').value = estado.operacao?.demanda || 'normal';
+  $('demanda').onchange = () => {
+    estado.operacao = { ...(estado.operacao||{}), demanda: $('demanda').value };
+    $('status').textContent='Alterações ainda não salvas';
+  };
+  document.querySelectorAll('input[data-kind]').forEach(el=>el.addEventListener('change',()=>{
+    const kind=el.dataset.kind, key=el.dataset.key;
+    if(kind==='ingrediente') estado.ingredientes[key]=el.checked;
+    else estado.produtos[key]=el.checked;
+    $('status').textContent='Alterações ainda não salvas';
+    if(kind==='produto') renderProdutos();
+  }));
+}
+
+async function abrirPainel(){
+  try{
+    const data=await buscar();
+    estado={ingredientes:data.ingredientes||{},produtos:data.produtos||{},operacao:data.operacao||{demanda:'normal'}};
+    catalogo=data.catalogo||catalogo;
+    storageReady=data.storageReady!==false;
+    $('loginView').classList.add('hidden'); $('appView').classList.remove('hidden');
+    $('systemMsg').innerHTML = storageReady ? '' : notice('O painel está pronto, mas o Vercel Blob ainda não está conectado. Você consegue visualizar, porém salvar ficará bloqueado até conectar o armazenamento.','warn');
+    $('status').textContent=data.updatedAt?`Última atualização: ${new Date(data.updatedAt).toLocaleString('pt-BR')}`:'Tudo disponível — nenhuma alteração salva ainda';
+    render();
+  }catch(e){ $('loginMsg').innerHTML=notice(e.message||'Não foi possível abrir o painel.','err'); }
+}
+
+$('entrar').addEventListener('click',()=>{ const s=$('senha').value.trim(); if(!s){$('loginMsg').innerHTML=notice('Digite a senha.','warn');return;} senhaAdmin=s; sessionStorage.setItem('ferracini_admin_password',s); abrirPainel(); });
+$('senha').addEventListener('keydown',e=>{if(e.key==='Enter')$('entrar').click();});
+$('sair').addEventListener('click',()=>{sessionStorage.removeItem('ferracini_admin_password');senhaAdmin='';location.reload();});
+$('salvar').addEventListener('click',async()=>{
+  const btn=$('salvar'); btn.disabled=true; btn.textContent='Salvando…'; $('systemMsg').innerHTML='';
+  try{
+    const r=await fetch('/api/disponibilidade',{method:'POST',headers:{'Content-Type':'application/json','X-Admin-Password':senhaAdmin},body:JSON.stringify(estado)});
+    const data=await r.json().catch(()=>({}));
+    if(r.status===401){ sessionStorage.removeItem('ferracini_admin_password'); throw new Error('Senha administrativa incorreta.'); }
+    if(!r.ok) throw new Error(data.error||'Não foi possível salvar.');
+    estado={ingredientes:data.ingredientes||{},produtos:data.produtos||{},operacao:data.operacao||{demanda:'normal'}}; catalogo=data.catalogo||catalogo; storageReady=true;
+    $('status').textContent=`Salvo agora: ${new Date(data.updatedAt).toLocaleString('pt-BR')}`;
+    $('systemMsg').innerHTML=notice('Alterações salvas. O cardápio dos clientes será atualizado automaticamente em até 20 segundos.','ok');
+    render();
+  }catch(e){ $('systemMsg').innerHTML=notice(e.message||'Erro ao salvar.','err'); }
+  finally{btn.disabled=false;btn.textContent='Salvar alterações';}
+});
+
+if(senhaAdmin){ abrirPainel(); }
+</script>
+</body>
+</html>

@@ -1,0 +1,9 @@
+FERRACINI LANCHES — PEDIDOS NA MESA
+
+Site principal: https://ferracini-lanches.vercel.app/
+Pedidos na mesa: https://ferracini-lanches.vercel.app/mesa.html
+
+O mesmo QR Code pode ser usado em todas as mesas; o cliente informa o número da mesa.
+Para pré-preencher uma mesa específica, use /mesa.html?mesa=5 (troque 5 pelo número desejado).
+
+Na página de mesa não aparecem entrega/retirada. O cliente escolhe itens, adicionais e observações, informa nome e mesa, e envia o pedido pelo WhatsApp.
