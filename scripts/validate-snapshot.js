@@ -84,9 +84,9 @@ if(fs.existsSync('api/catalogo.json')){
         if(!html.includes(trecho)) fail(`${file}: catálogo divergente para ${nome}`);
       }
       for(const nome of nomesAdicionais){
-        const escaped = nome.replace(/[.*+?^${}()|[\]\\]/g, '\\if(fs.existsSync('vercel.json')){');
+        const escaped = nome.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         const preco = catalogo.adicionais[nome] / 100;
-        const pattern = new RegExp(`nome: ["']${escaped}["'][^}]+preco: ${preco.toFixed(2)}`);
+        const pattern = new RegExp(`nome:\\s*["']${escaped}["'][^}]+preco:\\s*${preco.toFixed(2)}`);
         if(!pattern.test(html)) fail(`${file}: adicional divergente para ${nome}`);
       }
     }
