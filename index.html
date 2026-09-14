@@ -1388,6 +1388,7 @@ function renderCheckout(){
 
 function abrirCheckout(){
   if(cartTotals().totalQty === 0) return;
+  clientRequestIdAtual = null;
   deliveryMethod = 'retirada';
   document.querySelectorAll('.method-btn').forEach(b => b.classList.toggle('active', b.dataset.method==='retirada'));
   enderecoBlockEl.style.display = 'none';
@@ -1435,7 +1436,7 @@ document.getElementById('cartHeaderBtn').addEventListener('click', () => {
   }
 });
 
-function montarMensagemPedido(comanda){
+function montarMensagemPedido(comanda = ''){
   const { items, subtotal } = cartTotals();
   const nome = document.getElementById('clienteNome').value.trim();
   const telefone = document.getElementById('clienteTelefone').value.trim();
@@ -1470,7 +1471,7 @@ function montarMensagemPedido(comanda){
 
   return [
     '🔔 NOVO PEDIDO',
-    `🧾 COMANDA #${comanda}`,
+    comanda ? `🧾 COMANDA ${comanda}` : '',
     '',
     `👤 CLIENTE\n${nome}\n${telefone}`,
     '',
@@ -1482,6 +1483,81 @@ function montarMensagemPedido(comanda){
     '',
     blocoValores,
   ].join('\n');
+}
+
+
+function criarIdPedido(){
+  if(globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
+  return Date.now().toString(36) + '-' + Math.random().toString(36).slice(2) + '-' + Math.random().toString(36).slice(2);
+}
+
+let clientRequestIdAtual = null;
+
+function montarPayloadPedido(clientRequestId){
+  const { items } = cartTotals();
+  let atendimento = { tipo: deliveryMethod };
+
+  if(deliveryMethod === 'entrega'){
+    atendimento = {
+      tipo: 'entrega',
+      endereco: {
+        rua: document.getElementById('endRua').value.trim(),
+        numero: document.getElementById('endNumero').value.trim(),
+        complemento: document.getElementById('endComplemento').value.trim(),
+        bairro: document.getElementById('endBairro').value.trim(),
+        cidade: document.getElementById('endCidade').value.trim(),
+        cep: formatarCep(somenteDigitos(document.getElementById('endCep').value)),
+      },
+      distanciaKm: frete.distanciaKm,
+      taxaEntregaCentavos: Math.round(frete.valor * 100),
+      estimativaMinutos: frete.estimativa
+        ? { minimo: frete.estimativa.minimo, maximo: frete.estimativa.maximo }
+        : undefined,
+    };
+  }
+
+  return {
+    clientRequestId,
+    origem: 'site',
+    cliente: {
+      nome: document.getElementById('clienteNome').value.trim(),
+      telefone: document.getElementById('clienteTelefone').value.trim(),
+    },
+    itens: items.map(([nome, item]) => ({
+      nome,
+      quantidade: item.qty,
+      precoUnitarioCentavos: Math.round(item.preco * 100),
+      adicionais: (item.adicionais || []).map(adicional => ({
+        nome: adicional.nome,
+        precoCentavos: Math.round(adicional.preco * 100),
+      })),
+      observacao: item.observacao || '',
+    })),
+    atendimento,
+    pagamento: {
+      metodo: paymentMethod,
+      precisaTroco: paymentMethod === 'dinheiro' && precisaTroco,
+      trocoParaCentavos: paymentMethod === 'dinheiro' && precisaTroco ? valorTrocoCentavos() : undefined,
+    },
+  };
+}
+
+async function registrarPedidoParaImpressao(payload){
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 12000);
+  try{
+    const resp = await fetch('/api/pedidos', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+    const data = await resp.json().catch(() => ({}));
+    if(!resp.ok) throw new Error(data?.error || 'Não foi possível registrar a comanda.');
+    return data;
+  }finally{
+    clearTimeout(timeout);
+  }
 }
 
 function validarCheckout(){
@@ -1510,40 +1586,44 @@ function validarCheckout(){
 btnEnviarPedidoEl.addEventListener('click', async () => {
   const erros = validarCheckout();
   if(erros.length){
-    checkoutErrorBoxEl.innerHTML = erros.map(e => `<div class="checkout-error">⚠️ ${e}</div>`).join('');
+    checkoutErrorBoxEl.innerHTML = erros.map(e => \`<div class="checkout-error">⚠️ \${escapeHTML(e)}</div>\`).join('');
     return;
   }
   checkoutErrorBoxEl.innerHTML = '';
 
-  const whatsappWindow = window.open('about:blank', '_blank');
-  const textoOriginalBotao = btnEnviarPedidoEl.textContent;
   btnEnviarPedidoEl.disabled = true;
-  btnEnviarPedidoEl.textContent = 'Gerando comanda…';
+  const textoOriginalBotao = btnEnviarPedidoEl.textContent;
+  btnEnviarPedidoEl.textContent = 'Registrando pedido...';
+  const whatsappWindow = window.open('about:blank', '_blank');
+  let registro = null;
 
   try{
-    const resp = await fetch('/api/comanda', { method:'POST', headers:{'Content-Type':'application/json'} });
-    const data = await resp.json().catch(()=>({}));
-    if(!resp.ok || !data.codigo) throw new Error(data.error || 'Não foi possível gerar a comanda.');
-
-    const mensagem = montarMensagemPedido(data.codigo);
-    const destino = linkWhatsApp(mensagem);
-
-    if(whatsappWindow){
-      try{ whatsappWindow.opener = null; }catch(_){}
-      whatsappWindow.location.href = destino;
-    }else{
-      window.location.href = destino;
-    }
-
-    checkoutConfirmEl.innerHTML = `✅ Comanda <strong>#${data.codigo}</strong> gerada. Confirme e envie a mensagem que abriu no WhatsApp para concluir.`;
-    checkoutConfirmEl.style.display = 'block';
-    btnEnviarPedidoEl.style.display = 'none';
+    clientRequestIdAtual ||= criarIdPedido();
+    registro = await registrarPedidoParaImpressao(montarPayloadPedido(clientRequestIdAtual));
   }catch(err){
-    if(whatsappWindow) whatsappWindow.close();
-    checkoutErrorBoxEl.innerHTML = `<div class="checkout-error">⚠️ ${escapeHTML(err?.message || 'Não foi possível gerar a comanda. Tente novamente.')}</div>`;
-    btnEnviarPedidoEl.disabled = false;
-    btnEnviarPedidoEl.textContent = textoOriginalBotao;
+    console.error('Falha ao registrar comanda automática:', err);
   }
+
+  const numeroPedido = registro?.pedido?.numero || '';
+  const mensagem = montarMensagemPedido(numeroPedido);
+  const destino = linkWhatsApp(mensagem);
+
+  if(whatsappWindow && !whatsappWindow.closed){
+    try{ whatsappWindow.opener = null; }catch(_){}
+    whatsappWindow.location.replace(destino);
+  }else{
+    window.location.href = destino;
+  }
+
+  checkoutConfirmEl.innerHTML = numeroPedido
+    ? registro?.impressaoAtiva
+      ? \`✅ Pedido <strong>\${escapeHTML(numeroPedido)}</strong> registrado e enviado para a fila de impressão. Confirme também a mensagem aberta no WhatsApp.\`
+      : \`✅ Pedido <strong>\${escapeHTML(numeroPedido)}</strong> numerado. Confirme e envie a mensagem aberta no WhatsApp para concluir.\`
+    : '⚠️ O registro automático não respondeu. Para não perder o pedido, confirme e envie a mensagem aberta no WhatsApp.';
+  checkoutConfirmEl.style.display = 'block';
+  btnEnviarPedidoEl.style.display = 'none';
+  btnEnviarPedidoEl.disabled = false;
+  btnEnviarPedidoEl.textContent = textoOriginalBotao;
 });
 
 updateCartBar();
