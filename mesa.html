@@ -1228,7 +1228,7 @@ async function calcularFrete(){
     if(!data || typeof data.distanciaKm !== 'number' || !Number.isFinite(data.distanciaKm) || data.distanciaKm < 0){
       throw new Error('Endereço não localizado');
     }
-    const valor = Math.ceil(data.distanciaKm * CONFIG.entrega.valorPorKm);
+    const valor = Math.ceil((data.distanciaKm * CONFIG.entrega.valorPorKm) - 1e-9);
     const estimativa = estimarEntrega(data.distanciaKm);
     frete = { status: 'ok', distanciaKm: data.distanciaKm, valor, estimativa };
     freteBoxEl.className = 'frete-box ok';
