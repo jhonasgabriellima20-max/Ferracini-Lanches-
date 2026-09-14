@@ -1,0 +1,116 @@
+{
+  "versao": 1,
+  "produtos": {
+    "Dog Simples": {
+      "precoCentavos": 1200,
+      "aceitaAdicionais": true
+    },
+    "Dog Duplo": {
+      "precoCentavos": 1500,
+      "aceitaAdicionais": true
+    },
+    "Dog Presunto Queijo": {
+      "precoCentavos": 1800,
+      "aceitaAdicionais": true
+    },
+    "Dog Frango": {
+      "precoCentavos": 2200,
+      "aceitaAdicionais": true
+    },
+    "Dog Bacon": {
+      "precoCentavos": 2400,
+      "aceitaAdicionais": true
+    },
+    "Dog Frango Bacon (1 Kilo)": {
+      "precoCentavos": 3500,
+      "aceitaAdicionais": true
+    },
+    "Simples Burguer": {
+      "precoCentavos": 1500,
+      "aceitaAdicionais": true
+    },
+    "X-Burguer": {
+      "precoCentavos": 2200,
+      "aceitaAdicionais": true
+    },
+    "X-Salada": {
+      "precoCentavos": 2500,
+      "aceitaAdicionais": true
+    },
+    "X-Egg": {
+      "precoCentavos": 3000,
+      "aceitaAdicionais": true
+    },
+    "X-Frango": {
+      "precoCentavos": 3000,
+      "aceitaAdicionais": true
+    },
+    "X-Bacon (1 Kilo)": {
+      "precoCentavos": 3500,
+      "aceitaAdicionais": true
+    },
+    "X-Tudo (2 Kilo)": {
+      "precoCentavos": 10000,
+      "aceitaAdicionais": true
+    },
+    "Água com gás": {
+      "precoCentavos": 400,
+      "aceitaAdicionais": false
+    },
+    "Água sem gás": {
+      "precoCentavos": 400,
+      "aceitaAdicionais": false
+    },
+    "Refrigerante lata": {
+      "precoCentavos": 700,
+      "aceitaAdicionais": false
+    },
+    "Cerveja lata": {
+      "precoCentavos": 700,
+      "aceitaAdicionais": false
+    },
+    "Cerveja Long Neck": {
+      "precoCentavos": 1200,
+      "aceitaAdicionais": false
+    },
+    "Jujutuba 2L": {
+      "precoCentavos": 1000,
+      "aceitaAdicionais": false
+    },
+    "Refrico 2L": {
+      "precoCentavos": 1200,
+      "aceitaAdicionais": false
+    },
+    "Coca-Cola 1L": {
+      "precoCentavos": 1200,
+      "aceitaAdicionais": false
+    },
+    "Kuat 2L": {
+      "precoCentavos": 1500,
+      "aceitaAdicionais": false
+    },
+    "Coca-Cola 2L": {
+      "precoCentavos": 1700,
+      "aceitaAdicionais": false
+    }
+  },
+  "adicionais": {
+    "Alface": 200,
+    "Tomate": 200,
+    "Ovo": 300,
+    "Batata palha": 300,
+    "Salsicha": 400,
+    "Presunto": 400,
+    "Mussarela": 500,
+    "Hambúrguer": 700,
+    "Calabresa": 800,
+    "Pão": 400,
+    "Frango": 1000,
+    "Toscana": 1200,
+    "Bacon": 1400,
+    "Fraldinha": 1500,
+    "Molho verde (saquinho)": 200,
+    "Ketchup (saquinho)": 200,
+    "Maionese (saquinho)": 200
+  }
+}
