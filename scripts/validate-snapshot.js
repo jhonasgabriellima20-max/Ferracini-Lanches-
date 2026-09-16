@@ -42,11 +42,14 @@ function checkHtml(file, isMesa){
   if(isMesa){
     if(!/tipo\s*:\s*['"]mesa['"]/.test(html)) fail(`${file}: identificação da mesa`);
   }else{
-    if(/data-method\s*=\s*['"]retirada['"]/i.test(html) || /Retirar no local/i.test(html)){
-      fail(`${file}: opção de retirada ainda aparece no site principal`);
+    if(!/data-method\s*=\s*['"]retirada['"]/i.test(html) || !/Retirar no local/i.test(html)){
+      fail(`${file}: opção de retirada ausente no site principal`);
     }
-    if(!/tipo\s*:\s*['"]entrega['"]/.test(html)){
-      fail(`${file}: pedido do site principal não está fixado como entrega`);
+    if(!/data-method\s*=\s*['"]entrega['"]/i.test(html)){
+      fail(`${file}: opção de entrega ausente no site principal`);
+    }
+    if(!/tipo\s*:\s*deliveryMethod/.test(html)){
+      fail(`${file}: tipo de atendimento não acompanha a escolha retirada/entrega`);
     }
   }
 
