@@ -21,133 +21,102 @@ jobs:
           python - <<'PY'
           from pathlib import Path
 
-          def replace_once(path, old, new, label):
+          def patch(path, old, new, label):
               p = Path(path)
               text = p.read_text(encoding='utf-8')
               if new in text:
                   print(f'{label}: ja aplicado')
                   return
-              count = text.count(old)
-              if count != 1:
-                  raise SystemExit(f'{label}: esperado 1 trecho, encontrado {count}')
+              if old not in text:
+                  raise SystemExit(f'{label}: trecho original nao encontrado')
               p.write_text(text.replace(old, new, 1), encoding='utf-8')
               print(f'{label}: aplicado')
 
-          # ---------------- Frontend: index.html ----------------
-          replace_once(
-              'index.html',
-              """    // Valor cobrado por km rodado — configuração central, fácil de alterar.\n    valorPorKm: 2.30,\n    // URL de uma função de backend (ex: Vercel/Netlify/Cloud Function) que""",
-              """    // Valor cobrado por km rodado — configuração central, fácil de alterar.\n    valorPorKm: 2.30,\n    // Taxa de serviço adicional, definida pela distância da entrega.\n    taxaServico: {\n      ate5Km: 3.00,\n      ate10Km: 6.00,\n      acima10Km: 10.00,\n    },\n    // URL de uma função de backend (ex: Vercel/Netlify/Cloud Function) que""",
-              'configuracao da taxa de servico'
-          )
+          # Frontend
+          patch('index.html',
+            "    valorPorKm: 2.30,\n    // URL de uma função de backend",
+            "    valorPorKm: 2.30,\n    // Taxa de serviço adicional, definida pela distância da entrega.\n    taxaServico: {\n      ate5Km: 3.00,\n      ate10Km: 6.00,\n      acima10Km: 10.00,\n    },\n    // URL de uma função de backend",
+            'configuracao')
 
-          replace_once(
-              'index.html',
-              """const PAYMENT_LABELS = { cartao: 'Cartão (maquininha)', dinheiro: 'Dinheiro' };\nfunction paymentOptionsForMethod(){ return ['cartao', 'dinheiro']; }\nfunction totalPedidoCentavos(){\n  return Math.round(cartTotals().subtotal * 100) + (deliveryMethod === 'entrega' && frete.status === 'ok' ? Math.round(frete.valor * 100) : 0);\n}""",
-              """const PAYMENT_LABELS = { cartao: 'Cartão (maquininha)', dinheiro: 'Dinheiro' };\nfunction paymentOptionsForMethod(){ return ['cartao', 'dinheiro']; }\nfunction taxaServicoPorDistancia(distanciaKm){\n  if(!Number.isFinite(distanciaKm) || distanciaKm <= 0) return 0;\n  if(distanciaKm <= 5) return CONFIG.entrega.taxaServico.ate5Km;\n  if(distanciaKm <= 10) return CONFIG.entrega.taxaServico.ate10Km;\n  return CONFIG.entrega.taxaServico.acima10Km;\n}\nfunction totalPedidoCentavos(){\n  const subtotalCentavos = Math.round(cartTotals().subtotal * 100);\n  if(deliveryMethod !== 'entrega' || frete.status !== 'ok') return subtotalCentavos;\n  return subtotalCentavos +\n    Math.round(frete.valor * 100) +\n    Math.round(taxaServicoPorDistancia(frete.distanciaKm) * 100);\n}""",
-              'calculo total com taxa de servico'
-          )
+          patch('index.html',
+            "function paymentOptionsForMethod(){ return ['cartao', 'dinheiro']; }\nfunction totalPedidoCentavos(){\n  return Math.round(cartTotals().subtotal * 100) + (deliveryMethod === 'entrega' && frete.status === 'ok' ? Math.round(frete.valor * 100) : 0);\n}",
+            "function paymentOptionsForMethod(){ return ['cartao', 'dinheiro']; }\nfunction taxaServicoPorDistancia(distanciaKm){\n  if(!Number.isFinite(distanciaKm) || distanciaKm <= 0) return 0;\n  if(distanciaKm <= 5) return CONFIG.entrega.taxaServico.ate5Km;\n  if(distanciaKm <= 10) return CONFIG.entrega.taxaServico.ate10Km;\n  return CONFIG.entrega.taxaServico.acima10Km;\n}\nfunction totalPedidoCentavos(){\n  const subtotalCentavos = Math.round(cartTotals().subtotal * 100);\n  if(deliveryMethod !== 'entrega' || frete.status !== 'ok') return subtotalCentavos;\n  return subtotalCentavos + Math.round(frete.valor * 100) + Math.round(taxaServicoPorDistancia(frete.distanciaKm) * 100);\n}",
+            'calculo total')
 
-          replace_once(
-              'index.html',
-              """    freteBoxEl.textContent = `📍 Distância: ${data.distanciaKm.toFixed(1)} km · Taxa de entrega: ${fmtPreco(valor)} · ⏱️ Previsão: ${textoEstimativa(estimativa)}`;""",
-              """    const taxaServico = taxaServicoPorDistancia(data.distanciaKm);\n    freteBoxEl.textContent = `📍 Distância: ${data.distanciaKm.toFixed(1)} km · Taxa de entrega: ${fmtPreco(valor)} · Taxa de serviço: ${fmtPreco(taxaServico)} · ⏱️ Previsão: ${textoEstimativa(estimativa)}`;""",
-              'texto do calculo de entrega'
-          )
+          patch('index.html',
+            "    freteBoxEl.textContent = `📍 Distância: ${data.distanciaKm.toFixed(1)} km · Taxa de entrega: ${fmtPreco(valor)} · ⏱️ Previsão: ${textoEstimativa(estimativa)}`;",
+            "    const taxaServico = taxaServicoPorDistancia(data.distanciaKm);\n    freteBoxEl.textContent = `📍 Distância: ${data.distanciaKm.toFixed(1)} km · Taxa de entrega: ${fmtPreco(valor)} · Taxa de serviço: ${fmtPreco(taxaServico)} · ⏱️ Previsão: ${textoEstimativa(estimativa)}`;",
+            'texto do frete')
 
-          replace_once(
-              'index.html',
-              """  const taxaEntrega = (deliveryMethod === 'entrega' && frete.status === 'ok') ? frete.valor : 0;\n  const total = subtotal + taxaEntrega;""",
-              """  const taxaEntrega = (deliveryMethod === 'entrega' && frete.status === 'ok') ? frete.valor : 0;\n  const taxaServico = (deliveryMethod === 'entrega' && frete.status === 'ok') ? taxaServicoPorDistancia(frete.distanciaKm) : 0;\n  const total = subtotal + taxaEntrega + taxaServico;""",
-              'resumo total'
-          )
+          patch('index.html',
+            "  const taxaEntrega = (deliveryMethod === 'entrega' && frete.status === 'ok') ? frete.valor : 0;\n  const total = subtotal + taxaEntrega;\n\n  let entregaLinha = '';",
+            "  const taxaEntrega = (deliveryMethod === 'entrega' && frete.status === 'ok') ? frete.valor : 0;\n  const taxaServico = (deliveryMethod === 'entrega' && frete.status === 'ok') ? taxaServicoPorDistancia(frete.distanciaKm) : 0;\n  const total = subtotal + taxaEntrega + taxaServico;\n\n  let entregaLinha = '';",
+            'resumo total')
 
-          replace_once(
-              'index.html',
-              """    entregaLinha = `<div class=\"summary-row\"><span>Taxa de entrega</span><span>${frete.status==='ok' ? fmtPreco(taxaEntrega) : 'a calcular'}</span></div>`;\n    if(frete.status === 'ok' && frete.estimativa){""",
-              """    entregaLinha = `<div class=\"summary-row\"><span>Taxa de entrega</span><span>${frete.status==='ok' ? fmtPreco(taxaEntrega) : 'a calcular'}</span></div>`;\n    entregaLinha += `<div class=\"summary-row\"><span>Taxa de serviço</span><span>${frete.status==='ok' ? fmtPreco(taxaServico) : 'a calcular'}</span></div>`;\n    if(frete.status === 'ok' && frete.estimativa){""",
-              'linha separada no resumo'
-          )
+          patch('index.html',
+            "    entregaLinha = `<div class=\"summary-row\"><span>Taxa de entrega</span><span>${frete.status==='ok' ? fmtPreco(taxaEntrega) : 'a calcular'}</span></div>`;\n    if(frete.status === 'ok' && frete.estimativa){",
+            "    entregaLinha = `<div class=\"summary-row\"><span>Taxa de entrega</span><span>${frete.status==='ok' ? fmtPreco(taxaEntrega) : 'a calcular'}</span></div>`;\n    entregaLinha += `<div class=\"summary-row\"><span>Taxa de serviço</span><span>${frete.status==='ok' ? fmtPreco(taxaServico) : 'a calcular'}</span></div>`;\n    if(frete.status === 'ok' && frete.estimativa){",
+            'linha do resumo')
 
-          replace_once(
-              'index.html',
-              """  const taxaEntrega = (deliveryMethod === 'entrega' && frete.status === 'ok') ? frete.valor : 0;\n  const total = subtotal + taxaEntrega;\n\n  const linhasProdutos""",
-              """  const taxaEntrega = (deliveryMethod === 'entrega' && frete.status === 'ok') ? frete.valor : 0;\n  const taxaServico = (deliveryMethod === 'entrega' && frete.status === 'ok') ? taxaServicoPorDistancia(frete.distanciaKm) : 0;\n  const total = subtotal + taxaEntrega + taxaServico;\n\n  const linhasProdutos""",
-              'mensagem total'
-          )
+          patch('index.html',
+            "  const taxaEntrega = (deliveryMethod === 'entrega' && frete.status === 'ok') ? frete.valor : 0;\n  const total = subtotal + taxaEntrega;\n\n  const linhasProdutos",
+            "  const taxaEntrega = (deliveryMethod === 'entrega' && frete.status === 'ok') ? frete.valor : 0;\n  const taxaServico = (deliveryMethod === 'entrega' && frete.status === 'ok') ? taxaServicoPorDistancia(frete.distanciaKm) : 0;\n  const total = subtotal + taxaEntrega + taxaServico;\n\n  const linhasProdutos",
+            'whatsapp total')
 
-          replace_once(
-              'index.html',
-              """    blocoEntrega = `🚚 ENTREGA\\n${rua}, ${numero}${complemento ? ' - ' + complemento : ''}\\n${bairro} — ${cidade}${cepLinha}\\n\\n📍 Distância: ${frete.distanciaKm.toFixed(1)} km\\n🚚 Taxa de entrega: ${fmtPreco(frete.valor)}\\n⏱️ Previsão de entrega: ${textoEstimativa(frete.estimativa)}`;""",
-              """    blocoEntrega = `🚚 ENTREGA\\n${rua}, ${numero}${complemento ? ' - ' + complemento : ''}\\n${bairro} — ${cidade}${cepLinha}\\n\\n📍 Distância: ${frete.distanciaKm.toFixed(1)} km\\n🚚 Taxa de entrega: ${fmtPreco(frete.valor)}\\n🧾 Taxa de serviço: ${fmtPreco(taxaServico)}\\n⏱️ Previsão de entrega: ${textoEstimativa(frete.estimativa)}`;""",
-              'mensagem detalhe da entrega'
-          )
+          patch('index.html',
+            "🚚 Taxa de entrega: ${fmtPreco(frete.valor)}\\n⏱️ Previsão de entrega:",
+            "🚚 Taxa de entrega: ${fmtPreco(frete.valor)}\\n🧾 Taxa de serviço: ${fmtPreco(taxaServico)}\\n⏱️ Previsão de entrega:",
+            'whatsapp detalhe')
 
-          replace_once(
-              'index.html',
-              """    ? `💰 TOTAL\\nProdutos: ${fmtPreco(subtotal)}\\nEntrega: ${fmtPreco(taxaEntrega)}\\nTOTAL: ${fmtPreco(total)}`""",
-              """    ? `💰 TOTAL\\nProdutos: ${fmtPreco(subtotal)}\\nEntrega: ${fmtPreco(taxaEntrega)}\\nTaxa de serviço: ${fmtPreco(taxaServico)}\\nTOTAL: ${fmtPreco(total)}`""",
-              'mensagem detalhamento dos valores'
-          )
+          patch('index.html',
+            "Produtos: ${fmtPreco(subtotal)}\\nEntrega: ${fmtPreco(taxaEntrega)}\\nTOTAL: ${fmtPreco(total)}",
+            "Produtos: ${fmtPreco(subtotal)}\\nEntrega: ${fmtPreco(taxaEntrega)}\\nTaxa de serviço: ${fmtPreco(taxaServico)}\\nTOTAL: ${fmtPreco(total)}",
+            'whatsapp valores')
 
-          replace_once(
-              'index.html',
-              """      distanciaKm: frete.distanciaKm,\n      taxaEntregaCentavos: Math.round(frete.valor * 100),\n      estimativaMinutos:""",
-              """      distanciaKm: frete.distanciaKm,\n      taxaEntregaCentavos: Math.round(frete.valor * 100),\n      taxaServicoCentavos: Math.round(taxaServicoPorDistancia(frete.distanciaKm) * 100),\n      estimativaMinutos:""",
-              'payload da taxa de servico'
-          )
+          patch('index.html',
+            "      taxaEntregaCentavos: Math.round(frete.valor * 100),\n      estimativaMinutos:",
+            "      taxaEntregaCentavos: Math.round(frete.valor * 100),\n      taxaServicoCentavos: Math.round(taxaServicoPorDistancia(frete.distanciaKm) * 100),\n      estimativaMinutos:",
+            'payload')
 
-          # ---------------- Backend: api/pedidos.js ----------------
-          replace_once(
-              'api/pedidos.js',
-              """function inteiro(value, min, max){\n  return Number.isSafeInteger(value) && value >= min && value <= max ? value : null;\n}\n\nfunction isNotFound(err){""",
-              """function inteiro(value, min, max){\n  return Number.isSafeInteger(value) && value >= min && value <= max ? value : null;\n}\n\nfunction taxaServicoCentavosPorDistancia(distanciaKm){\n  if(!Number.isFinite(distanciaKm) || distanciaKm <= 0) return null;\n  if(distanciaKm <= 5) return 300;\n  if(distanciaKm <= 10) return 600;\n  return 1000;\n}\n\nfunction isNotFound(err){""",
-              'backend helper taxa de servico'
-          )
+          # Backend
+          patch('api/pedidos.js',
+            "function inteiro(value, min, max){\n  return Number.isSafeInteger(value) && value >= min && value <= max ? value : null;\n}\n\nfunction isNotFound(err){",
+            "function inteiro(value, min, max){\n  return Number.isSafeInteger(value) && value >= min && value <= max ? value : null;\n}\n\nfunction taxaServicoCentavosPorDistancia(distanciaKm){\n  if(!Number.isFinite(distanciaKm) || distanciaKm <= 0) return null;\n  if(distanciaKm <= 5) return 300;\n  if(distanciaKm <= 10) return 600;\n  return 1000;\n}\n\nfunction isNotFound(err){",
+            'backend helper')
 
-          replace_once(
-              'api/pedidos.js',
-              """    const distanciaKm = Number(raw.atendimento?.distanciaKm);\n    const taxaEntregaCentavos = inteiro(raw.atendimento?.taxaEntregaCentavos, 0, 100000);\n    if(!Number.isFinite(distanciaKm) || distanciaKm <= 0 || distanciaKm > MAX_ROUTE_KM ||\n       taxaEntregaCentavos === null || taxaEntregaCentavos % 100 !== 0){\n      throw new Error('Frete inválido. Calcule novamente.');\n    }\n    const esperado = Math.ceil((distanciaKm * 2.30) - 1e-9) * 100;\n    if(taxaEntregaCentavos !== esperado) throw new Error('A taxa de entrega não confere. Calcule novamente.');""",
-              """    const distanciaKm = Number(raw.atendimento?.distanciaKm);\n    const taxaEntregaCentavos = inteiro(raw.atendimento?.taxaEntregaCentavos, 0, 100000);\n    const taxaServicoCentavos = inteiro(raw.atendimento?.taxaServicoCentavos, 0, 100000);\n    if(!Number.isFinite(distanciaKm) || distanciaKm <= 0 || distanciaKm > MAX_ROUTE_KM ||\n       taxaEntregaCentavos === null || taxaEntregaCentavos % 100 !== 0 ||\n       taxaServicoCentavos === null || taxaServicoCentavos % 100 !== 0){\n      throw new Error('Frete inválido. Calcule novamente.');\n    }\n    const esperado = Math.ceil((distanciaKm * 2.30) - 1e-9) * 100;\n    if(taxaEntregaCentavos !== esperado) throw new Error('A taxa de entrega não confere. Calcule novamente.');\n    const servicoEsperado = taxaServicoCentavosPorDistancia(distanciaKm);\n    if(taxaServicoCentavos !== servicoEsperado) throw new Error('A taxa de serviço não confere. Calcule novamente.');""",
-              'backend validacao da taxa'
-          )
+          patch('api/pedidos.js',
+            "    const taxaEntregaCentavos = inteiro(raw.atendimento?.taxaEntregaCentavos, 0, 100000);\n    if(!Number.isFinite(distanciaKm) || distanciaKm <= 0 || distanciaKm > MAX_ROUTE_KM ||\n       taxaEntregaCentavos === null || taxaEntregaCentavos % 100 !== 0){",
+            "    const taxaEntregaCentavos = inteiro(raw.atendimento?.taxaEntregaCentavos, 0, 100000);\n    const taxaServicoCentavos = inteiro(raw.atendimento?.taxaServicoCentavos, 0, 100000);\n    if(!Number.isFinite(distanciaKm) || distanciaKm <= 0 || distanciaKm > MAX_ROUTE_KM ||\n       taxaEntregaCentavos === null || taxaEntregaCentavos % 100 !== 0 ||\n       taxaServicoCentavos === null || taxaServicoCentavos % 100 !== 0){",
+            'backend leitura')
 
-          replace_once(
-              'api/pedidos.js',
-              """    atendimento.distanciaKm = Math.round(distanciaKm * 100) / 100;\n    atendimento.taxaEntregaCentavos = taxaEntregaCentavos;\n    const minimo = inteiro""",
-              """    atendimento.distanciaKm = Math.round(distanciaKm * 100) / 100;\n    atendimento.taxaEntregaCentavos = taxaEntregaCentavos;\n    atendimento.taxaServicoCentavos = taxaServicoCentavos;\n    const minimo = inteiro""",
-              'backend persistencia da taxa'
-          )
+          patch('api/pedidos.js',
+            "    if(taxaEntregaCentavos !== esperado) throw new Error('A taxa de entrega não confere. Calcule novamente.');\n\n    atendimento.endereco",
+            "    if(taxaEntregaCentavos !== esperado) throw new Error('A taxa de entrega não confere. Calcule novamente.');\n    const servicoEsperado = taxaServicoCentavosPorDistancia(distanciaKm);\n    if(taxaServicoCentavos !== servicoEsperado) throw new Error('A taxa de serviço não confere. Calcule novamente.');\n\n    atendimento.endereco",
+            'backend validacao')
 
-          replace_once(
-              'api/pedidos.js',
-              """  const totalCentavos = subtotalCentavos + (atendimento.taxaEntregaCentavos || 0);""",
-              """  const totalCentavos = subtotalCentavos +\n    (atendimento.taxaEntregaCentavos || 0) +\n    (atendimento.taxaServicoCentavos || 0);""",
-              'backend total final'
-          )
+          patch('api/pedidos.js',
+            "    atendimento.taxaEntregaCentavos = taxaEntregaCentavos;\n    const minimo = inteiro",
+            "    atendimento.taxaEntregaCentavos = taxaEntregaCentavos;\n    atendimento.taxaServicoCentavos = taxaServicoCentavos;\n    const minimo = inteiro",
+            'backend persistencia')
 
-          replace_once(
-              'api/pedidos.js',
-              """        'A taxa de entrega não confere. Calcule novamente.',\n        'Forma de pagamento inválida.',""",
-              """        'A taxa de entrega não confere. Calcule novamente.',\n        'A taxa de serviço não confere. Calcule novamente.',\n        'Forma de pagamento inválida.',""",
-              'backend erro de validacao'
-          )
+          patch('api/pedidos.js',
+            "  const totalCentavos = subtotalCentavos + (atendimento.taxaEntregaCentavos || 0);",
+            "  const totalCentavos = subtotalCentavos + (atendimento.taxaEntregaCentavos || 0) + (atendimento.taxaServicoCentavos || 0);",
+            'backend total')
 
-          # O workflow e temporario: remove a si proprio depois da aplicacao.
-          workflow = Path('.github/workflows/add-service-fee.yml')
-          if workflow.exists():
-              workflow.unlink()
+          patch('api/pedidos.js',
+            "        'A taxa de entrega não confere. Calcule novamente.',\n        'Forma de pagamento inválida.',",
+            "        'A taxa de entrega não confere. Calcule novamente.',\n        'A taxa de serviço não confere. Calcule novamente.',\n        'Forma de pagamento inválida.',",
+            'backend erro')
           PY
 
-      - name: Validar JavaScript do backend
-        run: node --check api/pedidos.js
-
-      - name: Conferir alteracoes esperadas
+      - name: Validar alteracoes
         shell: bash
         run: |
-          grep -q "Taxa de serviço" index.html
+          node --check api/pedidos.js
           grep -q "taxaServicoCentavos" index.html
           grep -q "taxaServicoCentavos" api/pedidos.js
+          grep -q "Taxa de serviço" index.html
           grep -q "distanciaKm <= 5" api/pedidos.js
           grep -q "distanciaKm <= 10" api/pedidos.js
 
@@ -156,7 +125,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
+          git add index.html api/pedidos.js
           if git diff --cached --quiet; then
             echo "Nenhuma alteracao pendente."
             exit 0
