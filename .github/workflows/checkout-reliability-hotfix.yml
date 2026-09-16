@@ -1,0 +1,138 @@
+name: Checkout reliability hotfix
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/checkout-reliability-hotfix.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch-checkout:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Apply checkout reliability patch
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path('index.html')
+          text = path.read_text(encoding='utf-8')
+
+          old_fields = "['endRua','endNumero','endComplemento','endBairro','endCidade']"
+          new_fields = "['endRua','endNumero','endBairro','endCidade']"
+          if old_fields not in text:
+              raise SystemExit('Lista de campos que invalidam o frete não encontrada')
+          text = text.replace(old_fields, new_fields, 1)
+
+          old_timeout = "const timeout = setTimeout(() => controller.abort(), 12000);"
+          new_timeout = "const timeout = setTimeout(() => controller.abort(), 4500);"
+          if old_timeout not in text:
+              raise SystemExit('Timeout antigo de pedidos não encontrado')
+          text = text.replace(old_timeout, new_timeout, 1)
+
+          pattern = re.compile(
+              r"btnEnviarPedidoEl\.addEventListener\('click', async \(\) => \{.*?\n\}\);\n\nupdateCartBar\(\);",
+              re.S,
+          )
+
+          replacement = r'''btnEnviarPedidoEl.addEventListener('click', async () => {
+            checkoutErrorBoxEl.innerHTML = '';
+
+            // Se o endereço já estiver completo, não obriga o cliente a descobrir
+            // que precisa tocar em outro botão: calcula a entrega automaticamente.
+            if(deliveryMethod === 'entrega' && frete.status !== 'ok'){
+              const rua = document.getElementById('endRua').value.trim();
+              const numero = document.getElementById('endNumero').value.trim();
+              const bairro = document.getElementById('endBairro').value.trim();
+              const cidade = document.getElementById('endCidade').value.trim();
+
+              if(rua && numero && bairro && cidade){
+                btnEnviarPedidoEl.disabled = true;
+                btnEnviarPedidoEl.textContent = 'Calculando entrega...';
+                await calcularFrete();
+                btnEnviarPedidoEl.disabled = false;
+                btnEnviarPedidoEl.textContent = 'Finalizar pedido';
+              }
+            }
+
+            const erros = validarCheckout();
+            if(erros.length){
+              checkoutErrorBoxEl.innerHTML = erros.map(e => `<div class="checkout-error">⚠️ ${escapeHTML(e)}</div>`).join('');
+              checkoutErrorBoxEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+              return;
+            }
+
+            btnEnviarPedidoEl.disabled = true;
+            btnEnviarPedidoEl.textContent = 'Preparando pedido...';
+            let registro = null;
+
+            // A numeração/impressão é importante, mas não pode impedir uma venda.
+            // Se o backend estiver momentaneamente lento, o cliente continua para
+            // o WhatsApp com todos os dados do pedido.
+            try{
+              clientRequestIdAtual ||= criarIdPedido();
+              registro = await registrarPedidoParaImpressao(montarPayloadPedido(clientRequestIdAtual));
+            }catch(err){
+              console.error('Falha ao registrar comanda automática:', err);
+            }
+
+            const numeroPedido = registro?.pedido?.numero || '';
+            const mensagem = montarMensagemPedido(numeroPedido);
+            const destino = linkWhatsApp(mensagem);
+
+            checkoutConfirmEl.innerHTML = numeroPedido
+              ? registro?.impressaoAtiva
+                ? `✅ Pedido <strong>${escapeHTML(numeroPedido)}</strong> registrado. Abrindo o WhatsApp para confirmação.`
+                : `✅ Pedido <strong>${escapeHTML(numeroPedido)}</strong> numerado. Abrindo o WhatsApp para confirmação.`
+              : '✅ Pedido preparado. Abrindo o WhatsApp para concluir.';
+            checkoutConfirmEl.style.display = 'block';
+
+            // Navegação na própria aba: funciona melhor em iPhone e navegadores
+            // internos de Instagram/Facebook e não depende de pop-up.
+            btnEnviarPedidoEl.disabled = false;
+            btnEnviarPedidoEl.textContent = 'Abrir WhatsApp novamente';
+            window.location.assign(destino);
+          });
+
+          updateCartBar();'''
+
+          text, count = pattern.subn(replacement, text, count=1)
+          if count != 1:
+              raise SystemExit(f'Handler de finalização não encontrado de forma única: {count}')
+
+          path.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Validate hotfix
+        shell: bash
+        run: |
+          grep -q "window.location.assign(destino)" index.html
+          grep -q "Calculando entrega..." index.html
+          grep -q "controller.abort(), 4500" index.html
+          if grep -q "window.open('about:blank'" index.html; then
+            echo "Fluxo antigo de pop-up ainda presente" >&2
+            exit 1
+          fi
+          if grep -q "'endComplemento','endBairro'" index.html; then
+            echo "Complemento ainda invalida o frete" >&2
+            exit 1
+          fi
+
+      - name: Commit hotfix
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          git commit -m "fix: reforça finalização móvel do checkout"
+          git push origin main
