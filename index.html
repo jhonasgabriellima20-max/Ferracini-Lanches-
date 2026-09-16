@@ -720,6 +720,12 @@ const CONFIG = {
   entrega: {
     // Valor cobrado por km rodado — configuração central, fácil de alterar.
     valorPorKm: 2.30,
+    // Taxa de serviço adicional, definida pela distância da entrega.
+    taxaServico: {
+      ate5Km: 3.00,
+      ate10Km: 6.00,
+      acima10Km: 10.00,
+    },
     // URL de uma função de backend (ex: Vercel/Netlify/Cloud Function) que
     // recebe { origem, destino } e devolve { distanciaKm } calculado via
     // Google Maps Routes API ou Mapbox no SERVIDOR (nunca no navegador,
@@ -1089,8 +1095,16 @@ let freteRequestId = 0;
 
 const PAYMENT_LABELS = { cartao: 'Cartão (maquininha)', dinheiro: 'Dinheiro' };
 function paymentOptionsForMethod(){ return ['cartao', 'dinheiro']; }
+function taxaServicoPorDistancia(distanciaKm){
+  if(!Number.isFinite(distanciaKm) || distanciaKm <= 0) return 0;
+  if(distanciaKm <= 5) return CONFIG.entrega.taxaServico.ate5Km;
+  if(distanciaKm <= 10) return CONFIG.entrega.taxaServico.ate10Km;
+  return CONFIG.entrega.taxaServico.acima10Km;
+}
 function totalPedidoCentavos(){
-  return Math.round(cartTotals().subtotal * 100) + (deliveryMethod === 'entrega' && frete.status === 'ok' ? Math.round(frete.valor * 100) : 0);
+  const subtotalCentavos = Math.round(cartTotals().subtotal * 100);
+  if(deliveryMethod !== 'entrega' || frete.status !== 'ok') return subtotalCentavos;
+  return subtotalCentavos + Math.round(frete.valor * 100) + Math.round(taxaServicoPorDistancia(frete.distanciaKm) * 100);
 }
 function valorTrocoCentavos(){
   const valor = trocoPara.trim();
@@ -1315,7 +1329,8 @@ async function calcularFrete(){
     const estimativa = estimarEntrega(data.distanciaKm);
     frete = { status: 'ok', distanciaKm: data.distanciaKm, valor, estimativa };
     freteBoxEl.className = 'frete-box ok';
-    freteBoxEl.textContent = `📍 Distância: ${data.distanciaKm.toFixed(1)} km · Taxa de entrega: ${fmtPreco(valor)} · ⏱️ Previsão: ${textoEstimativa(estimativa)}`;
+    const taxaServico = taxaServicoPorDistancia(data.distanciaKm);
+    freteBoxEl.textContent = `📍 Distância: ${data.distanciaKm.toFixed(1)} km · Taxa de entrega: ${fmtPreco(valor)} · Taxa de serviço: ${fmtPreco(taxaServico)} · ⏱️ Previsão: ${textoEstimativa(estimativa)}`;
   } catch(err){
     if(requestId !== freteRequestId) return;
     frete = { status: 'error', distanciaKm: null, valor: 0, estimativa: null };
@@ -1369,11 +1384,13 @@ function renderCheckout(){
     : '<p style="color:var(--ink-faint);font-size:13.5px;">Seu carrinho está vazio.</p>';
 
   const taxaEntrega = (deliveryMethod === 'entrega' && frete.status === 'ok') ? frete.valor : 0;
-  const total = subtotal + taxaEntrega;
+  const taxaServico = (deliveryMethod === 'entrega' && frete.status === 'ok') ? taxaServicoPorDistancia(frete.distanciaKm) : 0;
+  const total = subtotal + taxaEntrega + taxaServico;
 
   let entregaLinha = '';
   if(deliveryMethod === 'entrega'){
     entregaLinha = `<div class="summary-row"><span>Taxa de entrega</span><span>${frete.status==='ok' ? fmtPreco(taxaEntrega) : 'a calcular'}</span></div>`;
+    entregaLinha += `<div class="summary-row"><span>Taxa de serviço</span><span>${frete.status==='ok' ? fmtPreco(taxaServico) : 'a calcular'}</span></div>`;
     if(frete.status === 'ok' && frete.estimativa){
       entregaLinha += `<div class="summary-row"><span>Previsão de entrega</span><span>${textoEstimativa(frete.estimativa)}</span></div>`;
     }
@@ -1441,7 +1458,8 @@ function montarMensagemPedido(comanda = ''){
   const nome = document.getElementById('clienteNome').value.trim();
   const telefone = document.getElementById('clienteTelefone').value.trim();
   const taxaEntrega = (deliveryMethod === 'entrega' && frete.status === 'ok') ? frete.valor : 0;
-  const total = subtotal + taxaEntrega;
+  const taxaServico = (deliveryMethod === 'entrega' && frete.status === 'ok') ? taxaServicoPorDistancia(frete.distanciaKm) : 0;
+  const total = subtotal + taxaEntrega + taxaServico;
 
   const linhasProdutos = items.map(([produto, v]) => {
     const addons = (v.adicionais || []).map(a => `  + ${a.nome}`).join('\n');
@@ -1458,7 +1476,7 @@ function montarMensagemPedido(comanda = ''){
     const cidade = document.getElementById('endCidade').value.trim();
     const cep = somenteDigitos(document.getElementById('endCep').value);
     const cepLinha = cep.length === 8 ? `\nCEP: ${formatarCep(cep)}` : '';
-    blocoEntrega = `🚚 ENTREGA\n${rua}, ${numero}${complemento ? ' - ' + complemento : ''}\n${bairro} — ${cidade}${cepLinha}\n\n📍 Distância: ${frete.distanciaKm.toFixed(1)} km\n🚚 Taxa de entrega: ${fmtPreco(frete.valor)}\n⏱️ Previsão de entrega: ${textoEstimativa(frete.estimativa)}`;
+    blocoEntrega = `🚚 ENTREGA\n${rua}, ${numero}${complemento ? ' - ' + complemento : ''}\n${bairro} — ${cidade}${cepLinha}\n\n📍 Distância: ${frete.distanciaKm.toFixed(1)} km\n🚚 Taxa de entrega: ${fmtPreco(frete.valor)}\n🧾 Taxa de serviço: ${fmtPreco(taxaServico)}\n⏱️ Previsão de entrega: ${textoEstimativa(frete.estimativa)}`;
   } else {
     blocoEntrega = `🏪 RETIRADA NO LOCAL`;
   }
@@ -1466,7 +1484,7 @@ function montarMensagemPedido(comanda = ''){
   const blocoPagamento = `💳 PAGAMENTO\n${descricaoPagamento()}`;
 
   const blocoValores = deliveryMethod === 'entrega'
-    ? `💰 TOTAL\nProdutos: ${fmtPreco(subtotal)}\nEntrega: ${fmtPreco(taxaEntrega)}\nTOTAL: ${fmtPreco(total)}`
+    ? `💰 TOTAL\nProdutos: ${fmtPreco(subtotal)}\nEntrega: ${fmtPreco(taxaEntrega)}\nTaxa de serviço: ${fmtPreco(taxaServico)}\nTOTAL: ${fmtPreco(total)}`
     : `💰 TOTAL\n${fmtPreco(total)}`;
 
   return [
@@ -1510,6 +1528,7 @@ function montarPayloadPedido(clientRequestId){
       },
       distanciaKm: frete.distanciaKm,
       taxaEntregaCentavos: Math.round(frete.valor * 100),
+      taxaServicoCentavos: Math.round(taxaServicoPorDistancia(frete.distanciaKm) * 100),
       estimativaMinutos: frete.estimativa
         ? { minimo: frete.estimativa.minimo, maximo: frete.estimativa.maximo }
         : undefined,

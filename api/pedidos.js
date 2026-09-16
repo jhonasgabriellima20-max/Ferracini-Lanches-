@@ -31,6 +31,13 @@ function inteiro(value, min, max){
   return Number.isSafeInteger(value) && value >= min && value <= max ? value : null;
 }
 
+function taxaServicoCentavosPorDistancia(distanciaKm){
+  if(!Number.isFinite(distanciaKm) || distanciaKm <= 0) return null;
+  if(distanciaKm <= 5) return 300;
+  if(distanciaKm <= 10) return 600;
+  return 1000;
+}
+
 function isNotFound(err){
   return err?.status === 404 || err?.statusCode === 404 ||
     err?.code === 'not_found' || err?.code === 'BLOB_NOT_FOUND';
@@ -244,16 +251,21 @@ function validarPayload(raw){
 
     const distanciaKm = Number(raw.atendimento?.distanciaKm);
     const taxaEntregaCentavos = inteiro(raw.atendimento?.taxaEntregaCentavos, 0, 100000);
+    const taxaServicoCentavos = inteiro(raw.atendimento?.taxaServicoCentavos, 0, 100000);
     if(!Number.isFinite(distanciaKm) || distanciaKm <= 0 || distanciaKm > MAX_ROUTE_KM ||
-       taxaEntregaCentavos === null || taxaEntregaCentavos % 100 !== 0){
+       taxaEntregaCentavos === null || taxaEntregaCentavos % 100 !== 0 ||
+       taxaServicoCentavos === null || taxaServicoCentavos % 100 !== 0){
       throw new Error('Frete inválido. Calcule novamente.');
     }
     const esperado = Math.ceil((distanciaKm * 2.30) - 1e-9) * 100;
     if(taxaEntregaCentavos !== esperado) throw new Error('A taxa de entrega não confere. Calcule novamente.');
+    const servicoEsperado = taxaServicoCentavosPorDistancia(distanciaKm);
+    if(taxaServicoCentavos !== servicoEsperado) throw new Error('A taxa de serviço não confere. Calcule novamente.');
 
     atendimento.endereco = endereco;
     atendimento.distanciaKm = Math.round(distanciaKm * 100) / 100;
     atendimento.taxaEntregaCentavos = taxaEntregaCentavos;
+    atendimento.taxaServicoCentavos = taxaServicoCentavos;
     const minimo = inteiro(raw.atendimento?.estimativaMinutos?.minimo, 1, 240);
     const maximo = inteiro(raw.atendimento?.estimativaMinutos?.maximo, 1, 240);
     if(minimo !== null && maximo !== null && maximo >= minimo){
@@ -275,7 +287,7 @@ function validarPayload(raw){
   if(!Number.isSafeInteger(subtotalCentavos) || subtotalCentavos <= 0 || subtotalCentavos > 5000000){
     throw new Error('Valor do pedido inválido.');
   }
-  const totalCentavos = subtotalCentavos + (atendimento.taxaEntregaCentavos || 0);
+  const totalCentavos = subtotalCentavos + (atendimento.taxaEntregaCentavos || 0) + (atendimento.taxaServicoCentavos || 0);
 
   if(pagamento.precisaTroco){
     const trocoParaCentavos = inteiro(raw.pagamento?.trocoParaCentavos, totalCentavos, 10000000);
@@ -442,6 +454,7 @@ module.exports = async function handler(req, res){
         'A entrega automática atende somente Londrina.',
         'Frete inválido. Calcule novamente.',
         'A taxa de entrega não confere. Calcule novamente.',
+        'A taxa de serviço não confere. Calcule novamente.',
         'Forma de pagamento inválida.',
         'Valor do pedido inválido.',
         'Valor do troco inválido.',
