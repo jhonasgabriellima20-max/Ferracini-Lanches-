@@ -1328,7 +1328,7 @@ async function calcularFrete(){
 
 document.getElementById('btnCalcularFrete').addEventListener('click', calcularFrete);
 
-['endRua','endNumero','endComplemento','endBairro','endCidade'].forEach(id => {
+['endRua','endNumero','endBairro','endCidade'].forEach(id => {
   document.getElementById(id).addEventListener('input', resetFrete);
 });
 
@@ -1544,7 +1544,7 @@ function montarPayloadPedido(clientRequestId){
 
 async function registrarPedidoParaImpressao(payload){
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 12000);
+  const timeout = setTimeout(() => controller.abort(), 4500);
   try{
     const resp = await fetch('/api/pedidos', {
       method: 'POST',
@@ -1584,19 +1584,39 @@ function validarCheckout(){
 }
 
 btnEnviarPedidoEl.addEventListener('click', async () => {
+  checkoutErrorBoxEl.innerHTML = '';
+
+  // Se o endereço já estiver completo, não obriga o cliente a descobrir
+  // que precisa tocar em outro botão: calcula a entrega automaticamente.
+  if(deliveryMethod === 'entrega' && frete.status !== 'ok'){
+    const rua = document.getElementById('endRua').value.trim();
+    const numero = document.getElementById('endNumero').value.trim();
+    const bairro = document.getElementById('endBairro').value.trim();
+    const cidade = document.getElementById('endCidade').value.trim();
+
+    if(rua && numero && bairro && cidade){
+      btnEnviarPedidoEl.disabled = true;
+      btnEnviarPedidoEl.textContent = 'Calculando entrega...';
+      await calcularFrete();
+      btnEnviarPedidoEl.disabled = false;
+      btnEnviarPedidoEl.textContent = 'Finalizar pedido';
+    }
+  }
+
   const erros = validarCheckout();
   if(erros.length){
     checkoutErrorBoxEl.innerHTML = erros.map(e => `<div class="checkout-error">⚠️ ${escapeHTML(e)}</div>`).join('');
+    checkoutErrorBoxEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     return;
   }
-  checkoutErrorBoxEl.innerHTML = '';
 
   btnEnviarPedidoEl.disabled = true;
-  const textoOriginalBotao = btnEnviarPedidoEl.textContent;
-  btnEnviarPedidoEl.textContent = 'Registrando pedido...';
-  const whatsappWindow = window.open('about:blank', '_blank');
+  btnEnviarPedidoEl.textContent = 'Preparando pedido...';
   let registro = null;
 
+  // A numeração/impressão é importante, mas não pode impedir uma venda.
+  // Se o backend estiver momentaneamente lento, o cliente continua para
+  // o WhatsApp com todos os dados do pedido.
   try{
     clientRequestIdAtual ||= criarIdPedido();
     registro = await registrarPedidoParaImpressao(montarPayloadPedido(clientRequestIdAtual));
@@ -1608,22 +1628,18 @@ btnEnviarPedidoEl.addEventListener('click', async () => {
   const mensagem = montarMensagemPedido(numeroPedido);
   const destino = linkWhatsApp(mensagem);
 
-  if(whatsappWindow && !whatsappWindow.closed){
-    try{ whatsappWindow.opener = null; }catch(_){}
-    whatsappWindow.location.replace(destino);
-  }else{
-    window.location.href = destino;
-  }
-
   checkoutConfirmEl.innerHTML = numeroPedido
     ? registro?.impressaoAtiva
-      ? `✅ Pedido <strong>${escapeHTML(numeroPedido)}</strong> registrado e enviado para a fila de impressão. Confirme também a mensagem aberta no WhatsApp.`
-      : `✅ Pedido <strong>${escapeHTML(numeroPedido)}</strong> numerado. Confirme e envie a mensagem aberta no WhatsApp para concluir.`
-    : '⚠️ O registro automático não respondeu. Para não perder o pedido, confirme e envie a mensagem aberta no WhatsApp.';
+      ? `✅ Pedido <strong>${escapeHTML(numeroPedido)}</strong> registrado. Abrindo o WhatsApp para confirmação.`
+      : `✅ Pedido <strong>${escapeHTML(numeroPedido)}</strong> numerado. Abrindo o WhatsApp para confirmação.`
+    : '✅ Pedido preparado. Abrindo o WhatsApp para concluir.';
   checkoutConfirmEl.style.display = 'block';
-  btnEnviarPedidoEl.style.display = 'none';
+
+  // Navegação na própria aba: funciona melhor em iPhone e navegadores
+  // internos de Instagram/Facebook e não depende de pop-up.
   btnEnviarPedidoEl.disabled = false;
-  btnEnviarPedidoEl.textContent = textoOriginalBotao;
+  btnEnviarPedidoEl.textContent = 'Abrir WhatsApp novamente';
+  window.location.assign(destino);
 });
 
 updateCartBar();
