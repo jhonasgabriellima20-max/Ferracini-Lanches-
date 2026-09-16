@@ -22,20 +22,33 @@ function checkHtml(file, isMesa){
   const checks = [
     ['/api/distancia', 'endpoint de frete'],
     ['/api/pedidos', 'registro seguro de pedidos'],
-    ['valorPorKm: 2.30', 'valor de R$ 2,30/km'],
-    ['Math.ceil((data.distanciaKm * CONFIG.entrega.valorPorKm) - 1e-9)', 'arredondamento inteiro do frete'],
+    [/valorPorKm\s*:\s*2\.30\b/, 'valor de R$ 2,30/km'],
+    [/Math\.ceil\(\(data\.distanciaKm\s*\*\s*CONFIG\.entrega\.valorPorKm\)\s*-\s*1e-9\)/, 'arredondamento inteiro do frete'],
     ['endCep', 'campo CEP'],
     ['carregarDisponibilidade', 'disponibilidade'],
     ['montarPayloadPedido', 'payload da fila de impressão'],
     ['clientRequestIdAtual', 'idempotência do envio'],
     ['5543998075190', 'WhatsApp da loja'],
   ];
-  for(const [needle, label] of checks){
-    if(!html.includes(needle)) fail(`${file}: ${label}`);
+
+  for(const [check, label] of checks){
+    const ok = check instanceof RegExp ? check.test(html) : html.includes(check);
+    if(!ok) fail(`${file}: ${label}`);
   }
+
   if(/fetch\(['"]\/api\/comanda/.test(html)) fail(`${file}: ainda usa endpoint legado de comanda`);
   if(html.includes('\\`') || html.includes('\\${')) fail(`${file}: template literal escapado incorretamente`);
-  if(isMesa && !html.includes("tipo: 'mesa'")) fail(`${file}: identificação da mesa`);
+
+  if(isMesa){
+    if(!/tipo\s*:\s*['"]mesa['"]/.test(html)) fail(`${file}: identificação da mesa`);
+  }else{
+    if(/data-method\s*=\s*['"]retirada['"]/i.test(html) || /Retirar no local/i.test(html)){
+      fail(`${file}: opção de retirada ainda aparece no site principal`);
+    }
+    if(!/tipo\s*:\s*['"]entrega['"]/.test(html)){
+      fail(`${file}: pedido do site principal não está fixado como entrega`);
+    }
+  }
 
   const scripts = [...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)];
   for(const [, attrs, source] of scripts){
@@ -78,15 +91,18 @@ if(fs.existsSync('api/catalogo.json')){
     for(const file of ['index.html', 'mesa.html']){
       if(!fs.existsSync(file)) continue;
       const html = fs.readFileSync(file, 'utf8');
+
       for(const nome of nomesProdutos){
+        const escaped = nome.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         const preco = catalogo.produtos[nome].precoCentavos / 100;
-        const trecho = `nome:"${nome}", preco:${preco.toFixed(2)}`;
-        if(!html.includes(trecho)) fail(`${file}: catálogo divergente para ${nome}`);
+        const pattern = new RegExp(`nome:\\s*["']${escaped}["']\\s*,\\s*preco:\\s*${preco.toFixed(2)}\\b`);
+        if(!pattern.test(html)) fail(`${file}: catálogo divergente para ${nome}`);
       }
+
       for(const nome of nomesAdicionais){
         const escaped = nome.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         const preco = catalogo.adicionais[nome] / 100;
-        const pattern = new RegExp(`nome:\\s*["']${escaped}["'][^}]+preco:\\s*${preco.toFixed(2)}`);
+        const pattern = new RegExp(`nome:\\s*["']${escaped}["'][^}]+preco:\\s*${preco.toFixed(2)}\\b`);
         if(!pattern.test(html)) fail(`${file}: adicional divergente para ${nome}`);
       }
     }
