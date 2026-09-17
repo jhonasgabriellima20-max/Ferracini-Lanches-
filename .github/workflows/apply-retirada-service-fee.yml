@@ -28,9 +28,10 @@ jobs:
           s = index.read_text(encoding='utf-8')
 
           marker = "  entrega: {\n"
-          if "  retirada: {\n    taxaServico: 3.00,\n  },\n" not in s:
+          retirada_block = "  retirada: {\n    // Taxa de serviço fixa para pedidos retirados no local.\n    taxaServico: 3.00,\n  },\n\n"
+          if "CONFIG.retirada.taxaServico" not in s:
               assert s.count(marker) == 1, f'entrega marker count={s.count(marker)}'
-              s = s.replace(marker, "  retirada: {\n    // Taxa de serviço fixa para pedidos retirados no local.\n    taxaServico: 3.00,\n  },\n\n" + marker, 1)
+              s = s.replace(marker, retirada_block + marker, 1)
 
           old = """function totalPedidoCentavos(){
             const subtotalCentavos = Math.round(cartTotals().subtotal * 100);
@@ -55,22 +56,14 @@ jobs:
           assert s.count(old) == 2, f'taxaServico client count={s.count(old)}'
           s = s.replace(old, new)
 
-          old = """    if(frete.status === 'ok' && frete.estimativa){
-              entregaLinha += `<div class=\"summary-row\"><span>Previsão de entrega</span><span>${textoEstimativa(frete.estimativa)}</span></div>`;
-            }
-          }
-
-          document.getElementById('summaryBox').innerHTML = `"""
-          new = """    if(frete.status === 'ok' && frete.estimativa){
-              entregaLinha += `<div class=\"summary-row\"><span>Previsão de entrega</span><span>${textoEstimativa(frete.estimativa)}</span></div>`;
-            }
-          } else if(deliveryMethod === 'retirada'){
+          needle = "  }\n\n  document.getElementById('summaryBox').innerHTML = `"
+          replacement = """  } else if(deliveryMethod === 'retirada'){
             entregaLinha = `<div class=\"summary-row\"><span>Taxa de serviço</span><span>${fmtPreco(taxaServico)}</span></div>`;
           }
 
           document.getElementById('summaryBox').innerHTML = `"""
-          assert s.count(old) == 1, f'summary block count={s.count(old)}'
-          s = s.replace(old, new, 1)
+          assert s.count(needle) == 1, f'summary needle count={s.count(needle)}'
+          s = s.replace(needle, replacement, 1)
 
           old = """  const blocoValores = deliveryMethod === 'entrega'
             ? `💰 TOTAL\\nProdutos: ${fmtPreco(subtotal)}\\nEntrega: ${fmtPreco(taxaEntrega)}\\nTaxa de serviço: ${fmtPreco(taxaServico)}\\nTOTAL: ${fmtPreco(total)}`
@@ -81,17 +74,8 @@ jobs:
           assert s.count(old) == 1, f'blocoValores count={s.count(old)}'
           s = s.replace(old, new, 1)
 
-          old = """      estimativaMinutos: frete.estimativa
-                ? { minimo: frete.estimativa.minimo, maximo: frete.estimativa.maximo }
-                : undefined,
-            };
-          }
-
-          return {"""
-          new = """      estimativaMinutos: frete.estimativa
-                ? { minimo: frete.estimativa.minimo, maximo: frete.estimativa.maximo }
-                : undefined,
-            };
+          needle = "    };\n  }\n\n  return {\n    clientRequestId,"
+          replacement = """    };
           } else if(deliveryMethod === 'retirada'){
             atendimento = {
               tipo: 'retirada',
@@ -99,9 +83,10 @@ jobs:
             };
           }
 
-          return {"""
-          assert s.count(old) == 1, f'payload block count={s.count(old)}'
-          s = s.replace(old, new, 1)
+          return {
+            clientRequestId,"""
+          assert s.count(needle) == 1, f'payload needle count={s.count(needle)}'
+          s = s.replace(needle, replacement, 1)
 
           index.write_text(s, encoding='utf-8')
 
