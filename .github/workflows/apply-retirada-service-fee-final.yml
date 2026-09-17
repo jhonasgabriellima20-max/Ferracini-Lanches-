@@ -57,7 +57,7 @@ jobs:
           if old_taxa in s:
               assert s.count(old_taxa) == 2
               s = s.replace(old_taxa, new_taxa)
-          assert s.count("deliveryMethod === 'retirada'\n    ? CONFIG.retirada.taxaServico") == 2
+          assert s.count('CONFIG.retirada.taxaServico') >= 3
 
           # Linha visível no resumo da retirada.
           checkout_start = s.index('function renderCheckout(){')
