@@ -1,6 +1,10 @@
 const crypto = require('crypto');
 
 const BLOB_PATH = 'config/disponibilidade.json';
+const AUTH_WINDOW_MS = 15 * 60 * 1000;
+const AUTH_MAX_FAILURES = 5;
+const failedLogins = globalThis.__ferraciniAdminFailures || new Map();
+globalThis.__ferraciniAdminFailures = failedLogins;
 
 const INGREDIENTES = [
   ['pao', 'Pão'],
@@ -106,6 +110,62 @@ function passwordOk(recebida, esperada){
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
+function clientKey(req){
+  return String(
+    req.headers['x-vercel-forwarded-for'] ||
+    req.headers['x-forwarded-for'] ||
+    req.headers['x-real-ip'] ||
+    'unknown'
+  ).split(',')[0].trim().slice(0, 120) || 'unknown';
+}
+
+function authStatus(req){
+  const key = clientKey(req);
+  const now = Date.now();
+  const current = failedLogins.get(key);
+  if(!current || current.resetAt <= now){
+    if(current) failedLogins.delete(key);
+    return { key, blocked: false, retryAfter: 0 };
+  }
+  return {
+    key,
+    blocked: current.count >= AUTH_MAX_FAILURES,
+    retryAfter: Math.max(1, Math.ceil((current.resetAt - now) / 1000)),
+  };
+}
+
+function recordAuthFailure(req){
+  const now = Date.now();
+  const { key } = authStatus(req);
+  let current = failedLogins.get(key);
+  if(!current || current.resetAt <= now){
+    current = { count: 0, resetAt: now + AUTH_WINDOW_MS };
+  }
+  current.count += 1;
+  failedLogins.set(key, current);
+  if(failedLogins.size > 1000){
+    for(const [bucketKey, value] of failedLogins){
+      if(value.resetAt <= now) failedLogins.delete(bucketKey);
+    }
+  }
+  return {
+    blocked: current.count >= AUTH_MAX_FAILURES,
+    retryAfter: Math.max(1, Math.ceil((current.resetAt - now) / 1000)),
+  };
+}
+
+function clearAuthFailures(req){
+  failedLogins.delete(clientKey(req));
+}
+
+function authRateLimited(req, res){
+  const status = authStatus(req);
+  if(!status.blocked) return false;
+  res.setHeader('Retry-After', String(status.retryAfter));
+  res.status(429).json({ error: 'Muitas tentativas de acesso. Aguarde alguns minutos e tente novamente.' });
+  return true;
+}
+
 function isNotFound(err){
   return err?.status === 404 || err?.statusCode === 404 || err?.code === 'not_found' || err?.code === 'BLOB_NOT_FOUND';
 }
@@ -135,17 +195,34 @@ async function writeState(state){
 
 module.exports = async function handler(req, res){
   res.setHeader('Cache-Control', 'no-store, max-age=0');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Robots-Tag', 'noindex, nofollow');
 
   if(req.method === 'GET'){
     const recebida = req.headers['x-admin-password'];
     const adminPassword = process.env.ADMIN_PASSWORD || '';
-    const authenticated = recebida ? passwordOk(recebida, adminPassword) : undefined;
+    let authenticated;
+
+    if(recebida){
+      if(authRateLimited(req, res)) return;
+      authenticated = passwordOk(recebida, adminPassword);
+      if(!authenticated){
+        const failure = recordAuthFailure(req);
+        if(failure.blocked) res.setHeader('Retry-After', String(failure.retryAfter));
+        return res.status(failure.blocked ? 429 : 401).json({
+          error: failure.blocked
+            ? 'Muitas tentativas de acesso. Aguarde alguns minutos e tente novamente.'
+            : 'Senha administrativa incorreta.'
+        });
+      }
+      clearAuthFailures(req);
+    }
+
     try{
       const { state, storageReady } = await readState();
       return res.status(200).json({ ...state, catalogo: catalogo(), storageReady, adminConfigured: Boolean(adminPassword), authenticated });
     }catch(err){
       console.error('Falha ao ler disponibilidade:', err);
-      // O cardápio continua funcionando com tudo disponível enquanto o Blob não estiver conectado.
       return res.status(200).json({ ...defaults(), catalogo: catalogo(), storageReady: false, adminConfigured: Boolean(adminPassword), authenticated });
     }
   }
@@ -156,9 +233,17 @@ module.exports = async function handler(req, res){
     if(!adminPassword){
       return res.status(503).json({ error: 'ADMIN_PASSWORD não configurada na Vercel.' });
     }
+    if(authRateLimited(req, res)) return;
     if(!passwordOk(recebida, adminPassword)){
-      return res.status(401).json({ error: 'Senha administrativa incorreta.' });
+      const failure = recordAuthFailure(req);
+      if(failure.blocked) res.setHeader('Retry-After', String(failure.retryAfter));
+      return res.status(failure.blocked ? 429 : 401).json({
+        error: failure.blocked
+          ? 'Muitas tentativas de acesso. Aguarde alguns minutos e tente novamente.'
+          : 'Senha administrativa incorreta.'
+      });
     }
+    clearAuthFailures(req);
 
     try{
       let body = req.body;
