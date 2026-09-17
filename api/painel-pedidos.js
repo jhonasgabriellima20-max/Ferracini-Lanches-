@@ -2,12 +2,55 @@ const crypto = require('crypto');
 
 const TIME_ZONE = 'America/Sao_Paulo';
 const FILA_DIR = 'pedidos/fila';
+const AUTH_WINDOW_MS = 15 * 60 * 1000;
+const AUTH_MAX_FAILURES = 5;
+const failedLogins = globalThis.__ferraciniPainelPedidosFailures || new Map();
+globalThis.__ferraciniPainelPedidosFailures = failedLogins;
 
 function passwordOk(recebida, esperada){
   if(!recebida || !esperada) return false;
   const a = Buffer.from(String(recebida));
   const b = Buffer.from(String(esperada));
   return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+function clientKey(req){
+  return String(
+    req.headers['x-vercel-forwarded-for'] ||
+    req.headers['x-forwarded-for'] ||
+    req.headers['x-real-ip'] ||
+    'unknown'
+  ).split(',')[0].trim().slice(0, 120) || 'unknown';
+}
+
+function authStatus(req){
+  const key = clientKey(req);
+  const now = Date.now();
+  const current = failedLogins.get(key);
+  if(!current || current.resetAt <= now){
+    if(current) failedLogins.delete(key);
+    return { key, blocked: false, retryAfter: 0 };
+  }
+  return {
+    key,
+    blocked: current.count >= AUTH_MAX_FAILURES,
+    retryAfter: Math.max(1, Math.ceil((current.resetAt - now) / 1000)),
+  };
+}
+
+function recordFailure(req){
+  const now = Date.now();
+  const { key } = authStatus(req);
+  let current = failedLogins.get(key);
+  if(!current || current.resetAt <= now){
+    current = { count: 0, resetAt: now + AUTH_WINDOW_MS };
+  }
+  current.count += 1;
+  failedLogins.set(key, current);
+  return {
+    blocked: current.count >= AUTH_MAX_FAILURES,
+    retryAfter: Math.max(1, Math.ceil((current.resetAt - now) / 1000)),
+  };
 }
 
 function dataOperacao(){
@@ -54,6 +97,7 @@ async function listarPedidos(data, limite){
 module.exports = async function handler(req, res){
   res.setHeader('Cache-Control', 'no-store, max-age=0');
   res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Robots-Tag', 'noindex, nofollow');
 
   if(req.method !== 'GET'){
     res.setHeader('Allow', 'GET');
@@ -64,9 +108,23 @@ module.exports = async function handler(req, res){
   if(!adminPassword){
     return res.status(503).json({ error: 'Senha administrativa não configurada.' });
   }
-  if(!passwordOk(req.headers['x-admin-password'], adminPassword)){
-    return res.status(401).json({ error: 'Senha administrativa incorreta.' });
+
+  const status = authStatus(req);
+  if(status.blocked){
+    res.setHeader('Retry-After', String(status.retryAfter));
+    return res.status(429).json({ error: 'Muitas tentativas de acesso. Aguarde alguns minutos.' });
   }
+
+  if(!passwordOk(req.headers['x-admin-password'], adminPassword)){
+    const failure = recordFailure(req);
+    if(failure.blocked) res.setHeader('Retry-After', String(failure.retryAfter));
+    return res.status(failure.blocked ? 429 : 401).json({
+      error: failure.blocked
+        ? 'Muitas tentativas de acesso. Aguarde alguns minutos.'
+        : 'Senha administrativa incorreta.'
+    });
+  }
+  failedLogins.delete(clientKey(req));
 
   try{
     const data = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query?.data || '')) ? String(req.query.data) : dataOperacao();
