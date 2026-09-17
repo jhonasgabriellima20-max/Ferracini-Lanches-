@@ -1,0 +1,139 @@
+name: Apply retirada service fee
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/apply-retirada-service-fee.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply fixed R$3 service fee to retirada
+        shell: python
+        run: |
+          from pathlib import Path
+
+          index = Path('index.html')
+          s = index.read_text(encoding='utf-8')
+
+          marker = "  entrega: {\n"
+          if "  retirada: {\n    taxaServico: 3.00,\n  },\n" not in s:
+              assert s.count(marker) == 1, f'entrega marker count={s.count(marker)}'
+              s = s.replace(marker, "  retirada: {\n    // Taxa de serviço fixa para pedidos retirados no local.\n    taxaServico: 3.00,\n  },\n\n" + marker, 1)
+
+          old = """function totalPedidoCentavos(){
+            const subtotalCentavos = Math.round(cartTotals().subtotal * 100);
+            if(deliveryMethod !== 'entrega' || frete.status !== 'ok') return subtotalCentavos;
+            return subtotalCentavos + Math.round(frete.valor * 100) + Math.round(taxaServicoPorDistancia(frete.distanciaKm) * 100);
+          }"""
+          new = """function totalPedidoCentavos(){
+            const subtotalCentavos = Math.round(cartTotals().subtotal * 100);
+            if(deliveryMethod === 'retirada'){
+              return subtotalCentavos + Math.round(CONFIG.retirada.taxaServico * 100);
+            }
+            if(deliveryMethod !== 'entrega' || frete.status !== 'ok') return subtotalCentavos;
+            return subtotalCentavos + Math.round(frete.valor * 100) + Math.round(taxaServicoPorDistancia(frete.distanciaKm) * 100);
+          }"""
+          assert s.count(old) == 1, f'totalPedidoCentavos count={s.count(old)}'
+          s = s.replace(old, new, 1)
+
+          old = "  const taxaServico = (deliveryMethod === 'entrega' && frete.status === 'ok') ? taxaServicoPorDistancia(frete.distanciaKm) : 0;"
+          new = """  const taxaServico = deliveryMethod === 'retirada'
+            ? CONFIG.retirada.taxaServico
+            : ((deliveryMethod === 'entrega' && frete.status === 'ok') ? taxaServicoPorDistancia(frete.distanciaKm) : 0);"""
+          assert s.count(old) == 2, f'taxaServico client count={s.count(old)}'
+          s = s.replace(old, new)
+
+          old = """    if(frete.status === 'ok' && frete.estimativa){
+              entregaLinha += `<div class=\"summary-row\"><span>Previsão de entrega</span><span>${textoEstimativa(frete.estimativa)}</span></div>`;
+            }
+          }
+
+          document.getElementById('summaryBox').innerHTML = `"""
+          new = """    if(frete.status === 'ok' && frete.estimativa){
+              entregaLinha += `<div class=\"summary-row\"><span>Previsão de entrega</span><span>${textoEstimativa(frete.estimativa)}</span></div>`;
+            }
+          } else if(deliveryMethod === 'retirada'){
+            entregaLinha = `<div class=\"summary-row\"><span>Taxa de serviço</span><span>${fmtPreco(taxaServico)}</span></div>`;
+          }
+
+          document.getElementById('summaryBox').innerHTML = `"""
+          assert s.count(old) == 1, f'summary block count={s.count(old)}'
+          s = s.replace(old, new, 1)
+
+          old = """  const blocoValores = deliveryMethod === 'entrega'
+            ? `💰 TOTAL\\nProdutos: ${fmtPreco(subtotal)}\\nEntrega: ${fmtPreco(taxaEntrega)}\\nTaxa de serviço: ${fmtPreco(taxaServico)}\\nTOTAL: ${fmtPreco(total)}`
+            : `💰 TOTAL\\n${fmtPreco(total)}`;"""
+          new = """  const blocoValores = deliveryMethod === 'entrega'
+            ? `💰 TOTAL\\nProdutos: ${fmtPreco(subtotal)}\\nEntrega: ${fmtPreco(taxaEntrega)}\\nTaxa de serviço: ${fmtPreco(taxaServico)}\\nTOTAL: ${fmtPreco(total)}`
+            : `💰 TOTAL\\nProdutos: ${fmtPreco(subtotal)}\\nTaxa de serviço: ${fmtPreco(taxaServico)}\\nTOTAL: ${fmtPreco(total)}`;"""
+          assert s.count(old) == 1, f'blocoValores count={s.count(old)}'
+          s = s.replace(old, new, 1)
+
+          old = """      estimativaMinutos: frete.estimativa
+                ? { minimo: frete.estimativa.minimo, maximo: frete.estimativa.maximo }
+                : undefined,
+            };
+          }
+
+          return {"""
+          new = """      estimativaMinutos: frete.estimativa
+                ? { minimo: frete.estimativa.minimo, maximo: frete.estimativa.maximo }
+                : undefined,
+            };
+          } else if(deliveryMethod === 'retirada'){
+            atendimento = {
+              tipo: 'retirada',
+              taxaServicoCentavos: Math.round(CONFIG.retirada.taxaServico * 100),
+            };
+          }
+
+          return {"""
+          assert s.count(old) == 1, f'payload block count={s.count(old)}'
+          s = s.replace(old, new, 1)
+
+          index.write_text(s, encoding='utf-8')
+
+          api = Path('api/pedidos.js')
+          p = api.read_text(encoding='utf-8')
+          old = """  const atendimento = { tipo };
+          if(tipo === 'mesa'){"""
+          new = """  const atendimento = { tipo };
+          if(tipo === 'retirada'){
+            // A taxa da retirada é definida no servidor para manter a comanda
+            // correta mesmo se o navegador estiver com uma versão antiga em cache.
+            atendimento.taxaServicoCentavos = 300;
+          }
+          if(tipo === 'mesa'){"""
+          assert p.count(old) == 1, f'backend atendimento block count={p.count(old)}'
+          p = p.replace(old, new, 1)
+          api.write_text(p, encoding='utf-8')
+
+          assert "CONFIG.retirada.taxaServico" in s
+          assert "Taxa de serviço</span><span>${fmtPreco(taxaServico)}" in s
+          assert "atendimento.taxaServicoCentavos = 300" in p
+
+      - name: Validate syntax and snapshot
+        run: |
+          node --check api/pedidos.js
+          node scripts/validate-snapshot.js
+
+      - name: Commit applied change
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/apply-retirada-service-fee.yml
+          git add index.html api/pedidos.js
+          git commit -m "Cobra taxa fixa de R$ 3 na retirada"
+          git push origin HEAD:main
