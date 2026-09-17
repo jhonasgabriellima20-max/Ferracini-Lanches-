@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const CATALOGO = require('./catalogo.json');
+const { calcularDistanciaEndereco } = require('../lib/delivery-distance');
 
 const TIME_ZONE = 'America/Sao_Paulo';
 const COUNTER_PATH = 'config/pedidos-sequencia.json';
@@ -8,9 +9,11 @@ const FILA_DIR = 'pedidos/fila';
 const IDEMPOTENCIA_DIR = 'pedidos/idempotencia';
 const MAX_BODY_BYTES = 64 * 1024;
 const MAX_ROUTE_KM = 35;
+const MAX_DISTANCE_DELTA_KM = 0.35;
 const RATE_WINDOW_MS = 60 * 1000;
 const RATE_MAX = 15;
-const buckets = new Map();
+const buckets = globalThis.__ferraciniPedidosRateBuckets || new Map();
+globalThis.__ferraciniPedidosRateBuckets = buckets;
 
 function dataOperacao(){
   return new Intl.DateTimeFormat('en-CA', {
@@ -36,6 +39,11 @@ function taxaServicoCentavosPorDistancia(distanciaKm){
   if(distanciaKm <= 5) return 300;
   if(distanciaKm <= 10) return 600;
   return 1000;
+}
+
+function taxaEntregaCentavosPorDistancia(distanciaKm){
+  if(!Number.isFinite(distanciaKm) || distanciaKm <= 0) return null;
+  return Math.ceil((distanciaKm * 2.30) - 1e-9) * 100;
 }
 
 function isNotFound(err){
@@ -85,6 +93,7 @@ function origemPermitida(req){
 function rateLimit(req){
   const now = Date.now();
   const key = texto(
+    String(req.headers['x-vercel-forwarded-for'] || '').split(',')[0] ||
     String(req.headers['x-forwarded-for'] || '').split(',')[0] ||
     req.headers['x-real-ip'] ||
     'unknown',
@@ -257,7 +266,7 @@ function validarPayload(raw){
        taxaServicoCentavos === null || taxaServicoCentavos % 100 !== 0){
       throw new Error('Frete inválido. Calcule novamente.');
     }
-    const esperado = Math.ceil((distanciaKm * 2.30) - 1e-9) * 100;
+    const esperado = taxaEntregaCentavosPorDistancia(distanciaKm);
     if(taxaEntregaCentavos !== esperado) throw new Error('A taxa de entrega não confere. Calcule novamente.');
     const servicoEsperado = taxaServicoCentavosPorDistancia(distanciaKm);
     if(taxaServicoCentavos !== servicoEsperado) throw new Error('A taxa de serviço não confere. Calcule novamente.');
@@ -305,6 +314,47 @@ function validarPayload(raw){
     subtotalCentavos,
     totalCentavos,
   };
+}
+
+async function validarEntregaNoServidor(payload){
+  if(payload.atendimento.tipo !== 'entrega') return payload;
+
+  let resultado;
+  try{
+    resultado = await calcularDistanciaEndereco(payload.atendimento.endereco);
+  }catch(err){
+    console.error('[pedidos] validacao_distancia_indisponivel', { error: String(err) });
+    const error = new Error('Não foi possível validar a entrega agora.');
+    error.code = 'DELIVERY_VALIDATION_UNAVAILABLE';
+    throw error;
+  }
+
+  const distanciaServidor = Math.round(resultado.distanciaKm * 100) / 100;
+  const delta = Math.abs(distanciaServidor - payload.atendimento.distanciaKm);
+  if(delta > MAX_DISTANCE_DELTA_KM){
+    console.warn('[pedidos] distancia_divergente', {
+      cliente: payload.atendimento.distanciaKm,
+      servidor: distanciaServidor,
+      provider: resultado.provider,
+    });
+    throw new Error('A distância de entrega não confere. Calcule novamente.');
+  }
+
+  const entregaEsperada = taxaEntregaCentavosPorDistancia(distanciaServidor);
+  const servicoEsperado = taxaServicoCentavosPorDistancia(distanciaServidor);
+  if(payload.atendimento.taxaEntregaCentavos !== entregaEsperada){
+    throw new Error('A taxa de entrega não confere. Calcule novamente.');
+  }
+  if(payload.atendimento.taxaServicoCentavos !== servicoEsperado){
+    throw new Error('A taxa de serviço não confere. Calcule novamente.');
+  }
+
+  payload.atendimento.distanciaKm = distanciaServidor;
+  payload.totalCentavos = payload.subtotalCentavos + entregaEsperada + servicoEsperado;
+  if(payload.pagamento.precisaTroco && payload.pagamento.trocoParaCentavos < payload.totalCentavos){
+    throw new Error('Valor do troco inválido.');
+  }
+  return payload;
 }
 
 function hashId(value){
@@ -386,6 +436,7 @@ async function atualizarPedido(raw){
 module.exports = async function handler(req, res){
   res.setHeader('Cache-Control', 'no-store, max-age=0');
   res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Robots-Tag', 'noindex, nofollow');
   res.setHeader('Vary', 'Authorization, X-Print-Agent-Token');
 
   if(req.method === 'GET' || req.method === 'PATCH'){
@@ -405,6 +456,10 @@ module.exports = async function handler(req, res){
   }
 
   if(req.method === 'PATCH'){
+    const contentType = String(req.headers['content-type'] || '').toLowerCase();
+    if(!contentType.includes('application/json')){
+      return res.status(415).json({ error: 'Conteúdo deve ser enviado em JSON.' });
+    }
     try{
       return res.status(200).json({ pedido: await atualizarPedido(req.body || {}) });
     }catch(err){
@@ -415,6 +470,10 @@ module.exports = async function handler(req, res){
 
   if(req.method === 'POST'){
     if(!origemPermitida(req)) return res.status(403).json({ error: 'Origem não permitida.' });
+    const contentType = String(req.headers['content-type'] || '').toLowerCase();
+    if(!contentType.includes('application/json')){
+      return res.status(415).json({ error: 'Conteúdo deve ser enviado em JSON.' });
+    }
     const contentLength = Number(req.headers['content-length'] || 0);
     if(contentLength > MAX_BODY_BYTES) return res.status(413).json({ error: 'Pedido muito grande.' });
     const limit = rateLimit(req);
@@ -427,7 +486,7 @@ module.exports = async function handler(req, res){
     try{
       let body = req.body;
       if(typeof body === 'string') body = JSON.parse(body || '{}');
-      const payload = validarPayload(body);
+      const payload = await validarEntregaNoServidor(validarPayload(body));
       const registro = await criarPedido(payload);
       return res.status(registro.duplicado ? 200 : 201).json({
         pedido: {
@@ -453,6 +512,7 @@ module.exports = async function handler(req, res){
         'Endereço de entrega incompleto.',
         'A entrega automática atende somente Londrina.',
         'Frete inválido. Calcule novamente.',
+        'A distância de entrega não confere. Calcule novamente.',
         'A taxa de entrega não confere. Calcule novamente.',
         'A taxa de serviço não confere. Calcule novamente.',
         'Forma de pagamento inválida.',
@@ -461,7 +521,7 @@ module.exports = async function handler(req, res){
         'JSON inválido.',
       ].includes(message);
       if(erroDoCliente) return res.status(400).json({ error: message });
-      console.error('[pedidos] criacao_falhou', { error: String(err) });
+      console.error('[pedidos] criacao_falhou', { error: String(err), code: err?.code });
       return res.status(503).json({ error: 'Não foi possível registrar a comanda agora.' });
     }
   }
