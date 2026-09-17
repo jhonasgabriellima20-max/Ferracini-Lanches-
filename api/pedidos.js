@@ -237,6 +237,10 @@ function validarPayload(raw){
   if(!['retirada', 'entrega', 'mesa'].includes(tipo)) throw new Error('Tipo de atendimento inválido.');
 
   const atendimento = { tipo };
+  if(tipo === 'retirada'){
+    // Taxa fixa de serviço para retirada no local.
+    atendimento.taxaServicoCentavos = 300;
+  }
   if(tipo === 'mesa'){
     const mesa = inteiro(Number(raw.atendimento?.mesa), 1, 999);
     if(mesa === null) throw new Error('Número da mesa inválido.');

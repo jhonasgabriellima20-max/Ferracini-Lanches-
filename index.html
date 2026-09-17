@@ -717,6 +717,11 @@ const CONFIG = {
     endereco: "Rua do Pelicano, 163, Paraíso, Londrina - PR",
   },
 
+  retirada: {
+    // Taxa de serviço fixa para pedidos retirados no local.
+    taxaServico: 3.00,
+  },
+
   entrega: {
     // Valor cobrado por km rodado — configuração central, fácil de alterar.
     valorPorKm: 2.30,
@@ -1103,6 +1108,9 @@ function taxaServicoPorDistancia(distanciaKm){
 }
 function totalPedidoCentavos(){
   const subtotalCentavos = Math.round(cartTotals().subtotal * 100);
+  if(deliveryMethod === 'retirada'){
+    return subtotalCentavos + Math.round(CONFIG.retirada.taxaServico * 100);
+  }
   if(deliveryMethod !== 'entrega' || frete.status !== 'ok') return subtotalCentavos;
   return subtotalCentavos + Math.round(frete.valor * 100) + Math.round(taxaServicoPorDistancia(frete.distanciaKm) * 100);
 }
@@ -1384,7 +1392,9 @@ function renderCheckout(){
     : '<p style="color:var(--ink-faint);font-size:13.5px;">Seu carrinho está vazio.</p>';
 
   const taxaEntrega = (deliveryMethod === 'entrega' && frete.status === 'ok') ? frete.valor : 0;
-  const taxaServico = (deliveryMethod === 'entrega' && frete.status === 'ok') ? taxaServicoPorDistancia(frete.distanciaKm) : 0;
+  const taxaServico = deliveryMethod === 'retirada'
+  ? CONFIG.retirada.taxaServico
+  : ((deliveryMethod === 'entrega' && frete.status === 'ok') ? taxaServicoPorDistancia(frete.distanciaKm) : 0);
   const total = subtotal + taxaEntrega + taxaServico;
 
   let entregaLinha = '';
@@ -1394,6 +1404,8 @@ function renderCheckout(){
     if(frete.status === 'ok' && frete.estimativa){
       entregaLinha += `<div class="summary-row"><span>Previsão de entrega</span><span>${textoEstimativa(frete.estimativa)}</span></div>`;
     }
+  } else if(deliveryMethod === 'retirada'){
+    entregaLinha = `<div class="summary-row"><span>Taxa de serviço</span><span>${fmtPreco(taxaServico)}</span></div>`;
   }
 
   document.getElementById('summaryBox').innerHTML = `
@@ -1458,7 +1470,9 @@ function montarMensagemPedido(comanda = ''){
   const nome = document.getElementById('clienteNome').value.trim();
   const telefone = document.getElementById('clienteTelefone').value.trim();
   const taxaEntrega = (deliveryMethod === 'entrega' && frete.status === 'ok') ? frete.valor : 0;
-  const taxaServico = (deliveryMethod === 'entrega' && frete.status === 'ok') ? taxaServicoPorDistancia(frete.distanciaKm) : 0;
+  const taxaServico = deliveryMethod === 'retirada'
+  ? CONFIG.retirada.taxaServico
+  : ((deliveryMethod === 'entrega' && frete.status === 'ok') ? taxaServicoPorDistancia(frete.distanciaKm) : 0);
   const total = subtotal + taxaEntrega + taxaServico;
 
   const linhasProdutos = items.map(([produto, v]) => {
@@ -1485,7 +1499,7 @@ function montarMensagemPedido(comanda = ''){
 
   const blocoValores = deliveryMethod === 'entrega'
     ? `💰 TOTAL\nProdutos: ${fmtPreco(subtotal)}\nEntrega: ${fmtPreco(taxaEntrega)}\nTaxa de serviço: ${fmtPreco(taxaServico)}\nTOTAL: ${fmtPreco(total)}`
-    : `💰 TOTAL\n${fmtPreco(total)}`;
+    : `💰 TOTAL\nProdutos: ${fmtPreco(subtotal)}\nTaxa de serviço: ${fmtPreco(taxaServico)}\nTOTAL: ${fmtPreco(total)}`;
 
   return [
     '🔔 NOVO PEDIDO',
@@ -1532,6 +1546,13 @@ function montarPayloadPedido(clientRequestId){
       estimativaMinutos: frete.estimativa
         ? { minimo: frete.estimativa.minimo, maximo: frete.estimativa.maximo }
         : undefined,
+    };
+  }
+
+  if(deliveryMethod === 'retirada'){
+    atendimento = {
+      tipo: 'retirada',
+      taxaServicoCentavos: Math.round(CONFIG.retirada.taxaServico * 100),
     };
   }
 
