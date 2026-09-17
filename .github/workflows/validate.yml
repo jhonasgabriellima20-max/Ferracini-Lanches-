@@ -2,7 +2,7 @@ name: Validate production snapshot
 
 on:
   push:
-    branches: [main]
+    branches: [main, security-hardening-preview]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -28,4 +28,6 @@ jobs:
           node --check api/comanda.js
           node --check api/distancia.js
           node --check api/disponibilidade.js
+          node --check api/painel-pedidos.js
           node --check api/pedidos.js
+          node --check lib/delivery-distance.js

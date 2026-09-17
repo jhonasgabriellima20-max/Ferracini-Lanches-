@@ -4,8 +4,26 @@ const COUNTER_PATH = 'config/comanda-sequencia.json';
 const RESERVA_DIR = 'comandas';
 const TIME_ZONE = 'America/Sao_Paulo';
 const RATE_WINDOW_MS = 60 * 1000;
-const RATE_MAX = 15;
-const buckets = new Map();
+const RATE_MAX = 10;
+const buckets = globalThis.__ferraciniComandaRateBuckets || new Map();
+globalThis.__ferraciniComandaRateBuckets = buckets;
+
+function secureEqual(recebido, esperado){
+  if(!recebido || !esperado) return false;
+  const a = Buffer.from(String(recebido));
+  const b = Buffer.from(String(esperado));
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+function credencialValida(req){
+  const authorization = String(req.headers.authorization || '').trim();
+  const bearer = /^Bearer\s+/i.test(authorization)
+    ? authorization.replace(/^Bearer\s+/i, '').trim()
+    : '';
+  const admin = String(req.headers['x-admin-password'] || '').trim();
+  return secureEqual(bearer, process.env.PRINT_AGENT_TOKEN || '') ||
+    secureEqual(admin, process.env.ADMIN_PASSWORD || '');
+}
 
 function origemPermitida(req){
   if(String(req.headers['sec-fetch-site'] || '').toLowerCase() === 'cross-site') return false;
@@ -25,7 +43,10 @@ function origemPermitida(req){
 
 function rateLimit(req){
   const now = Date.now();
-  const forwarded = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+  const forwarded = String(
+    req.headers['x-vercel-forwarded-for'] ||
+    req.headers['x-forwarded-for'] || ''
+  ).split(',')[0].trim();
   const key = forwarded || String(req.headers['x-real-ip'] || 'unknown').slice(0, 100);
   const current = buckets.get(key);
   if(!current || current.resetAt <= now){
@@ -108,12 +129,19 @@ async function salvarUltimo(numero, dataAtual){
 
 module.exports = async function handler(req, res){
   res.setHeader('Cache-Control', 'no-store, max-age=0');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+
   if(req.method !== 'POST'){
     res.setHeader('Allow', 'POST');
     return res.status(405).json({ error: 'Método não permitido.' });
   }
-
   if(!origemPermitida(req)) return res.status(403).json({ error: 'Origem não permitida.' });
+  if(!credencialValida(req)){
+    res.setHeader('WWW-Authenticate', 'Bearer realm="Ferracini Internal"');
+    return res.status(401).json({ error: 'Endpoint interno protegido.' });
+  }
+
   const limit = rateLimit(req);
   res.setHeader('X-RateLimit-Limit', String(RATE_MAX));
   if(!limit.ok){

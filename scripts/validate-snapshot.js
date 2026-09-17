@@ -3,7 +3,8 @@ const path = require('path');
 
 const required = [
   'index.html', 'admin.html', 'mesa.html', 'vercel.json', 'package.json',
-  'api/catalogo.json', 'api/comanda.js', 'api/distancia.js', 'api/disponibilidade.js', 'api/pedidos.js'
+  'api/catalogo.json', 'api/comanda.js', 'api/distancia.js', 'api/disponibilidade.js',
+  'api/painel-pedidos.js', 'api/pedidos.js', 'lib/delivery-distance.js'
 ];
 
 let failed = false;
@@ -68,6 +69,7 @@ if(fs.existsSync('api/pedidos.js')){
   const api = fs.readFileSync('api/pedidos.js', 'utf8');
   const securityChecks = [
     ["require('./catalogo.json')", 'catálogo canônico no servidor'],
+    ["require('../lib/delivery-distance')", 'cálculo compartilhado de distância no servidor'],
     ['CATALOGO.produtos', 'validação de preços no servidor'],
     ['PRINT_AGENT_TOKEN', 'token privado do agente de impressão'],
     ['timingSafeEqual', 'comparação segura de token'],
@@ -77,9 +79,47 @@ if(fs.existsSync('api/pedidos.js')){
     ['clientRequestId', 'idempotência'],
     ["access: 'private'", 'armazenamento privado'],
     ['Math.ceil((distanciaKm * 2.30) - 1e-9) * 100', 'validação do frete no servidor'],
+    ['validarEntregaNoServidor', 'revalidação da distância antes de registrar pedido'],
+    ['MAX_DISTANCE_DELTA_KM', 'tolerância controlada para divergência de distância'],
+    ["content-type", 'validação de Content-Type'],
   ];
   for(const [needle, label] of securityChecks){
     if(!api.includes(needle)) fail(`api/pedidos.js: ${label}`);
+  }
+}
+
+if(fs.existsSync('api/disponibilidade.js')){
+  const api = fs.readFileSync('api/disponibilidade.js', 'utf8');
+  for(const [needle, label] of [
+    ['AUTH_MAX_FAILURES', 'limite de tentativas administrativas'],
+    ['recordAuthFailure', 'registro de falhas de autenticação'],
+    ['timingSafeEqual', 'comparação segura de senha'],
+    ['Retry-After', 'resposta de bloqueio temporário'],
+  ]){
+    if(!api.includes(needle)) fail(`api/disponibilidade.js: ${label}`);
+  }
+}
+
+if(fs.existsSync('api/painel-pedidos.js')){
+  const api = fs.readFileSync('api/painel-pedidos.js', 'utf8');
+  for(const [needle, label] of [
+    ['AUTH_MAX_FAILURES', 'limite de tentativas no painel de pedidos'],
+    ['timingSafeEqual', 'comparação segura de senha'],
+    ['Retry-After', 'bloqueio temporário'],
+  ]){
+    if(!api.includes(needle)) fail(`api/painel-pedidos.js: ${label}`);
+  }
+}
+
+if(fs.existsSync('api/comanda.js')){
+  const api = fs.readFileSync('api/comanda.js', 'utf8');
+  for(const [needle, label] of [
+    ['credencialValida', 'proteção do endpoint legado'],
+    ['PRINT_AGENT_TOKEN', 'token do agente'],
+    ['ADMIN_PASSWORD', 'senha administrativa como credencial alternativa'],
+    ['Endpoint interno protegido', 'negação pública do endpoint legado'],
+  ]){
+    if(!api.includes(needle)) fail(`api/comanda.js: ${label}`);
   }
 }
 
@@ -122,7 +162,15 @@ if(fs.existsSync('vercel.json')){
   }catch(err){ fail(`vercel.json inválido — ${err.message}`); }
 }
 
-for(const file of ['api/comanda.js', 'api/distancia.js', 'api/disponibilidade.js', 'api/pedidos.js']){
+if(fs.existsSync('package.json')){
+  try{
+    const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+    const blobVersion = String(pkg.dependencies?.['@vercel/blob'] || '');
+    if(!/^\^?2\.(?:8|9|[1-9]\d)\./.test(blobVersion)) fail('package.json: @vercel/blob precisa estar em 2.8.0 ou superior');
+  }catch(err){ fail(`package.json inválido — ${err.message}`); }
+}
+
+for(const file of ['api/comanda.js', 'api/distancia.js', 'api/disponibilidade.js', 'api/painel-pedidos.js', 'api/pedidos.js', 'lib/delivery-distance.js']){
   if(!fs.existsSync(file)) continue;
   try{ new Function(fs.readFileSync(file, 'utf8')); }
   catch(err){ fail(`${file}: JavaScript inválido — ${err.message}`); }
