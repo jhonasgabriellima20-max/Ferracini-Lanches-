@@ -62,6 +62,14 @@ function dataOperacao(){
   }).format(new Date());
 }
 
+function queryParams(req){
+  try{
+    return new URL(String(req.url || '/'), 'https://ferracinilanches.com.br').searchParams;
+  }catch{
+    return new URLSearchParams();
+  }
+}
+
 function isNotFound(err){
   return err?.status === 404 || err?.statusCode === 404 || err?.code === 'not_found' || err?.code === 'BLOB_NOT_FOUND';
 }
@@ -127,8 +135,11 @@ module.exports = async function handler(req, res){
   failedLogins.delete(clientKey(req));
 
   try{
-    const data = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query?.data || '')) ? String(req.query.data) : dataOperacao();
-    const pedidos = await listarPedidos(data, Number(req.query?.limit) || 50);
+    const params = queryParams(req);
+    const dataParam = String(params.get('data') || '');
+    const limitParam = Number(params.get('limit'));
+    const data = /^\d{4}-\d{2}-\d{2}$/.test(dataParam) ? dataParam : dataOperacao();
+    const pedidos = await listarPedidos(data, Number.isFinite(limitParam) ? limitParam : 50);
     return res.status(200).json({ data, pedidos, atualizadoEm: new Date().toISOString() });
   }catch(err){
     console.error('[painel-pedidos] listagem_falhou', { error: String(err) });
