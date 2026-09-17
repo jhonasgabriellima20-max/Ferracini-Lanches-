@@ -1,0 +1,123 @@
+name: Finalize retirada service fee
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/apply-retirada-service-fee-final.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply fixed R$3 service fee to retirada
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+
+          index = Path('index.html')
+          s = index.read_text(encoding='utf-8')
+
+          # Configuração central.
+          if 'CONFIG.retirada.taxaServico' not in s:
+              marker = "  entrega: {\n"
+              assert s.count(marker) == 1
+              s = s.replace(marker, "  retirada: {\n    // Taxa de serviço fixa para pedidos retirados no local.\n    taxaServico: 3.00,\n  },\n\n" + marker, 1)
+
+          # Total (inclusive para validação de troco).
+          if "if(deliveryMethod === 'retirada'){\n    return subtotalCentavos + Math.round(CONFIG.retirada.taxaServico * 100);" not in s:
+              pattern = r"function totalPedidoCentavos\(\)\{.*?\n\}\nfunction valorTrocoCentavos"
+              replacement = """function totalPedidoCentavos(){
+            const subtotalCentavos = Math.round(cartTotals().subtotal * 100);
+            if(deliveryMethod === 'retirada'){
+              return subtotalCentavos + Math.round(CONFIG.retirada.taxaServico * 100);
+            }
+            if(deliveryMethod !== 'entrega' || frete.status !== 'ok') return subtotalCentavos;
+            return subtotalCentavos + Math.round(frete.valor * 100) + Math.round(taxaServicoPorDistancia(frete.distanciaKm) * 100);
+          }
+          function valorTrocoCentavos"""
+              s, n = re.subn(pattern, replacement, s, count=1, flags=re.S)
+              assert n == 1
+
+          # A taxa usada no checkout e no WhatsApp passa a considerar retirada.
+          old_taxa = "  const taxaServico = (deliveryMethod === 'entrega' && frete.status === 'ok') ? taxaServicoPorDistancia(frete.distanciaKm) : 0;"
+          new_taxa = """  const taxaServico = deliveryMethod === 'retirada'
+            ? CONFIG.retirada.taxaServico
+            : ((deliveryMethod === 'entrega' && frete.status === 'ok') ? taxaServicoPorDistancia(frete.distanciaKm) : 0);"""
+          if old_taxa in s:
+              assert s.count(old_taxa) == 2
+              s = s.replace(old_taxa, new_taxa)
+          assert s.count("deliveryMethod === 'retirada'\n    ? CONFIG.retirada.taxaServico") == 2
+
+          # Linha visível no resumo da retirada.
+          checkout_start = s.index('function renderCheckout(){')
+          checkout_end = s.index('\nfunction abrirCheckout(){', checkout_start)
+          checkout = s[checkout_start:checkout_end]
+          if "else if(deliveryMethod === 'retirada')" not in checkout:
+              needle = "  }\n\n  document.getElementById('summaryBox').innerHTML = `"
+              assert checkout.count(needle) == 1
+              checkout = checkout.replace(needle, "  } else if(deliveryMethod === 'retirada'){\n    entregaLinha = `<div class=\"summary-row\"><span>Taxa de serviço</span><span>${fmtPreco(taxaServico)}</span></div>`;\n  }\n\n  document.getElementById('summaryBox').innerHTML = `", 1)
+              s = s[:checkout_start] + checkout + s[checkout_end:]
+
+          # Detalhamento no WhatsApp da retirada.
+          msg_start = s.index('function montarMensagemPedido(')
+          msg_end = s.index('\n\nfunction criarIdPedido()', msg_start)
+          msg = s[msg_start:msg_end]
+          old_retirada_total = ": `💰 TOTAL\\n${fmtPreco(total)}`;"
+          new_retirada_total = ": `💰 TOTAL\\nProdutos: ${fmtPreco(subtotal)}\\nTaxa de serviço: ${fmtPreco(taxaServico)}\\nTOTAL: ${fmtPreco(total)}`;"
+          if old_retirada_total in msg:
+              msg = msg.replace(old_retirada_total, new_retirada_total, 1)
+          assert "Taxa de serviço: ${fmtPreco(taxaServico)}\\nTOTAL: ${fmtPreco(total)}`;" in msg
+          s = s[:msg_start] + msg + s[msg_end:]
+
+          # Payload da retirada para a comanda.
+          payload_start = s.index('function montarPayloadPedido(')
+          payload_end = s.index('\n\nasync function registrarPedidoParaImpressao', payload_start)
+          payload = s[payload_start:payload_end]
+          if 'taxaServicoCentavos: Math.round(CONFIG.retirada.taxaServico * 100)' not in payload:
+              needle = "\n  return {\n    clientRequestId,"
+              assert payload.count(needle) == 1
+              addition = "\n  if(deliveryMethod === 'retirada'){\n    atendimento = {\n      tipo: 'retirada',\n      taxaServicoCentavos: Math.round(CONFIG.retirada.taxaServico * 100),\n    };\n  }\n\n  return {\n    clientRequestId,"
+              payload = payload.replace(needle, addition, 1)
+              s = s[:payload_start] + payload + s[payload_end:]
+
+          index.write_text(s, encoding='utf-8')
+
+          # Servidor: valor autoritativo da retirada = 300 centavos.
+          api = Path('api/pedidos.js')
+          p = api.read_text(encoding='utf-8')
+          if 'atendimento.taxaServicoCentavos = 300;' not in p:
+              marker = '  const atendimento = { tipo };'
+              assert p.count(marker) == 1
+              p = p.replace(marker, marker + "\n  if(tipo === 'retirada'){\n    // Taxa fixa de serviço para retirada no local.\n    atendimento.taxaServicoCentavos = 300;\n  }", 1)
+          api.write_text(p, encoding='utf-8')
+
+          assert 'taxaServico: 3.00' in s
+          assert 'Taxa de serviço</span><span>${fmtPreco(taxaServico)}' in s
+          assert 'taxaServicoCentavos: Math.round(CONFIG.retirada.taxaServico * 100)' in s
+          assert 'atendimento.taxaServicoCentavos = 300;' in p
+
+      - name: Validate syntax and snapshot
+        run: |
+          node --check api/pedidos.js
+          node scripts/validate-snapshot.js
+
+      - name: Commit applied change
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/apply-retirada-service-fee.yml
+          git rm .github/workflows/apply-retirada-service-fee-final.yml
+          git add index.html api/pedidos.js
+          git commit -m "Cobra taxa fixa de R$ 3 na retirada"
+          git push origin HEAD:main
