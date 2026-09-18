@@ -24,6 +24,42 @@ function dataOperacao(){
   }).format(new Date());
 }
 
+
+function partesHorarioLoja(agora = new Date()){
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: TIME_ZONE,
+    weekday: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(agora);
+  const values = {};
+  parts.forEach(part => { if(part.type !== 'literal') values[part.type] = part.value; });
+  const dias = { Sun:0, Mon:1, Tue:2, Wed:3, Thu:4, Fri:5, Sat:6 };
+  return {
+    dia: dias[values.weekday],
+    minutos: Number(values.hour) * 60 + Number(values.minute),
+  };
+}
+
+function statusHorarioPedidos(agora = new Date()){
+  const { dia, minutos } = partesHorarioLoja(agora);
+  const entre = (inicio, fim) => minutos >= inicio && minutos < fim;
+  let aberto = false;
+
+  if(dia >= 1 && dia <= 4) aberto = entre(18 * 60, 23 * 60);
+  if(dia === 5) aberto = minutos >= 18 * 60;
+  if(dia === 6) aberto = minutos < 60 || minutos >= 18 * 60;
+  if(dia === 0) aberto = minutos < 60 || entre(19 * 60, 23 * 60);
+
+  return {
+    aberto,
+    mensagem: aberto
+      ? 'Pedidos online abertos agora.'
+      : 'Estamos fechados no momento. Horários: seg–qui 18h às 23h; sex–sáb 18h à 1h; domingo 19h às 23h.',
+  };
+}
+
 function texto(value, max = 200){
   return typeof value === 'string'
     ? value.replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max)
@@ -473,6 +509,8 @@ module.exports = async function handler(req, res){
   }
 
   if(req.method === 'POST'){
+    const horario = statusHorarioPedidos();
+    if(!horario.aberto) return res.status(403).json({ error: horario.mensagem, pedidosAbertos: false });
     if(!origemPermitida(req)) return res.status(403).json({ error: 'Origem não permitida.' });
     const contentType = String(req.headers['content-type'] || '').toLowerCase();
     if(!contentType.includes('application/json')){
