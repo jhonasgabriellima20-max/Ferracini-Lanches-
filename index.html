@@ -34,14 +34,21 @@
   "openingHoursSpecification": [
     {
       "@type": "OpeningHoursSpecification",
-      "dayOfWeek": ["Monday","Tuesday","Wednesday","Thursday","Sunday"],
-      "opens": "19:00",
+      "dayOfWeek": ["Monday","Tuesday","Wednesday","Thursday"],
+      "opens": "18:00",
       "closes": "23:00"
     },
     {
       "@type": "OpeningHoursSpecification",
       "dayOfWeek": ["Friday","Saturday"],
-      "opens": "19:00"
+      "opens": "18:00",
+      "closes": "01:00"
+    },
+    {
+      "@type": "OpeningHoursSpecification",
+      "dayOfWeek": ["Sunday"],
+      "opens": "19:00",
+      "closes": "23:00"
     }
   ]
 }
@@ -559,13 +566,14 @@
 
       <div class="hours-table">
         <h4 style="font-size:13px;color:var(--ink-dim);margin-bottom:8px;letter-spacing:.3px;">🕐 Horário de atendimento</h4>
-        <div class="hours-row"><span>Segunda</span><span>19h às 23h</span></div>
-        <div class="hours-row"><span>Terça</span><span>19h às 23h</span></div>
-        <div class="hours-row"><span>Quarta</span><span>19h às 23h</span></div>
-        <div class="hours-row"><span>Quinta</span><span>19h às 23h</span></div>
-        <div class="hours-row"><span>Sexta</span><span>A partir das 19h</span></div>
-        <div class="hours-row"><span>Sábado</span><span>A partir das 19h</span></div>
+        <div class="hours-row"><span>Segunda</span><span>18h às 23h</span></div>
+        <div class="hours-row"><span>Terça</span><span>18h às 23h</span></div>
+        <div class="hours-row"><span>Quarta</span><span>18h às 23h</span></div>
+        <div class="hours-row"><span>Quinta</span><span>18h às 23h</span></div>
+        <div class="hours-row"><span>Sexta</span><span>18h à 1h</span></div>
+        <div class="hours-row"><span>Sábado</span><span>18h à 1h</span></div>
         <div class="hours-row"><span>Domingo</span><span>19h às 23h</span></div>
+        <div id="pedidoHorarioStatus" style="margin-top:12px;font-size:13px;font-weight:700;"></div>
       </div>
     </div>
   </div>
@@ -1415,8 +1423,64 @@ function renderCheckout(){
   `;
 }
 
+
+function partesHorarioLoja(agora = new Date()){
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Sao_Paulo',
+    weekday: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(agora);
+  const values = {};
+  parts.forEach(part => { if(part.type !== 'literal') values[part.type] = part.value; });
+  const dias = { Sun:0, Mon:1, Tue:2, Wed:3, Thu:4, Fri:5, Sat:6 };
+  return {
+    dia: dias[values.weekday],
+    minutos: Number(values.hour) * 60 + Number(values.minute),
+  };
+}
+
+function statusHorarioPedidos(agora = new Date()){
+  const { dia, minutos } = partesHorarioLoja(agora);
+  const entre = (inicio, fim) => minutos >= inicio && minutos < fim;
+  let aberto = false;
+
+  // Segunda a quinta: 18h–23h.
+  if(dia >= 1 && dia <= 4) aberto = entre(18 * 60, 23 * 60);
+
+  // Sexta: 18h–00h. Sábado: 00h–01h (continuação de sexta) e 18h–00h.
+  if(dia === 5) aberto = minutos >= 18 * 60;
+  if(dia === 6) aberto = minutos < 60 || minutos >= 18 * 60;
+
+  // Domingo 00h–01h é continuação de sábado. O horário de domingo
+  // permanece como já estava (19h–23h) até a loja definir um novo horário.
+  if(dia === 0) aberto = minutos < 60 || entre(19 * 60, 23 * 60);
+
+  return {
+    aberto,
+    mensagem: aberto
+      ? 'Pedidos online abertos agora.'
+      : 'Estamos fechados no momento. Horários: seg–qui 18h às 23h; sex–sáb 18h à 1h; domingo 19h às 23h.',
+  };
+}
+
+function atualizarStatusHorarioPedidos(){
+  const el = document.getElementById('pedidoHorarioStatus');
+  if(!el) return;
+  const status = statusHorarioPedidos();
+  el.textContent = status.aberto ? '🟢 Pedidos online abertos agora' : '🔴 Pedidos online fechados no momento';
+  el.style.color = status.aberto ? '#7ee787' : '#ff8a70';
+}
+
 function abrirCheckout(){
   if(cartTotals().totalQty === 0) return;
+  const horario = statusHorarioPedidos();
+  if(!horario.aberto){
+    alert(horario.mensagem);
+    atualizarStatusHorarioPedidos();
+    return;
+  }
   clientRequestIdAtual = null;
   deliveryMethod = 'retirada';
   document.querySelectorAll('.method-btn').forEach(b => b.classList.toggle('active', b.dataset.method==='retirada'));
@@ -1626,6 +1690,14 @@ function validarCheckout(){
 btnEnviarPedidoEl.addEventListener('click', async () => {
   checkoutErrorBoxEl.innerHTML = '';
 
+  const horario = statusHorarioPedidos();
+  if(!horario.aberto){
+    checkoutErrorBoxEl.innerHTML = `<div class="checkout-error">⚠️ ${escapeHTML(horario.mensagem)}</div>`;
+    checkoutErrorBoxEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    atualizarStatusHorarioPedidos();
+    return;
+  }
+
   // Se o endereço já estiver completo, não obriga o cliente a descobrir
   // que precisa tocar em outro botão: calcula a entrega automaticamente.
   if(deliveryMethod === 'entrega' && frete.status !== 'ok'){
@@ -1661,6 +1733,13 @@ btnEnviarPedidoEl.addEventListener('click', async () => {
     clientRequestIdAtual ||= criarIdPedido();
     registro = await registrarPedidoParaImpressao(montarPayloadPedido(clientRequestIdAtual));
   }catch(err){
+    if(String(err?.message || '').includes('Estamos fechados no momento')){
+      checkoutErrorBoxEl.innerHTML = `<div class="checkout-error">⚠️ ${escapeHTML(err.message)}</div>`;
+      btnEnviarPedidoEl.disabled = false;
+      btnEnviarPedidoEl.textContent = 'Finalizar pedido';
+      atualizarStatusHorarioPedidos();
+      return;
+    }
     console.error('Falha ao registrar comanda automática:', err);
   }
 
@@ -1683,6 +1762,8 @@ btnEnviarPedidoEl.addEventListener('click', async () => {
 });
 
 updateCartBar();
+atualizarStatusHorarioPedidos();
+setInterval(atualizarStatusHorarioPedidos, 60 * 1000);
 </script>
 </body>
 </html>
