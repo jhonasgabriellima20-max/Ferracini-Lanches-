@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const CATALOGO = require('./catalogo.json');
 const { calcularDistanciaEndereco } = require('../lib/delivery-distance');
+const { isAuthError } = require('../lib/blob-storage');
 const { readJson, writeJson, listBlobs } = require('../lib/blob-storage');
 
 const TIME_ZONE = 'America/Sao_Paulo';
@@ -550,6 +551,34 @@ module.exports = async function handler(req, res){
         'JSON inválido.',
       ].includes(message);
       if(erroDoCliente) return res.status(400).json({ error: message });
+      if(isAuthError(err)){
+        const rawId = (() => {
+          try{
+            const raw = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
+            return texto(raw?.clientRequestId, 128);
+          }catch{
+            return '';
+          }
+        })();
+        const fallbackNumero = `W${hashId(rawId || crypto.randomUUID()).slice(0, 6).toUpperCase()}`;
+        console.warn('[pedidos] storage_indisponivel_fallback_whatsapp', {
+          numero: fallbackNumero,
+          error: String(err),
+        });
+        res.setHeader('X-Ferracini-Storage-Degraded', '1');
+        return res.status(202).json({
+          pedido: {
+            id: null,
+            numero: fallbackNumero,
+            data: dataOperacao(),
+            status: 'whatsapp',
+          },
+          duplicado: false,
+          impressaoAtiva: false,
+          storageDegraded: true,
+          warning: 'Armazenamento temporariamente indisponível. Finalize o envio pelo WhatsApp.',
+        });
+      }
       console.error('[pedidos] criacao_falhou', { error: String(err), code: err?.code });
       return res.status(503).json({ error: 'Não foi possível registrar a comanda agora.' });
     }
