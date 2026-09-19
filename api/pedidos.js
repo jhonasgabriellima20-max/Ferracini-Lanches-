@@ -276,6 +276,7 @@ function validarPayload(raw){
   if(tipo === 'retirada'){
     // Taxa fixa de serviço para retirada no local.
     atendimento.taxaServicoCentavos = 300;
+    atendimento.estimativaMinutos = { minimo: 45, maximo: 60 };
   }
   if(tipo === 'mesa'){
     const mesa = inteiro(Number(raw.atendimento?.mesa), 1, 999);

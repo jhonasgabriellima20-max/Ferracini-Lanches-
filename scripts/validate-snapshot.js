@@ -29,13 +29,15 @@ function checkHtml(file, isMesa){
     ['carregarDisponibilidade', 'disponibilidade'],
     ['montarPayloadPedido', 'payload da fila de impressão'],
     ['clientRequestIdAtual', 'idempotência do envio'],
-    ['5543998075190', 'WhatsApp da loja'],
+    ['registrarPedidoNoSistema', 'registro direto no sistema'],
   ];
 
   for(const [check, label] of checks){
     const ok = check instanceof RegExp ? check.test(html) : html.includes(check);
     if(!ok) fail(`${file}: ${label}`);
   }
+
+  if(/wa\.me|api\.whatsapp\.com|linkWhatsApp/.test(html)) fail(`${file}: encaminhamento para WhatsApp`);
 
   if(/fetch\(['"]\/api\/comanda/.test(html)) fail(`${file}: ainda usa endpoint legado de comanda`);
   if(html.includes('\\`') || html.includes('\\${')) fail(`${file}: template literal escapado incorretamente`);

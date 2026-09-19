@@ -337,7 +337,7 @@
   footer p{ color:var(--ink-faint); font-size:13.5px; }
   footer .footer-bottom{ margin-top:22px; font-size:12.5px; color:var(--ink-faint); }
 
-  /* WHATSAPP FLUTUANTE + BARRA MOBILE */
+  /* PEDIDO FLUTUANTE + BARRA MOBILE */
   .wa-float{
     position:fixed; right:24px; bottom:28px; z-index:90;
     display:none; align-items:center; gap:10px;
@@ -621,7 +621,7 @@
         <input type="text" id="clienteNome" placeholder="Seu nome completo">
       </div>
       <div class="field">
-        <label for="clienteTelefone">WhatsApp / telefone</label>
+        <label for="clienteTelefone">Telefone</label>
         <input type="tel" id="clienteTelefone" placeholder="(43) 9xxxx-xxxx">
       </div>
     </div>
@@ -683,14 +683,14 @@
     </button>
 
     <div class="checkout-confirm" id="checkoutConfirm" style="display:none;">
-      ✅ Seu pedido foi preparado. Confirme e envie a mensagem que abriu no WhatsApp para concluir.
+      ✅ Seu pedido foi registrado no sistema.
     </div>
   </div>
 </div>
 
 <script>
 /* =====================================================================
-   CONFIGURAÇÃO CENTRAL — editar aqui (número de WhatsApp e mensagem).
+   CONFIGURAÇÃO CENTRAL DO CARDÁPIO.
    ===================================================================== */
 const GALLERY = [{"id":"g1","src":"assets/galeria-01.webp"},{"id":"g2","src":"assets/galeria-02.webp"},{"id":"g3","src":"assets/galeria-03.webp"},{"id":"g4","src":"assets/galeria-04.webp"},{"id":"g5","src":"assets/galeria-05.webp"},{"id":"g6","src":"assets/galeria-06.webp"},{"id":"g7","src":"assets/galeria-07.webp"},{"id":"g8","src":"assets/galeria-08.webp"},{"id":"g9","src":"assets/galeria-09.webp"},{"id":"g10","src":"assets/galeria-10.webp"},{"id":"g11","src":"assets/galeria-11.webp"}];
 
@@ -716,8 +716,6 @@ const ADICIONAIS_PADRAO = [
 ];
 
 const CONFIG = {
-  whatsapp: "5543998075190",
-  mensagemPadrao: "Olá, Ferracini Lanches! Gostaria de fazer um pedido.",
 
   // Dados da loja — usados como origem no cálculo de distância da entrega.
   loja: {
@@ -728,6 +726,7 @@ const CONFIG = {
   retirada: {
     // Taxa de serviço fixa para pedidos retirados no local.
     taxaServico: 3.00,
+    estimativaMinutos: { minimo: 45, maximo: 60 },
   },
 
   entrega: {
@@ -785,10 +784,6 @@ const CONFIG = {
   ],
 };
 
-function linkWhatsApp(mensagem){
-  const msg = mensagem || CONFIG.mensagemPadrao;
-  return `https://wa.me/${CONFIG.whatsapp}?text=${encodeURIComponent(msg)}`;
-}
 
 function fmtPreco(v){
   return v.toLocaleString('pt-BR', { style:'currency', currency:'BRL' });
@@ -801,7 +796,7 @@ function escapeHTML(value){
 /* ---------------------------------------------------------------------
    Carrinho: quantidade, adicionais (quando o produto tiver) e observação
    por item. O fechamento do pedido acontece no checkout (retirada/entrega,
-   dados do cliente, pagamento) antes de ir pro WhatsApp.
+   dados do cliente, pagamento) com registro direto no sistema.
 --------------------------------------------------------------------- */
 const cart = {}; // { "Nome do produto": { qty, preco, adicionais:[{nome,preco}], observacao } }
 
@@ -1090,7 +1085,7 @@ document.getElementById('year').textContent = new Date().getFullYear();
 
 /* =====================================================================
    CHECKOUT — entrega/retirada, dados do cliente, cálculo real de frete,
-   forma de pagamento, resumo e envio final pro WhatsApp.
+   forma de pagamento, resumo e registro final no sistema.
    ===================================================================== */
 const checkoutOverlayEl = document.getElementById('checkoutOverlay');
 const enderecoBlockEl = document.getElementById('enderecoBlock');
@@ -1314,7 +1309,7 @@ async function calcularFrete(){
   if(!CONFIG.entrega.apiDistanciaUrl){
     frete = { status: 'error', distanciaKm: null, valor: 0, estimativa: null };
     freteBoxEl.className = 'frete-box error';
-    freteBoxEl.textContent = 'O cálculo automático de distância ainda não foi configurado neste site. Peça direto pelo WhatsApp que a equipe informa a taxa de entrega.';
+    freteBoxEl.textContent = 'O cálculo automático de distância ainda não foi configurado neste site. Tente novamente em alguns instantes.';
     return;
   }
 
@@ -1414,6 +1409,7 @@ function renderCheckout(){
     }
   } else if(deliveryMethod === 'retirada'){
     entregaLinha = `<div class="summary-row"><span>Taxa de serviço</span><span>${fmtPreco(taxaServico)}</span></div>`;
+    entregaLinha += '<div class="summary-row"><span>Prazo estimado para retirada</span><span>45 minutos a 1 hora</span></div>';
   }
 
   document.getElementById('summaryBox').innerHTML = `
@@ -1474,6 +1470,7 @@ function atualizarStatusHorarioPedidos(){
 }
 
 function abrirCheckout(){
+  if(btnEnviarPedidoEl.disabled && btnEnviarPedidoEl.style.display !== 'none') return;
   if(cartTotals().totalQty === 0) return;
   const horario = statusHorarioPedidos();
   if(!horario.aberto){
@@ -1481,7 +1478,6 @@ function abrirCheckout(){
     atualizarStatusHorarioPedidos();
     return;
   }
-  clientRequestIdAtual = null;
   deliveryMethod = 'retirada';
   document.querySelectorAll('.method-btn').forEach(b => b.classList.toggle('active', b.dataset.method==='retirada'));
   enderecoBlockEl.style.display = 'none';
@@ -1492,12 +1488,15 @@ function abrirCheckout(){
   checkoutErrorBoxEl.innerHTML = '';
   checkoutConfirmEl.style.display = 'none';
   btnEnviarPedidoEl.style.display = 'block';
+  btnEnviarPedidoEl.disabled = false;
+  btnEnviarPedidoEl.textContent = 'Finalizar pedido';
   renderPaymentOptions();
   renderCheckout();
   checkoutOverlayEl.classList.add('open');
 }
 
 function fecharCheckout(){
+  if(btnEnviarPedidoEl.disabled && btnEnviarPedidoEl.style.display !== 'none') return;
   checkoutOverlayEl.classList.remove('open');
 }
 
@@ -1529,57 +1528,6 @@ document.getElementById('cartHeaderBtn').addEventListener('click', () => {
   }
 });
 
-function montarMensagemPedido(comanda = ''){
-  const { items, subtotal } = cartTotals();
-  const nome = document.getElementById('clienteNome').value.trim();
-  const telefone = document.getElementById('clienteTelefone').value.trim();
-  const taxaEntrega = (deliveryMethod === 'entrega' && frete.status === 'ok') ? frete.valor : 0;
-  const taxaServico = deliveryMethod === 'retirada'
-  ? CONFIG.retirada.taxaServico
-  : ((deliveryMethod === 'entrega' && frete.status === 'ok') ? taxaServicoPorDistancia(frete.distanciaKm) : 0);
-  const total = subtotal + taxaEntrega + taxaServico;
-
-  const linhasProdutos = items.map(([produto, v]) => {
-    const addons = (v.adicionais || []).map(a => `  + ${a.nome}`).join('\n');
-    const obs = v.observacao ? `  Obs: ${v.observacao}` : '';
-    return [`${v.qty}x ${produto} — ${fmtPreco(v.qty * precoUnitario(v))}`, addons, obs].filter(Boolean).join('\n');
-  }).join('\n');
-
-  let blocoEntrega;
-  if(deliveryMethod === 'entrega'){
-    const rua = document.getElementById('endRua').value.trim();
-    const numero = document.getElementById('endNumero').value.trim();
-    const complemento = document.getElementById('endComplemento').value.trim();
-    const bairro = document.getElementById('endBairro').value.trim();
-    const cidade = document.getElementById('endCidade').value.trim();
-    const cep = somenteDigitos(document.getElementById('endCep').value);
-    const cepLinha = cep.length === 8 ? `\nCEP: ${formatarCep(cep)}` : '';
-    blocoEntrega = `🚚 ENTREGA\n${rua}, ${numero}${complemento ? ' - ' + complemento : ''}\n${bairro} — ${cidade}${cepLinha}\n\n📍 Distância: ${frete.distanciaKm.toFixed(1)} km\n🚚 Taxa de entrega: ${fmtPreco(frete.valor)}\n🧾 Taxa de serviço: ${fmtPreco(taxaServico)}\n⏱️ Previsão de entrega: ${textoEstimativa(frete.estimativa)}`;
-  } else {
-    blocoEntrega = `🏪 RETIRADA NO LOCAL`;
-  }
-
-  const blocoPagamento = `💳 PAGAMENTO\n${descricaoPagamento()}`;
-
-  const blocoValores = deliveryMethod === 'entrega'
-    ? `💰 TOTAL\nProdutos: ${fmtPreco(subtotal)}\nEntrega: ${fmtPreco(taxaEntrega)}\nTaxa de serviço: ${fmtPreco(taxaServico)}\nTOTAL: ${fmtPreco(total)}`
-    : `💰 TOTAL\nProdutos: ${fmtPreco(subtotal)}\nTaxa de serviço: ${fmtPreco(taxaServico)}\nTOTAL: ${fmtPreco(total)}`;
-
-  return [
-    '🔔 NOVO PEDIDO',
-    comanda ? `🧾 COMANDA ${comanda}` : '',
-    '',
-    `👤 CLIENTE\n${nome}\n${telefone}`,
-    '',
-    `🍔 PEDIDO\n${linhasProdutos}`,
-    '',
-    blocoEntrega,
-    '',
-    blocoPagamento,
-    '',
-    blocoValores,
-  ].join('\n');
-}
 
 
 function criarIdPedido(){
@@ -1617,6 +1565,7 @@ function montarPayloadPedido(clientRequestId){
     atendimento = {
       tipo: 'retirada',
       taxaServicoCentavos: Math.round(CONFIG.retirada.taxaServico * 100),
+      estimativaMinutos: CONFIG.retirada.estimativaMinutos,
     };
   }
 
@@ -1646,9 +1595,9 @@ function montarPayloadPedido(clientRequestId){
   };
 }
 
-async function registrarPedidoParaImpressao(payload){
+async function registrarPedidoNoSistema(payload){
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 4500);
+  const timeout = setTimeout(() => controller.abort(), 30000);
   try{
     const resp = await fetch('/api/pedidos', {
       method: 'POST',
@@ -1657,7 +1606,8 @@ async function registrarPedidoParaImpressao(payload){
       signal: controller.signal,
     });
     const data = await resp.json().catch(() => ({}));
-    if(!resp.ok) throw new Error(data?.error || 'Não foi possível registrar a comanda.');
+    if(!resp.ok) throw new Error(data?.error || 'Não foi possível registrar o pedido.');
+    if(!data?.pedido?.id || !data?.pedido?.numero) throw new Error('O sistema não confirmou o pedido. Tente novamente.');
     return data;
   }finally{
     clearTimeout(timeout);
@@ -1671,7 +1621,7 @@ function validarCheckout(){
   const telefone = document.getElementById('clienteTelefone').value.trim();
 
   if(!nome) erros.push('Informe seu nome.');
-  if(!telefone) erros.push('Informe seu WhatsApp/telefone.');
+  if(!telefone) erros.push('Informe seu telefone.');
 
   if(deliveryMethod === 'entrega'){
     const rua = document.getElementById('endRua').value.trim();
@@ -1688,6 +1638,7 @@ function validarCheckout(){
 }
 
 btnEnviarPedidoEl.addEventListener('click', async () => {
+  if(btnEnviarPedidoEl.disabled) return;
   checkoutErrorBoxEl.innerHTML = '';
 
   const horario = statusHorarioPedidos();
@@ -1723,42 +1674,30 @@ btnEnviarPedidoEl.addEventListener('click', async () => {
   }
 
   btnEnviarPedidoEl.disabled = true;
-  btnEnviarPedidoEl.textContent = 'Preparando pedido...';
-  let registro = null;
-
-  // A numeração/impressão é importante, mas não pode impedir uma venda.
-  // Se o backend estiver momentaneamente lento, o cliente continua para
-  // o WhatsApp com todos os dados do pedido.
+  btnEnviarPedidoEl.textContent = 'Registrando pedido...';
+  checkoutConfirmEl.style.display = 'none';
+  let registro;
   try{
     clientRequestIdAtual ||= criarIdPedido();
-    registro = await registrarPedidoParaImpressao(montarPayloadPedido(clientRequestIdAtual));
+    registro = await registrarPedidoNoSistema(montarPayloadPedido(clientRequestIdAtual));
   }catch(err){
-    if(String(err?.message || '').includes('Estamos fechados no momento')){
-      checkoutErrorBoxEl.innerHTML = `<div class="checkout-error">⚠️ ${escapeHTML(err.message)}</div>`;
-      btnEnviarPedidoEl.disabled = false;
-      btnEnviarPedidoEl.textContent = 'Finalizar pedido';
-      atualizarStatusHorarioPedidos();
-      return;
-    }
-    console.error('Falha ao registrar comanda automática:', err);
+    const mensagem = err?.name === 'AbortError'
+      ? 'A confirmação está demorando. Toque em tentar novamente para consultar ou concluir o mesmo pedido.'
+      : (err?.message || 'Não foi possível confirmar o pedido. Tente novamente.');
+    checkoutErrorBoxEl.innerHTML = `<div class="checkout-error">⚠️ ${escapeHTML(mensagem)}</div>`;
+    btnEnviarPedidoEl.disabled = false;
+    btnEnviarPedidoEl.textContent = 'Tentar novamente';
+    return;
   }
 
-  const numeroPedido = registro?.pedido?.numero || '';
-  const mensagem = montarMensagemPedido(numeroPedido);
-  const destino = linkWhatsApp(mensagem);
-
-  checkoutConfirmEl.innerHTML = numeroPedido
-    ? registro?.impressaoAtiva
-      ? `✅ Pedido <strong>${escapeHTML(numeroPedido)}</strong> registrado. Abrindo o WhatsApp para confirmação.`
-      : `✅ Pedido <strong>${escapeHTML(numeroPedido)}</strong> numerado. Abrindo o WhatsApp para confirmação.`
-    : '✅ Pedido preparado. Abrindo o WhatsApp para concluir.';
+  checkoutConfirmEl.innerHTML = `✅ Pedido <strong>${escapeHTML(registro.pedido.numero)}</strong> recebido pela loja! Guarde o número do seu pedido.`;
+  if(deliveryMethod === 'retirada') checkoutConfirmEl.innerHTML += '<br>⏱️ Prazo estimado para retirada: <strong>45 minutos a 1 hora</strong> a partir da confirmação.';
   checkoutConfirmEl.style.display = 'block';
-
-  // Navegação na própria aba: funciona melhor em iPhone e navegadores
-  // internos de Instagram/Facebook e não depende de pop-up.
-  btnEnviarPedidoEl.disabled = false;
-  btnEnviarPedidoEl.textContent = 'Abrir WhatsApp novamente';
-  window.location.assign(destino);
+  checkoutConfirmEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  btnEnviarPedidoEl.style.display = 'none';
+  Object.keys(cart).forEach(key => delete cart[key]);
+  updateCartBar();
+  clientRequestIdAtual = null;
 });
 
 updateCartBar();
