@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const CATALOGO = require('./catalogo.json');
 const { calcularDistanciaEndereco } = require('../lib/delivery-distance');
+const { blobAuthOptions } = require('../lib/blob-auth');
 
 const TIME_ZONE = 'America/Sao_Paulo';
 const COUNTER_PATH = 'config/pedidos-sequencia.json';
@@ -155,7 +156,7 @@ function rateLimit(req){
 async function lerJson(pathname){
   const { get } = await import('@vercel/blob');
   try{
-    const result = await get(pathname, { access: 'private', useCache: false });
+    const result = await get(pathname, { access: 'private', useCache: false, ...blobAuthOptions() });
     if(!result) return null;
     return JSON.parse(await new Response(result.stream).text());
   }catch(err){
@@ -171,6 +172,7 @@ async function gravarJson(pathname, value, allowOverwrite){
     contentType: 'application/json; charset=utf-8',
     addRandomSuffix: false,
     allowOverwrite,
+    ...blobAuthOptions(),
   });
 }
 
@@ -438,7 +440,7 @@ async function listarPedidos(req){
     ? String(req.query.data)
     : dataOperacao();
   const limite = Math.min(100, Math.max(1, Number(req.query?.limit) || 50));
-  const resultado = await list({ prefix: `${FILA_DIR}/${data}/`, limit: limite });
+  const resultado = await list({ prefix: `${FILA_DIR}/${data}/`, limit: limite, ...blobAuthOptions() });
   const pedidos = [];
   for(const blob of resultado.blobs || []){
     try{
