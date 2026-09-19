@@ -1,5 +1,5 @@
 const crypto = require('crypto');
-const { blobAuthOptions } = require('../lib/blob-auth');
+const { readJson, writeJson } = require('../lib/blob-storage');
 
 const COUNTER_PATH = 'config/comanda-sequencia.json';
 const RESERVA_DIR = 'comandas';
@@ -85,49 +85,32 @@ function isConflict(err){
 }
 
 async function lerUltimo(dataAtual){
-  const { get } = await import('@vercel/blob');
-  try{
-    const result = await get(COUNTER_PATH, { access: 'private', useCache: false, ...blobAuthOptions() });
-    if(!result) return 0;
-    const text = await new Response(result.stream).text();
-    const data = JSON.parse(text);
-    if(data?.data !== dataAtual) return 0;
-    return Number.isSafeInteger(data?.ultimo) && data.ultimo >= 0 ? data.ultimo : 0;
-  }catch(err){
-    if(isNotFound(err)) return 0;
-    throw err;
-  }
+  const result = await readJson(COUNTER_PATH);
+  const data = result.value;
+  if(!data || data.data !== dataAtual) return 0;
+  return Number.isSafeInteger(data.ultimo) && data.ultimo >= 0 ? data.ultimo : 0;
 }
 
 async function reservarNumero(numero, dataAtual){
-  const { put } = await import('@vercel/blob');
   const codigo = String(numero).padStart(2, '0');
   const token = crypto.randomUUID();
-  await put(`${RESERVA_DIR}/${dataAtual}/${String(numero).padStart(8,'0')}.json`, JSON.stringify({
+  const pathname = RESERVA_DIR + '/' + dataAtual + '/' + String(numero).padStart(8,'0') + '.json';
+  await writeJson(pathname, {
     numero,
     codigo,
     data: dataAtual,
     token,
     criadoEm: new Date().toISOString()
-  }), {
-    access: 'private',
-    contentType: 'application/json; charset=utf-8',
-    addRandomSuffix: false,
-    allowOverwrite: false,
-    ...blobAuthOptions(),
-  });
+  }, { allowOverwrite: false });
   return codigo;
 }
 
 async function salvarUltimo(numero, dataAtual){
-  const { put } = await import('@vercel/blob');
-  await put(COUNTER_PATH, JSON.stringify({ data: dataAtual, ultimo: numero, updatedAt: new Date().toISOString() }), {
-    access: 'private',
-    contentType: 'application/json; charset=utf-8',
-    addRandomSuffix: false,
-    allowOverwrite: true,
-    ...blobAuthOptions(),
-  });
+  await writeJson(COUNTER_PATH, {
+    data: dataAtual,
+    ultimo: numero,
+    updatedAt: new Date().toISOString()
+  }, { allowOverwrite: true });
 }
 
 module.exports = async function handler(req, res){

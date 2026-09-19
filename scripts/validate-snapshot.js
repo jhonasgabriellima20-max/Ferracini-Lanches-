@@ -4,7 +4,7 @@ const path = require('path');
 const required = [
   'index.html', 'admin.html', 'mesa.html', 'vercel.json', 'package.json',
   'api/catalogo.json', 'api/comanda.js', 'api/distancia.js', 'api/disponibilidade.js',
-  'api/painel-pedidos.js', 'api/pedidos.js', 'lib/delivery-distance.js'
+  'api/painel-pedidos.js', 'api/pedidos.js', 'lib/delivery-distance.js', 'lib/blob-storage.js'
 ];
 
 let failed = false;
@@ -79,7 +79,7 @@ if(fs.existsSync('api/pedidos.js')){
     ['rateLimit', 'limite de requisições'],
     ['MAX_BODY_BYTES', 'limite do corpo'],
     ['clientRequestId', 'idempotência'],
-    ["access: 'private'", 'armazenamento privado'],
+    ["require('../lib/blob-storage')", 'camada segura de armazenamento'],
     ['Math.ceil((distanciaKm * 2.30) - 1e-9) * 100', 'validação do frete no servidor'],
     ['validarEntregaNoServidor', 'revalidação da distância antes de registrar pedido'],
     ['MAX_DISTANCE_DELTA_KM', 'tolerância controlada para divergência de distância'],
@@ -172,7 +172,20 @@ if(fs.existsSync('package.json')){
   }catch(err){ fail(`package.json inválido — ${err.message}`); }
 }
 
-for(const file of ['api/comanda.js', 'api/distancia.js', 'api/disponibilidade.js', 'api/painel-pedidos.js', 'api/pedidos.js', 'lib/delivery-distance.js']){
+if(fs.existsSync('lib/blob-storage.js')){
+  const storage = fs.readFileSync('lib/blob-storage.js', 'utf8');
+  for(const [needle, label] of [
+    ["aes-256-gcm", 'criptografia AES-256-GCM'],
+    ["access, useCache: false", 'leitura compatível por modo de acesso'],
+    ["'private'", 'preferência por armazenamento privado'],
+    ["'public'", 'fallback público criptografado'],
+    ['STORAGE_ENCRYPTION_KEY', 'chave de criptografia dedicada opcional'],
+  ]){
+    if(!storage.includes(needle)) fail(`lib/blob-storage.js: ${label}`);
+  }
+}
+
+for(const file of ['api/comanda.js', 'api/distancia.js', 'api/disponibilidade.js', 'api/painel-pedidos.js', 'api/pedidos.js', 'lib/delivery-distance.js', 'lib/blob-storage.js']){
   if(!fs.existsSync(file)) continue;
   try{ new Function(fs.readFileSync(file, 'utf8')); }
   catch(err){ fail(`${file}: JavaScript inválido — ${err.message}`); }

@@ -1,5 +1,5 @@
 const crypto = require('crypto');
-const { blobAuthOptions } = require('../lib/blob-auth');
+const { readJson, writeJson } = require('../lib/blob-storage');
 
 const BLOB_PATH = 'config/disponibilidade.json';
 const AUTH_WINDOW_MS = 15 * 60 * 1000;
@@ -172,27 +172,16 @@ function isNotFound(err){
 }
 
 async function readState(){
-  const { get } = await import('@vercel/blob');
-  try{
-    const result = await get(BLOB_PATH, { access: 'private', useCache: false, ...blobAuthOptions() });
-    if(!result) return { state: defaults(), storageReady: true };
-    const text = await new Response(result.stream).text();
-    return { state: mergeState(JSON.parse(text)), storageReady: true };
-  }catch(err){
-    if(isNotFound(err)) return { state: defaults(), storageReady: true };
-    throw err;
-  }
+  const result = await readJson(BLOB_PATH);
+  if(result.value) return { state: mergeState(result.value), storageReady: true, storageMode: result.mode };
+
+  const state = defaults();
+  const saved = await writeJson(BLOB_PATH, state, { allowOverwrite: true });
+  return { state, storageReady: true, storageMode: saved.mode };
 }
 
 async function writeState(state){
-  const { put } = await import('@vercel/blob');
-  await put(BLOB_PATH, JSON.stringify(state), {
-    access: 'private',
-    contentType: 'application/json; charset=utf-8',
-    addRandomSuffix: false,
-    allowOverwrite: true,
-    ...blobAuthOptions(),
-  });
+  return writeJson(BLOB_PATH, state, { allowOverwrite: true });
 }
 
 module.exports = async function handler(req, res){
@@ -221,8 +210,8 @@ module.exports = async function handler(req, res){
     }
 
     try{
-      const { state, storageReady } = await readState();
-      return res.status(200).json({ ...state, catalogo: catalogo(), storageReady, adminConfigured: Boolean(adminPassword), authenticated });
+      const { state, storageReady, storageMode } = await readState();
+      return res.status(200).json({ ...state, catalogo: catalogo(), storageReady, storageMode, adminConfigured: Boolean(adminPassword), authenticated });
     }catch(err){
       console.error('Falha ao ler disponibilidade:', err);
       return res.status(200).json({ ...defaults(), catalogo: catalogo(), storageReady: false, adminConfigured: Boolean(adminPassword), authenticated });

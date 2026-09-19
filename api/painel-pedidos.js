@@ -1,5 +1,5 @@
 const crypto = require('crypto');
-const { blobAuthOptions } = require('../lib/blob-auth');
+const { readJson, listBlobs } = require('../lib/blob-storage');
 
 const TIME_ZONE = 'America/Sao_Paulo';
 const FILA_DIR = 'pedidos/fila';
@@ -76,20 +76,11 @@ function isNotFound(err){
 }
 
 async function lerJson(pathname){
-  const { get } = await import('@vercel/blob');
-  try{
-    const result = await get(pathname, { access: 'private', useCache: false, ...blobAuthOptions() });
-    if(!result) return null;
-    return JSON.parse(await new Response(result.stream).text());
-  }catch(err){
-    if(isNotFound(err)) return null;
-    throw err;
-  }
+  return (await readJson(pathname)).value;
 }
 
 async function listarPedidos(data, limite){
-  const { list } = await import('@vercel/blob');
-  const resultado = await list({ prefix: `${FILA_DIR}/${data}/`, limit: Math.min(100, Math.max(1, limite || 50)), ...blobAuthOptions() });
+  const resultado = await listBlobs({ prefix: `${FILA_DIR}/${data}/`, limit: Math.min(100, Math.max(1, limite || 50)) });
   const pedidos = [];
   for(const blob of resultado.blobs || []){
     try{
