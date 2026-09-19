@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const { blobAuthOptions } = require('../lib/blob-auth');
 
 const COUNTER_PATH = 'config/comanda-sequencia.json';
 const RESERVA_DIR = 'comandas';
@@ -86,7 +87,7 @@ function isConflict(err){
 async function lerUltimo(dataAtual){
   const { get } = await import('@vercel/blob');
   try{
-    const result = await get(COUNTER_PATH, { access: 'private', useCache: false });
+    const result = await get(COUNTER_PATH, { access: 'private', useCache: false, ...blobAuthOptions() });
     if(!result) return 0;
     const text = await new Response(result.stream).text();
     const data = JSON.parse(text);
@@ -113,6 +114,7 @@ async function reservarNumero(numero, dataAtual){
     contentType: 'application/json; charset=utf-8',
     addRandomSuffix: false,
     allowOverwrite: false,
+    ...blobAuthOptions(),
   });
   return codigo;
 }
@@ -124,6 +126,7 @@ async function salvarUltimo(numero, dataAtual){
     contentType: 'application/json; charset=utf-8',
     addRandomSuffix: false,
     allowOverwrite: true,
+    ...blobAuthOptions(),
   });
 }
 

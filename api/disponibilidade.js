@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const { blobAuthOptions } = require('../lib/blob-auth');
 
 const BLOB_PATH = 'config/disponibilidade.json';
 const AUTH_WINDOW_MS = 15 * 60 * 1000;
@@ -173,7 +174,7 @@ function isNotFound(err){
 async function readState(){
   const { get } = await import('@vercel/blob');
   try{
-    const result = await get(BLOB_PATH, { access: 'private', useCache: false });
+    const result = await get(BLOB_PATH, { access: 'private', useCache: false, ...blobAuthOptions() });
     if(!result) return { state: defaults(), storageReady: true };
     const text = await new Response(result.stream).text();
     return { state: mergeState(JSON.parse(text)), storageReady: true };
@@ -190,6 +191,7 @@ async function writeState(state){
     contentType: 'application/json; charset=utf-8',
     addRandomSuffix: false,
     allowOverwrite: true,
+    ...blobAuthOptions(),
   });
 }
 
