@@ -1526,12 +1526,14 @@ btnEnviarPedidoEl.addEventListener('click', async () => {
     clientRequestIdAtual ||= criarIdPedido();
     registro = await registrarPedidoNoSistema(montarPayloadPedido(clientRequestIdAtual));
   }catch(err){
+    const destinoWhatsApp = linkWhatsApp(montarMensagemPedido());
     const mensagem = err?.name === 'AbortError'
-      ? 'A confirmação está demorando. Toque em tentar novamente para consultar ou concluir o mesmo pedido.'
-      : (err?.message || 'Não foi possível confirmar o pedido. Tente novamente.');
-    checkoutErrorBoxEl.innerHTML = `<div class="checkout-error">⚠️ ${escapeHTML(mensagem)}</div>`;
+      ? 'O sistema demorou para confirmar o pedido.'
+      : 'O sistema de pedidos está temporariamente indisponível.';
+    checkoutErrorBoxEl.innerHTML = `<div class="checkout-error">⚠️ ${escapeHTML(mensagem)} Para não perder seu pedido, envie a mensagem completa pelo WhatsApp da loja.</div>`;
     btnEnviarPedidoEl.disabled = false;
-    btnEnviarPedidoEl.textContent = 'Tentar novamente';
+    btnEnviarPedidoEl.textContent = 'Tentar pelo sistema novamente';
+    window.location.assign(destinoWhatsApp);
     return;
   }
 
