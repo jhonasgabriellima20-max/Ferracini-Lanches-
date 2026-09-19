@@ -37,7 +37,7 @@ function checkHtml(file, isMesa){
     if(!ok) fail(`${file}: ${label}`);
   }
 
-  if(/wa\.me|api\.whatsapp\.com|linkWhatsApp/.test(html)) fail(`${file}: encaminhamento para WhatsApp`);
+  if(!html.includes('https://wa.me/') || !html.includes('5543998075190')) fail(`${file}: WhatsApp da loja ausente`);
 
   if(/fetch\(['"]\/api\/comanda/.test(html)) fail(`${file}: ainda usa endpoint legado de comanda`);
   if(html.includes('\\`') || html.includes('\\${')) fail(`${file}: template literal escapado incorretamente`);

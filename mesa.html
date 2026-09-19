@@ -699,6 +699,7 @@ const ADICIONAIS_PADRAO = [
 ];
 
 const CONFIG = {
+  whatsapp: "5543998075190",
 
   // Dados da loja — usados como origem no cálculo de distância da entrega.
   loja: {
@@ -1156,7 +1157,7 @@ function estimarEntrega(distanciaKm){
   minimo += ajusteDemanda;
   maximo += ajusteDemanda;
 
-  const hora = new Date().getHours();
+  const hora = Number(new Intl.DateTimeFormat('en-US', { timeZone: 'America/Sao_Paulo', hour: '2-digit', hourCycle: 'h23' }).format(new Date()));
   const madrugada = hora >= 0 && hora < 5;
   if(madrugada){
     minimo -= 15;
@@ -1352,6 +1353,57 @@ document.getElementById('cartHeaderBtn').addEventListener('click', () => {
 
 
 
+function linkWhatsApp(mensagem){
+  return `https://wa.me/${CONFIG.whatsapp}?text=${encodeURIComponent(mensagem)}`;
+}
+
+function montarMensagemPedido(comanda = ''){
+  const { items, subtotal } = cartTotals();
+  const nome = document.getElementById('clienteNome').value.trim();
+  const telefone = document.getElementById('clienteTelefone').value.trim();
+  const taxaEntrega = (deliveryMethod === 'entrega' && frete.status === 'ok') ? frete.valor : 0;
+  const total = subtotal + taxaEntrega;
+
+  const linhasProdutos = items.map(([produto, v]) => {
+    const addons = (v.adicionais || []).map(a => `  + ${a.nome}`).join('\n');
+    const obs = v.observacao ? `  Obs: ${v.observacao}` : '';
+    return [`${v.qty}x ${produto} — ${fmtPreco(v.qty * precoUnitario(v))}`, addons, obs].filter(Boolean).join('\n');
+  }).join('\n');
+
+  let blocoEntrega;
+  if(deliveryMethod === 'entrega'){
+    const rua = document.getElementById('endRua').value.trim();
+    const numero = document.getElementById('endNumero').value.trim();
+    const complemento = document.getElementById('endComplemento').value.trim();
+    const bairro = document.getElementById('endBairro').value.trim();
+    const cidade = document.getElementById('endCidade').value.trim();
+    blocoEntrega = `🚚 ENTREGA\n${rua}, ${numero}${complemento ? ' - ' + complemento : ''}\n${bairro} — ${cidade}\n\n📍 Distância: ${frete.distanciaKm.toFixed(1)} km\n🚚 Taxa de entrega: ${fmtPreco(frete.valor)}\n⏱️ Previsão de entrega: ${textoEstimativa(frete.estimativa)}`;
+  } else {
+    blocoEntrega = `🍽️ CONSUMO NO LOCAL — MESA ${document.getElementById("numeroMesa").value.trim()}`;
+  }
+
+  const blocoPagamento = `💳 PAGAMENTO\n${descricaoPagamento()}`;
+
+  const blocoValores = deliveryMethod === 'entrega'
+    ? `💰 TOTAL\nProdutos: ${fmtPreco(subtotal)}\nEntrega: ${fmtPreco(taxaEntrega)}\nTOTAL: ${fmtPreco(total)}`
+    : `💰 TOTAL\n${fmtPreco(total)}`;
+
+  return [
+    '🔔 NOVO PEDIDO — MESA',
+    comanda ? `🧾 COMANDA ${comanda}` : '',
+    '',
+    `👤 CLIENTE\n${nome}\n${telefone}`,
+    '',
+    `🍔 PEDIDO\n${linhasProdutos}`,
+    '',
+    blocoEntrega,
+    '',
+    blocoPagamento,
+    '',
+    blocoValores,
+  ].join('\n');
+}
+
 function criarIdPedido(){
   if(globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
   return Date.now().toString(36) + '-' + Math.random().toString(36).slice(2) + '-' + Math.random().toString(36).slice(2);
@@ -1476,7 +1528,16 @@ btnEnviarPedidoEl.addEventListener('click', async () => {
     return;
   }
 
+  const destinoWhatsApp = linkWhatsApp(montarMensagemPedido(registro.pedido.numero));
   checkoutConfirmEl.innerHTML = `✅ Pedido <strong>${escapeHTML(registro.pedido.numero)}</strong> recebido pela loja! Guarde o número do seu pedido.`;
+  const linkPedido = document.createElement('a');
+  linkPedido.href = destinoWhatsApp;
+  linkPedido.className = 'btn btn-primary btn-block';
+  linkPedido.style.marginTop = '16px';
+  linkPedido.textContent = 'Enviar pedido pelo WhatsApp';
+  checkoutConfirmEl.appendChild(document.createElement('br'));
+  checkoutConfirmEl.appendChild(document.createTextNode('O pedido já está no sistema. Envie também a mensagem no WhatsApp com o mesmo número.'));
+  checkoutConfirmEl.appendChild(linkPedido);
   checkoutConfirmEl.style.display = 'block';
   checkoutConfirmEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   btnEnviarPedidoEl.style.display = 'none';
@@ -1484,6 +1545,7 @@ btnEnviarPedidoEl.addEventListener('click', async () => {
   renderMenu();
   updateCartBar();
   clientRequestIdAtual = null;
+  window.location.assign(destinoWhatsApp);
 });
 
 updateCartBar();
