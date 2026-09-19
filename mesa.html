@@ -910,7 +910,7 @@ function updateCartBar(){
     tabBtn.removeAttribute('href');
   }
 
-  if(checkoutOverlayEl && checkoutOverlayEl.classList.contains('open')){
+  if(checkoutOverlayEl && checkoutOverlayEl.classList.contains('open') && checkoutConfirmEl.style.display !== 'block'){
     renderCheckout();
   }
 }
@@ -1481,6 +1481,7 @@ btnEnviarPedidoEl.addEventListener('click', async () => {
   checkoutConfirmEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   btnEnviarPedidoEl.style.display = 'none';
   Object.keys(cart).forEach(key => delete cart[key]);
+  renderMenu();
   updateCartBar();
   clientRequestIdAtual = null;
 });
