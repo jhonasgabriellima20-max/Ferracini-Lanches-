@@ -679,11 +679,11 @@
     <div id="checkoutErrorBox"></div>
 
     <button type="button" class="btn btn-primary btn-block btn-lg" id="btnEnviarPedido" style="margin-top:22px;">
-      Finalizar pedido
+      Enviar pedido pelo WhatsApp
     </button>
 
     <div class="checkout-confirm" id="checkoutConfirm" style="display:none;">
-      ✅ Seu pedido foi registrado no sistema.
+      ✅ Seu pedido será enviado pelo WhatsApp.
     </div>
   </div>
 </div>
@@ -1490,7 +1490,7 @@ function abrirCheckout(){
   checkoutConfirmEl.style.display = 'none';
   btnEnviarPedidoEl.style.display = 'block';
   btnEnviarPedidoEl.disabled = false;
-  btnEnviarPedidoEl.textContent = 'Finalizar pedido';
+  btnEnviarPedidoEl.textContent = 'Enviar pedido pelo WhatsApp';
   renderPaymentOptions();
   renderCheckout();
   checkoutOverlayEl.classList.add('open');
@@ -1706,8 +1706,6 @@ btnEnviarPedidoEl.addEventListener('click', async () => {
     return;
   }
 
-  // Se o endereço já estiver completo, não obriga o cliente a descobrir
-  // que precisa tocar em outro botão: calcula a entrega automaticamente.
   if(deliveryMethod === 'entrega' && frete.status !== 'ok'){
     const rua = document.getElementById('endRua').value.trim();
     const numero = document.getElementById('endNumero').value.trim();
@@ -1719,7 +1717,7 @@ btnEnviarPedidoEl.addEventListener('click', async () => {
       btnEnviarPedidoEl.textContent = 'Calculando entrega...';
       await calcularFrete();
       btnEnviarPedidoEl.disabled = false;
-      btnEnviarPedidoEl.textContent = 'Finalizar pedido';
+      btnEnviarPedidoEl.textContent = 'Enviar pedido pelo WhatsApp';
     }
   }
 
@@ -1730,43 +1728,26 @@ btnEnviarPedidoEl.addEventListener('click', async () => {
     return;
   }
 
-  btnEnviarPedidoEl.disabled = true;
-  btnEnviarPedidoEl.textContent = 'Registrando pedido...';
-  checkoutConfirmEl.style.display = 'none';
-  let registro;
-  try{
-    clientRequestIdAtual ||= criarIdPedido();
-    registro = await registrarPedidoNoSistema(montarPayloadPedido(clientRequestIdAtual));
-  }catch(err){
-    const destinoWhatsApp = linkWhatsApp(montarMensagemPedido());
-    const mensagem = err?.name === 'AbortError'
-      ? 'O sistema demorou para confirmar o pedido.'
-      : 'O sistema de pedidos está temporariamente indisponível.';
-    checkoutErrorBoxEl.innerHTML = `<div class="checkout-error">⚠️ ${escapeHTML(mensagem)} Para não perder seu pedido, envie a mensagem completa pelo WhatsApp da loja.</div>`;
-    btnEnviarPedidoEl.disabled = false;
-    btnEnviarPedidoEl.textContent = 'Tentar pelo sistema novamente';
-    window.location.assign(destinoWhatsApp);
-    return;
-  }
+  clientRequestIdAtual ||= criarIdPedido();
+  const payload = montarPayloadPedido(clientRequestIdAtual);
+  const destinoWhatsApp = linkWhatsApp(montarMensagemPedido());
 
-  const destinoWhatsApp = linkWhatsApp(montarMensagemPedido(registro.pedido.numero));
-  checkoutConfirmEl.innerHTML = `✅ Pedido <strong>${escapeHTML(registro.pedido.numero)}</strong> recebido pela loja! Guarde o número do seu pedido.`;
-  if(deliveryMethod === 'retirada') checkoutConfirmEl.innerHTML += '<br>⏱️ Prazo estimado para retirada: <strong>45 minutos a 1 hora</strong> a partir da confirmação.';
-  const linkPedido = document.createElement('a');
-  linkPedido.href = destinoWhatsApp;
-  linkPedido.className = 'btn btn-primary btn-block';
-  linkPedido.style.marginTop = '16px';
-  linkPedido.textContent = 'Enviar pedido pelo WhatsApp';
-  checkoutConfirmEl.appendChild(document.createElement('br'));
-  checkoutConfirmEl.appendChild(document.createTextNode('O pedido já está no sistema. Envie também a mensagem no WhatsApp com o mesmo número.'));
-  checkoutConfirmEl.appendChild(linkPedido);
+  btnEnviarPedidoEl.disabled = true;
+  btnEnviarPedidoEl.textContent = 'Abrindo WhatsApp...';
+
+  // O WhatsApp é o canal principal. O registro interno é apenas apoio e
+  // não pode atrasar nem impedir o envio da comanda para a loja.
+  try{
+    fetch('/api/pedidos', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      keepalive: true,
+    }).catch(() => {});
+  }catch(_err){}
+
+  checkoutConfirmEl.innerHTML = '✅ Abrindo o WhatsApp com sua comanda completa. Confira a mensagem e toque em enviar.';
   checkoutConfirmEl.style.display = 'block';
-  checkoutConfirmEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-  btnEnviarPedidoEl.style.display = 'none';
-  Object.keys(cart).forEach(key => delete cart[key]);
-  renderMenu();
-  updateCartBar();
-  clientRequestIdAtual = null;
   window.location.assign(destinoWhatsApp);
 });
 
