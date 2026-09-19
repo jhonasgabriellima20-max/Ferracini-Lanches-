@@ -3,7 +3,18 @@ module.exports = async function handler(req, res){
   res.setHeader('X-Robots-Tag', 'noindex, nofollow');
   if(req.method !== 'GET') return res.status(405).json({ error: 'Método não permitido.' });
 
-  const oidc = String(process.env.VERCEL_OIDC_TOKEN || '').trim();
+  let oidc = String(process.env.VERCEL_OIDC_TOKEN || '').trim();
+  if(!oidc){
+    try{
+      const { getVercelOidcToken } = await import('@vercel/oidc');
+      oidc = String(await getVercelOidcToken({
+        project:'prj_KzbF8mN8dUsf6bZV3a8a8wxBTRAg',
+        team:'team_GObmx1bMb8GYVLduQk8qb93g'
+      }) || '').trim();
+    }catch(err){
+      return res.status(503).json({ ok:false, step:'oidc-helper', error:String(err) });
+    }
+  }
   if(!oidc) return res.status(503).json({ ok:false, step:'oidc', error:'OIDC indisponível' });
 
   try{
