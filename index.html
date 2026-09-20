@@ -717,6 +717,10 @@ const ADICIONAIS_PADRAO = [
 
 const CONFIG = {
   whatsapp: "5543998075190",
+  pix: {
+    tipo: "CPF",
+    chave: "078.746.889-45",
+  },
 
   // Dados da loja — usados como origem no cálculo de distância da entrega.
   loja: {
@@ -1116,14 +1120,14 @@ const checkoutConfirmEl = document.getElementById('checkoutConfirm');
 const btnEnviarPedidoEl = document.getElementById('btnEnviarPedido');
 
 let deliveryMethod = 'retirada'; // 'retirada' | 'entrega'
-let paymentMethod = 'cartao';
+let paymentMethod = 'pix';
 let precisaTroco = false;
 let trocoPara = '';
 let frete = { status: 'idle', distanciaKm: null, valor: 0, estimativa: null }; // idle | loading | ok | error
 let freteRequestId = 0;
 
-const PAYMENT_LABELS = { cartao: 'Cartão (maquininha)', dinheiro: 'Dinheiro' };
-function paymentOptionsForMethod(){ return ['cartao', 'dinheiro']; }
+const PAYMENT_LABELS = { pix: 'Pix', dinheiro: 'Dinheiro' };
+function paymentOptionsForMethod(){ return ['pix', 'dinheiro']; }
 function taxaServicoPorDistancia(distanciaKm){
   if(!Number.isFinite(distanciaKm) || distanciaKm <= 0) return 0;
   if(distanciaKm <= 5) return CONFIG.entrega.taxaServico.ate5Km;
@@ -1152,7 +1156,7 @@ function erroTroco(){
   return '';
 }
 function descricaoPagamento(){
-  if(paymentMethod !== 'dinheiro') return PAYMENT_LABELS[paymentMethod];
+  if(paymentMethod === 'pix') return `Pix manual — chave ${CONFIG.pix.tipo}: ${CONFIG.pix.chave}\nEnviar o comprovante pelo WhatsApp`;
   if(!precisaTroco) return 'Dinheiro — sem troco';
   return `Dinheiro — troco para ${fmtPreco(valorTrocoCentavos()/100)}\nTroco a devolver: ${fmtPreco((valorTrocoCentavos()-totalPedidoCentavos())/100)}`;
 }
@@ -1162,11 +1166,18 @@ function atualizarResumoTroco(){
   el.textContent = erroTroco() || (precisaTroco ? (deliveryMethod === 'entrega' && frete.status !== 'ok' ? 'Calcule a entrega para confirmar o troco.' : `Troco a devolver: ${fmtPreco((valorTrocoCentavos()-totalPedidoCentavos())/100)}`) : 'Pagamento com o valor exato.');
 }
 function renderPaymentOptions(){
+  const avisoPix = paymentMethod === 'pix' ? `
+    <div style="margin-top:14px;padding:14px;border:1px solid rgba(255,255,255,.12);border-radius:10px;background:rgba(255,255,255,.04)">
+      <div style="font-weight:800;margin-bottom:6px">Chave Pix (${CONFIG.pix.tipo})</div>
+      <div style="font-size:18px;font-weight:800;letter-spacing:.3px">${CONFIG.pix.chave}</div>
+      <button type="button" class="btn btn-ghost" id="copiarChavePix" style="margin-top:10px;padding:10px 14px">Copiar chave Pix</button>
+      <div style="font-size:13px;margin-top:9px;color:var(--ink-dim)">Após pagar, envie o comprovante junto com o pedido no WhatsApp.</div>
+    </div>` : '';
   document.getElementById('paymentOptions').innerHTML = paymentOptionsForMethod().map(id => `
     <label class="payment-option ${paymentMethod===id?'active':''}" data-id="${id}">
       <input type="radio" name="payment" value="${id}" ${paymentMethod===id?'checked':''}>
       <span>${PAYMENT_LABELS[id]}</span>
-    </label>`).join('') + (paymentMethod === 'dinheiro' ? `
+    </label>`).join('') + avisoPix + (paymentMethod === 'dinheiro' ? `
     <div class="field" style="margin-top:14px">
       <label for="precisaTroco">Precisa de troco?</label>
       <select id="precisaTroco" style="width:100%;padding:12px;border-radius:8px"><option value="nao">Não, vou pagar o valor exato</option><option value="sim">Sim</option></select>
@@ -1180,6 +1191,14 @@ function renderPaymentOptions(){
     renderPaymentOptions();
     renderCheckout();
   }));
+  document.getElementById('copiarChavePix')?.addEventListener('click', async () => {
+    try{
+      await navigator.clipboard.writeText(CONFIG.pix.chave);
+      document.getElementById('copiarChavePix').textContent = 'Chave copiada!';
+    }catch{
+      window.prompt('Copie a chave Pix:', CONFIG.pix.chave);
+    }
+  });
   if(paymentMethod === 'dinheiro'){
     const precisa = document.getElementById('precisaTroco');
     const valor = document.getElementById('trocoPara');
@@ -1503,7 +1522,7 @@ function abrirCheckout(){
   document.querySelectorAll('.method-btn').forEach(b => b.classList.toggle('active', b.dataset.method==='retirada'));
   enderecoBlockEl.style.display = 'none';
   resetFrete();
-  paymentMethod = 'cartao';
+  paymentMethod = 'pix';
   precisaTroco = false;
   trocoPara = '';
   checkoutErrorBoxEl.innerHTML = '';

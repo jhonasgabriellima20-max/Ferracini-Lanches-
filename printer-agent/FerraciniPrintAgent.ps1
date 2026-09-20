@@ -237,8 +237,11 @@ function Format-Receipt($Pedido, [int]$Width) {
     } else {
       $lines.Add('Sem troco')
     }
+  } elseif ($pag -eq 'pix') {
+    $lines.Add('PAGAMENTO: PIX')
+    $lines.Add('Conferir comprovante no WhatsApp')
   } else {
-    $lines.Add('PAGAMENTO: CARTAO / MAQUININHA')
+    $lines.Add('PAGAMENTO: NAO INFORMADO')
   }
 
   $lines.Add($doubleSep)

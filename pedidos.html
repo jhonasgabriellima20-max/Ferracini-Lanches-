@@ -71,7 +71,8 @@ function pagamento(p){
     if(p.pagamento?.precisaTroco) return `Dinheiro · troco para ${dinheiro(p.pagamento.trocoParaCentavos)}`;
     return 'Dinheiro';
   }
-  return 'Cartão na máquina';
+  if(p.pagamento?.metodo === 'pix') return 'Pix · conferir comprovante no WhatsApp';
+  return 'Forma de pagamento não informada';
 }
 
 function endereco(p){

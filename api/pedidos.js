@@ -312,7 +312,7 @@ function validarPayload(raw){
   }
 
   const metodo = texto(raw.pagamento?.metodo, 20);
-  if(!['cartao', 'dinheiro'].includes(metodo)) throw new Error('Forma de pagamento inválida.');
+  if(!['pix', 'dinheiro'].includes(metodo)) throw new Error('Forma de pagamento inválida.');
   const pagamento = {
     metodo,
     precisaTroco: metodo === 'dinheiro' && raw.pagamento?.precisaTroco === true,
