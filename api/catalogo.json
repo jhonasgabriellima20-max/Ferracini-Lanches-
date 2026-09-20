@@ -92,6 +92,22 @@
     "Coca-Cola 2L": {
       "precoCentavos": 1700,
       "aceitaAdicionais": false
+    },
+    "Suco Tampico 450 ml": {
+      "precoCentavos": 800,
+      "aceitaAdicionais": false
+    },
+    "Suco Tampico 2L": {
+      "precoCentavos": 1700,
+      "aceitaAdicionais": false
+    },
+    "Del Valle 1L Laranja": {
+      "precoCentavos": 1200,
+      "aceitaAdicionais": false
+    },
+    "Del Valle 1L Uva": {
+      "precoCentavos": 1200,
+      "aceitaAdicionais": false
     }
   },
   "adicionais": {
