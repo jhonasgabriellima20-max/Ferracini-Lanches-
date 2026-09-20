@@ -95,6 +95,25 @@ function isConflict(err){
     value.includes('already') || value.includes('conflict');
 }
 
+function isStorageUnavailable(err){
+  if(isAuthError(err)) return true;
+  const status = Number(err?.status || err?.statusCode || 0);
+  const message = String(err?.message || err || '').toLowerCase();
+  const blobRelated =
+    message.includes('vercel blob') ||
+    message.includes('blob store') ||
+    message.includes('@vercel/blob');
+
+  if(!blobRelated) return false;
+  return status === 429 || status >= 500 ||
+    message.includes('suspended') ||
+    message.includes('temporarily unavailable') ||
+    message.includes('service unavailable') ||
+    message.includes('too many requests') ||
+    message.includes('timeout') ||
+    message.includes('timed out');
+}
+
 function secureEqual(recebido, esperado){
   if(!recebido || !esperado) return false;
   const a = Buffer.from(String(recebido));
@@ -558,7 +577,7 @@ module.exports = async function handler(req, res){
         'JSON inválido.',
       ].includes(message);
       if(erroDoCliente) return res.status(400).json({ error: message });
-      if(isAuthError(err)){
+      if(isStorageUnavailable(err)){
         const rawId = (() => {
           try{
             const raw = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
