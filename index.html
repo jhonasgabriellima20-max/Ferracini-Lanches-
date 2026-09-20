@@ -47,7 +47,7 @@
     {
       "@type": "OpeningHoursSpecification",
       "dayOfWeek": ["Sunday"],
-      "opens": "19:00",
+      "opens": "18:00",
       "closes": "23:00"
     }
   ]
@@ -572,7 +572,7 @@
         <div class="hours-row"><span>Quinta</span><span>18h às 23h</span></div>
         <div class="hours-row"><span>Sexta</span><span>18h à 1h</span></div>
         <div class="hours-row"><span>Sábado</span><span>18h à 1h</span></div>
-        <div class="hours-row"><span>Domingo</span><span>19h às 23h</span></div>
+        <div class="hours-row"><span>Domingo</span><span>18h às 23h</span></div>
         <div id="pedidoHorarioStatus" style="margin-top:12px;font-size:13px;font-weight:700;"></div>
       </div>
     </div>
@@ -1498,14 +1498,14 @@ function statusHorarioPedidos(agora = new Date()){
   if(dia === 6) aberto = minutos < 60 || minutos >= 18 * 60;
 
   // Domingo 00h–01h é continuação de sábado. O horário de domingo
-  // permanece como já estava (19h–23h) até a loja definir um novo horário.
-  if(dia === 0) aberto = minutos < 60 || entre(19 * 60, 23 * 60);
+  // Domingo abre às 18h e fecha às 23h.
+  if(dia === 0) aberto = minutos < 60 || entre(18 * 60, 23 * 60);
 
   return {
     aberto,
     mensagem: aberto
       ? 'Pedidos online abertos agora.'
-      : 'Estamos fechados no momento. Horários: seg–qui 18h às 23h; sex–sáb 18h à 1h; domingo 19h às 23h.',
+      : 'Estamos fechados no momento. Horários: seg–qui 18h às 23h; sex–sáb 18h à 1h; domingo 18h às 23h.',
   };
 }
 
