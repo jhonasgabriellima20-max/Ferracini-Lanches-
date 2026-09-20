@@ -132,7 +132,7 @@ async function abrirPainel(){
     $('loginView').classList.add('hidden'); $('appView').classList.remove('hidden');
     render(data.pedidos||[]);
     $('status').textContent='Painel conectado';
-    clearInterval(timer); timer=setInterval(carregar,5000);
+    clearInterval(timer); timer=setInterval(carregar,30000);
   }catch(e){ $('loginMsg').innerHTML=notice(e.message||'Não foi possível entrar.','err'); }
 }
 
