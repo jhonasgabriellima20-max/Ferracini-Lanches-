@@ -21,9 +21,7 @@ function credencialValida(req){
   const bearer = /^Bearer\s+/i.test(authorization)
     ? authorization.replace(/^Bearer\s+/i, '').trim()
     : '';
-  const admin = String(req.headers['x-admin-password'] || '').trim();
-  return secureEqual(bearer, process.env.PRINT_AGENT_TOKEN || '') ||
-    secureEqual(admin, process.env.ADMIN_PASSWORD || '');
+  return secureEqual(bearer, process.env.PRINT_AGENT_TOKEN || '');
 }
 
 function origemPermitida(req){
@@ -117,6 +115,7 @@ module.exports = async function handler(req, res){
   res.setHeader('Cache-Control', 'no-store, max-age=0');
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+  res.setHeader('Vary', 'Authorization');
 
   if(req.method !== 'POST'){
     res.setHeader('Allow', 'POST');
