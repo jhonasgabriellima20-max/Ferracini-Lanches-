@@ -11,6 +11,22 @@ const pedidoReadCache = globalThis.__ferraciniPainelPedidoReadCache || new Map()
 globalThis.__ferraciniPainelPedidoReadCache = pedidoReadCache;
 const PEDIDO_CACHE_FALLBACK_MS = 30 * 1000;
 
+function origemPermitida(req){
+  if(String(req.headers['sec-fetch-site'] || '').toLowerCase() === 'cross-site') return false;
+  const origin = String(req.headers.origin || '').trim();
+  if(!origin) return true;
+  try{
+    const url = new URL(origin);
+    if(url.protocol !== 'https:' && url.hostname !== 'localhost') return false;
+    return url.hostname === 'ferracinilanches.com.br' ||
+      url.hostname === 'www.ferracinilanches.com.br' ||
+      /^ferracini-lanches(?:-[a-z0-9-]+)?(?:-jho-n)?\.vercel\.app$/i.test(url.hostname) ||
+      url.hostname === 'localhost';
+  }catch{
+    return false;
+  }
+}
+
 function passwordOk(recebida, esperada){
   if(!recebida || !esperada) return false;
   const a = Buffer.from(String(recebida));
@@ -51,6 +67,11 @@ function recordFailure(req){
   }
   current.count += 1;
   failedLogins.set(key, current);
+  if(failedLogins.size > 1000){
+    for(const [bucketKey, value] of failedLogins){
+      if(value.resetAt <= now) failedLogins.delete(bucketKey);
+    }
+  }
   return {
     blocked: current.count >= AUTH_MAX_FAILURES,
     retryAfter: Math.max(1, Math.ceil((current.resetAt - now) / 1000)),
@@ -133,11 +154,14 @@ module.exports = async function handler(req, res){
   res.setHeader('Cache-Control', 'no-store, max-age=0');
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+  res.setHeader('Vary', 'X-Admin-Password');
 
   if(req.method !== 'GET'){
     res.setHeader('Allow', 'GET');
     return res.status(405).json({ error: 'Método não permitido.' });
   }
+
+  if(!origemPermitida(req)) return res.status(403).json({ error: 'Origem não permitida.' });
 
   const adminPassword = process.env.ADMIN_PASSWORD || '';
   if(!adminPassword){
