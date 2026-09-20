@@ -15,6 +15,27 @@ const disponibilidadeCache = globalThis.__ferraciniDisponibilidadeCache || {
 };
 globalThis.__ferraciniDisponibilidadeCache = disponibilidadeCache;
 
+const STORAGE_SUSPENSION_BACKOFF_MS = 30 * 60 * 1000;
+const storageBackoff = globalThis.__ferraciniStorageBackoff || { until: 0, reason: null };
+globalThis.__ferraciniStorageBackoff = storageBackoff;
+
+function isStorageSuspended(err){
+  const message = String(err?.message || err || '').toLowerCase();
+  return message.includes('store has been suspended') ||
+    message.includes('blobstoresuspendederror');
+}
+
+function armStorageBackoff(err){
+  if(!isStorageSuspended(err)) return;
+  storageBackoff.until = Date.now() + STORAGE_SUSPENSION_BACKOFF_MS;
+  storageBackoff.reason = 'suspended';
+}
+
+function clearStorageBackoff(){
+  storageBackoff.until = 0;
+  storageBackoff.reason = null;
+}
+
 const INGREDIENTES = [
   ['pao', 'Pão'],
   ['salsicha', 'Salsicha'],
@@ -187,32 +208,58 @@ function saveCache(state, storageMode){
 
 async function readState({ force = false } = {}){
   const now = Date.now();
+
+  if(storageBackoff.until > now){
+    return {
+      state: disponibilidadeCache.state || defaults(),
+      storageReady: false,
+      storageMode: disponibilidadeCache.storageMode,
+      cacheHit: Boolean(disponibilidadeCache.state),
+      storageBackoff: true,
+    };
+  }
+
   if(!force && disponibilidadeCache.state && disponibilidadeCache.expiresAt > now){
     return {
       state: disponibilidadeCache.state,
       storageReady: true,
       storageMode: disponibilidadeCache.storageMode,
       cacheHit: true,
+      storageBackoff: false,
     };
   }
 
-  const result = await readJson(BLOB_PATH);
+  let result;
+  try{
+    result = await readJson(BLOB_PATH);
+  }catch(err){
+    armStorageBackoff(err);
+    throw err;
+  }
   if(result.value){
     const state = mergeState(result.value);
     saveCache(state, result.mode);
-    return { state, storageReady: true, storageMode: result.mode, cacheHit: false };
+    clearStorageBackoff();
+    return { state, storageReady: true, storageMode: result.mode, cacheHit: false, storageBackoff: false };
   }
 
   const state = defaults();
   const saved = await writeJson(BLOB_PATH, state, { allowOverwrite: true });
   saveCache(state, saved.mode);
-  return { state, storageReady: true, storageMode: saved.mode, cacheHit: false };
+  clearStorageBackoff();
+  return { state, storageReady: true, storageMode: saved.mode, cacheHit: false, storageBackoff: false };
 }
 
 async function writeState(state){
-  const saved = await writeJson(BLOB_PATH, state, { allowOverwrite: true });
-  saveCache(state, saved.mode);
-  return saved;
+  try{
+    const saved = await writeJson(BLOB_PATH, state, { allowOverwrite: true });
+    saveCache(state, saved.mode);
+    clearStorageBackoff();
+    return saved;
+  }catch(err){
+    armStorageBackoff(err);
+    throw err;
+  }
 }
 
 module.exports = async function handler(req, res){
@@ -250,8 +297,8 @@ module.exports = async function handler(req, res){
     }
 
     try{
-      const { state, storageReady, storageMode, cacheHit } = await readState({ force: Boolean(recebida) });
-      return res.status(200).json({ ...state, catalogo: catalogo(), storageReady, storageMode, cacheHit, adminConfigured: Boolean(adminPassword), authenticated });
+      const { state, storageReady, storageMode, cacheHit, storageBackoff: backoff } = await readState({ force: Boolean(recebida) });
+      return res.status(200).json({ ...state, catalogo: catalogo(), storageReady, storageMode, cacheHit, storageBackoff: Boolean(backoff), adminConfigured: Boolean(adminPassword), authenticated });
     }catch(err){
       console.error('Falha ao ler disponibilidade:', err);
       const staleState = disponibilidadeCache.state || defaults();
@@ -261,6 +308,7 @@ module.exports = async function handler(req, res){
         storageReady: false,
         storageMode: disponibilidadeCache.storageMode,
         cacheHit: Boolean(disponibilidadeCache.state),
+        storageBackoff: storageBackoff.until > Date.now(),
         adminConfigured: Boolean(adminPassword),
         authenticated,
       });
