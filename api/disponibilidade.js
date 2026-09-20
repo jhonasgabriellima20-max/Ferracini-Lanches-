@@ -1,5 +1,5 @@
 const crypto = require('crypto');
-const { readJson, writeJson } = require('../lib/blob-storage');
+const { readJson, writeJson, isAuthError } = require('../lib/blob-storage');
 
 const BLOB_PATH = 'config/disponibilidade.json';
 const AUTH_WINDOW_MS = 15 * 60 * 1000;
@@ -19,6 +19,9 @@ const STORAGE_SUSPENSION_BACKOFF_MS = 30 * 60 * 1000;
 const storageBackoff = globalThis.__ferraciniStorageBackoff || { until: 0, reason: null };
 globalThis.__ferraciniStorageBackoff = storageBackoff;
 
+const RUNTIME_CACHE_KEY = 'disponibilidade:v1';
+const RUNTIME_CACHE_TTL_SECONDS = 30 * 24 * 60 * 60;
+
 function isStorageSuspended(err){
   const message = String(err?.message || err || '').toLowerCase();
   return message.includes('store has been suspended') ||
@@ -34,6 +37,33 @@ function armStorageBackoff(err){
 function clearStorageBackoff(){
   storageBackoff.until = 0;
   storageBackoff.reason = null;
+}
+
+async function runtimeCache(){
+  const { getCache } = await import('@vercel/functions');
+  return getCache({ namespace: 'ferracini' });
+}
+
+async function readRuntimeState(){
+  try{
+    const cache = await runtimeCache();
+    const value = await cache.get(RUNTIME_CACHE_KEY);
+    return { available: true, value: value ? mergeState(value) : null };
+  }catch(err){
+    console.warn('[disponibilidade] runtime_cache_leitura_indisponivel', { error: String(err) });
+    return { available: false, value: null };
+  }
+}
+
+async function writeRuntimeState(state){
+  const cache = await runtimeCache();
+  const normalized = mergeState(state);
+  await cache.set(RUNTIME_CACHE_KEY, normalized, {
+    ttl: RUNTIME_CACHE_TTL_SECONDS,
+    tags: ['ferracini-disponibilidade'],
+    name: 'Ferracini disponibilidade',
+  });
+  return { mode: 'runtime-cache', state: normalized, storageDegraded: true };
 }
 
 const INGREDIENTES = [
@@ -206,17 +236,26 @@ function saveCache(state, storageMode){
   disponibilidadeCache.expiresAt = Date.now() + PUBLIC_CACHE_TTL_MS;
 }
 
+async function readFallbackState(){
+  const runtime = await readRuntimeState();
+  const state = runtime.value || disponibilidadeCache.state || defaults();
+  const storageMode = runtime.available ? 'runtime-cache' : disponibilidadeCache.storageMode;
+  saveCache(state, storageMode);
+  return {
+    state,
+    storageReady: runtime.available,
+    storageMode,
+    cacheHit: Boolean(runtime.value || disponibilidadeCache.state),
+    storageBackoff: true,
+    storageDegraded: true,
+  };
+}
+
 async function readState({ force = false } = {}){
   const now = Date.now();
 
   if(storageBackoff.until > now){
-    return {
-      state: disponibilidadeCache.state || defaults(),
-      storageReady: false,
-      storageMode: disponibilidadeCache.storageMode,
-      cacheHit: Boolean(disponibilidadeCache.state),
-      storageBackoff: true,
-    };
+    return readFallbackState();
   }
 
   if(!force && disponibilidadeCache.state && disponibilidadeCache.expiresAt > now){
@@ -229,25 +268,28 @@ async function readState({ force = false } = {}){
     };
   }
 
-  let result;
   try{
-    result = await readJson(BLOB_PATH);
-  }catch(err){
-    armStorageBackoff(err);
-    throw err;
-  }
-  if(result.value){
-    const state = mergeState(result.value);
-    saveCache(state, result.mode);
-    clearStorageBackoff();
-    return { state, storageReady: true, storageMode: result.mode, cacheHit: false, storageBackoff: false };
-  }
+    const result = await readJson(BLOB_PATH);
+    if(result.value){
+      const state = mergeState(result.value);
+      saveCache(state, result.mode);
+      clearStorageBackoff();
+      writeRuntimeState(state).catch(() => {});
+      return { state, storageReady: true, storageMode: result.mode, cacheHit: false, storageBackoff: false, storageDegraded: false };
+    }
 
-  const state = defaults();
-  const saved = await writeJson(BLOB_PATH, state, { allowOverwrite: true });
-  saveCache(state, saved.mode);
-  clearStorageBackoff();
-  return { state, storageReady: true, storageMode: saved.mode, cacheHit: false, storageBackoff: false };
+    const state = defaults();
+    const saved = await writeJson(BLOB_PATH, state, { allowOverwrite: true });
+    saveCache(state, saved.mode);
+    clearStorageBackoff();
+    writeRuntimeState(state).catch(() => {});
+    return { state, storageReady: true, storageMode: saved.mode, cacheHit: false, storageBackoff: false, storageDegraded: false };
+  }catch(err){
+    if(!isStorageSuspended(err) && !isAuthError(err)) throw err;
+    armStorageBackoff(err);
+    console.warn('[disponibilidade] blob_indisponivel_usando_runtime_cache', { error: String(err) });
+    return readFallbackState();
+  }
 }
 
 async function writeState(state){
@@ -255,10 +297,15 @@ async function writeState(state){
     const saved = await writeJson(BLOB_PATH, state, { allowOverwrite: true });
     saveCache(state, saved.mode);
     clearStorageBackoff();
-    return saved;
+    writeRuntimeState(state).catch(() => {});
+    return { ...saved, storageDegraded: false };
   }catch(err){
+    if(!isStorageSuspended(err) && !isAuthError(err)) throw err;
     armStorageBackoff(err);
-    throw err;
+    console.warn('[disponibilidade] blob_indisponivel_salvando_runtime_cache', { error: String(err) });
+    const saved = await writeRuntimeState(state);
+    saveCache(saved.state, saved.mode);
+    return saved;
   }
 }
 
@@ -297,8 +344,8 @@ module.exports = async function handler(req, res){
     }
 
     try{
-      const { state, storageReady, storageMode, cacheHit, storageBackoff: backoff } = await readState({ force: Boolean(recebida) });
-      return res.status(200).json({ ...state, catalogo: catalogo(), storageReady, storageMode, cacheHit, storageBackoff: Boolean(backoff), adminConfigured: Boolean(adminPassword), authenticated });
+      const { state, storageReady, storageMode, cacheHit, storageBackoff: backoff, storageDegraded } = await readState({ force: Boolean(recebida) });
+      return res.status(200).json({ ...state, catalogo: catalogo(), storageReady, storageMode, cacheHit, storageBackoff: Boolean(backoff), storageDegraded: Boolean(storageDegraded), adminConfigured: Boolean(adminPassword), authenticated });
     }catch(err){
       console.error('Falha ao ler disponibilidade:', err);
       const staleState = disponibilidadeCache.state || defaults();
@@ -309,6 +356,7 @@ module.exports = async function handler(req, res){
         storageMode: disponibilidadeCache.storageMode,
         cacheHit: Boolean(disponibilidadeCache.state),
         storageBackoff: storageBackoff.until > Date.now(),
+        storageDegraded: true,
         adminConfigured: Boolean(adminPassword),
         authenticated,
       });
@@ -338,8 +386,14 @@ module.exports = async function handler(req, res){
       if(typeof body === 'string') body = JSON.parse(body || '{}');
       const next = mergeState(body || {});
       next.updatedAt = new Date().toISOString();
-      await writeState(next);
-      return res.status(200).json({ ...next, catalogo: catalogo(), storageReady: true });
+      const saved = await writeState(next);
+      return res.status(200).json({
+        ...next,
+        catalogo: catalogo(),
+        storageReady: true,
+        storageMode: saved.mode,
+        storageDegraded: Boolean(saved.storageDegraded),
+      });
     }catch(err){
       console.error('Falha ao salvar disponibilidade:', err);
       return res.status(503).json({ error: 'Não foi possível salvar. Verifique se um Vercel Blob está conectado ao projeto.' });

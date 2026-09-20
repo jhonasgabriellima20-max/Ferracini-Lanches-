@@ -51,6 +51,8 @@ let senhaAdmin = sessionStorage.getItem('ferracini_admin_password') || '';
 let estado = { ingredientes:{}, produtos:{}, operacao:{demanda:'normal'} };
 let catalogo = { ingredientes:[], produtos:[] };
 let storageReady = true;
+let storageDegraded = false;
+let storageMode = null;
 
 const $ = id => document.getElementById(id);
 function esc(s){ return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -101,8 +103,12 @@ async function abrirPainel(){
     estado={ingredientes:data.ingredientes||{},produtos:data.produtos||{},operacao:data.operacao||{demanda:'normal'}};
     catalogo=data.catalogo||catalogo;
     storageReady=data.storageReady!==false;
+    storageDegraded=data.storageDegraded===true;
+    storageMode=data.storageMode||null;
     $('loginView').classList.add('hidden'); $('appView').classList.remove('hidden');
-    $('systemMsg').innerHTML = storageReady ? '' : notice('O painel está pronto, mas o Vercel Blob ainda não está conectado. Você consegue visualizar, porém salvar ficará bloqueado até conectar o armazenamento.','warn');
+    $('systemMsg').innerHTML = storageDegraded
+      ? notice('Modo temporário ativo: você pode salvar normalmente agora. Reative o Vercel Blob depois para voltar ao armazenamento permanente.','warn')
+      : (storageReady ? '' : notice('O armazenamento está indisponível. Você consegue visualizar, mas não será possível salvar até a conexão voltar.','warn'));
     $('status').textContent=data.updatedAt?`Última atualização: ${new Date(data.updatedAt).toLocaleString('pt-BR')}`:'Tudo disponível — nenhuma alteração salva ainda';
     render();
   }catch(e){ $('loginMsg').innerHTML=notice(e.message||'Não foi possível abrir o painel.','err'); }
@@ -118,9 +124,11 @@ $('salvar').addEventListener('click',async()=>{
     const data=await r.json().catch(()=>({}));
     if(r.status===401){ sessionStorage.removeItem('ferracini_admin_password'); throw new Error('Senha administrativa incorreta.'); }
     if(!r.ok) throw new Error(data.error||'Não foi possível salvar.');
-    estado={ingredientes:data.ingredientes||{},produtos:data.produtos||{},operacao:data.operacao||{demanda:'normal'}}; catalogo=data.catalogo||catalogo; storageReady=true;
+    estado={ingredientes:data.ingredientes||{},produtos:data.produtos||{},operacao:data.operacao||{demanda:'normal'}}; catalogo=data.catalogo||catalogo; storageReady=data.storageReady!==false; storageDegraded=data.storageDegraded===true; storageMode=data.storageMode||null;
     $('status').textContent=`Salvo agora: ${new Date(data.updatedAt).toLocaleString('pt-BR')}`;
-    $('systemMsg').innerHTML=notice('Alterações salvas. O cardápio dos clientes será atualizado automaticamente em até alguns minutos.','ok');
+    $('systemMsg').innerHTML=storageDegraded
+      ? notice('Alterações salvas no modo temporário. O cardápio dos clientes será atualizado em até alguns minutos.','warn')
+      : notice('Alterações salvas. O cardápio dos clientes será atualizado automaticamente em até alguns minutos.','ok');
     render();
   }catch(e){ $('systemMsg').innerHTML=notice(e.message||'Erro ao salvar.','err'); }
   finally{btn.disabled=false;btn.textContent='Salvar alterações';}
