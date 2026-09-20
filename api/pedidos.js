@@ -335,8 +335,9 @@ function validarPayload(raw){
   }
 
   const metodo = texto(raw.pagamento?.metodo, 20);
-  if(!['pix', 'dinheiro'].includes(metodo)) throw new Error('Forma de pagamento inválida.');
+  if(!['pix', 'dinheiro', 'cartao'].includes(metodo)) throw new Error('Forma de pagamento inválida.');
   if(tipo === 'entrega' && metodo !== 'pix') throw new Error('Para entrega, o pagamento deve ser via Pix.');
+  if(metodo === 'cartao' && tipo !== 'retirada') throw new Error('Cartão está disponível somente para retirada.');
   const pagamento = {
     metodo,
     precisaTroco: metodo === 'dinheiro' && raw.pagamento?.precisaTroco === true,
@@ -571,6 +572,7 @@ module.exports = async function handler(req, res){
         'A taxa de serviço não confere. Calcule novamente.',
         'Forma de pagamento inválida.',
         'Para entrega, o pagamento deve ser via Pix.',
+        'Cartão está disponível somente para retirada.',
         'Informe um telefone válido ou deixe o campo em branco.',
         'Valor do pedido inválido.',
         'Valor do troco inválido.',
