@@ -113,6 +113,10 @@ if(fs.existsSync('api/disponibilidade.js')){
     ['recordAuthFailure', 'registro de falhas de autenticação'],
     ['timingSafeEqual', 'comparação segura de senha'],
     ['Retry-After', 'resposta de bloqueio temporário'],
+    ['origemPermitida', 'validação de origem administrativa'],
+    ['MAX_BODY_BYTES', 'limite do corpo administrativo'],
+    ['content-type', 'validação de Content-Type administrativo'],
+    ['Vary', 'separação de cache por senha administrativa'],
   ]){
     if(!api.includes(needle)) fail(`api/disponibilidade.js: ${label}`);
   }
@@ -124,6 +128,8 @@ if(fs.existsSync('api/painel-pedidos.js')){
     ['AUTH_MAX_FAILURES', 'limite de tentativas no painel de pedidos'],
     ['timingSafeEqual', 'comparação segura de senha'],
     ['Retry-After', 'bloqueio temporário'],
+    ['origemPermitida', 'validação de origem no painel de pedidos'],
+    ['Vary', 'separação de cache por senha administrativa'],
   ]){
     if(!api.includes(needle)) fail(`api/painel-pedidos.js: ${label}`);
   }
@@ -134,11 +140,12 @@ if(fs.existsSync('api/comanda.js')){
   for(const [needle, label] of [
     ['credencialValida', 'proteção do endpoint legado'],
     ['PRINT_AGENT_TOKEN', 'token do agente'],
-    ['ADMIN_PASSWORD', 'senha administrativa como credencial alternativa'],
+    ['Vary', 'separação de cache por autorização'],
     ['Endpoint interno protegido', 'negação pública do endpoint legado'],
   ]){
     if(!api.includes(needle)) fail(`api/comanda.js: ${label}`);
   }
+  if(api.includes('ADMIN_PASSWORD')) fail('api/comanda.js: endpoint legado não deve aceitar senha administrativa');
 }
 
 if(fs.existsSync('api/catalogo.json')){
@@ -174,7 +181,7 @@ if(fs.existsSync('vercel.json')){
   try{
     const config = JSON.parse(fs.readFileSync('vercel.json', 'utf8'));
     const allHeaders = (config.headers || []).flatMap(item => item.headers || []).map(item => item.key);
-    for(const name of ['Content-Security-Policy', 'X-Content-Type-Options', 'X-Frame-Options', 'Referrer-Policy']){
+    for(const name of ['Content-Security-Policy', 'X-Content-Type-Options', 'X-Frame-Options', 'Referrer-Policy', 'Strict-Transport-Security', 'X-DNS-Prefetch-Control']){
       if(!allHeaders.includes(name)) fail(`vercel.json: cabeçalho ${name}`);
     }
   }catch(err){ fail(`vercel.json inválido — ${err.message}`); }
@@ -205,6 +212,52 @@ for(const file of ['api/comanda.js', 'api/distancia.js', 'api/disponibilidade.js
   if(!fs.existsSync(file)) continue;
   try{ new Function(fs.readFileSync(file, 'utf8')); }
   catch(err){ fail(`${file}: JavaScript inválido — ${err.message}`); }
+}
+
+
+if(fs.existsSync('index.html')){
+  const html = fs.readFileSync('index.html', 'utf8');
+  if(!/PAYMENT_LABELS\s*=\s*\{[^}]*cartao\s*:\s*['"]Cartão['"]/s.test(html)){
+    fail('index.html: cartão precisa existir nas opções de retirada');
+  }
+  if(!/deliveryMethod\s*===\s*['"]entrega['"]\s*\?\s*\[['"]pix['"]\]\s*:\s*\[['"]pix['"]\s*,\s*['"]dinheiro['"]\s*,\s*['"]cartao['"]\]/.test(html)){
+    fail('index.html: entrega deve continuar somente Pix e retirada deve aceitar Pix, dinheiro e cartão');
+  }
+}
+
+if(fs.existsSync('pedidos.html')){
+  const html = fs.readFileSync('pedidos.html', 'utf8');
+  if(!html.includes('Cartão · pagamento na retirada')) fail('pedidos.html: cartão não é exibido corretamente');
+}
+
+if(fs.existsSync('printer-agent/FerraciniPrintAgent.ps1')){
+  const ps = fs.readFileSync('printer-agent/FerraciniPrintAgent.ps1', 'utf8');
+  if(!ps.includes("PAGAMENTO: CARTAO")) fail('printer-agent: cartão não é reconhecido na impressão');
+}
+
+function walkFiles(dir, out = []){
+  for(const entry of fs.readdirSync(dir, { withFileTypes: true })){
+    if(['.git','node_modules','.vercel'].includes(entry.name)) continue;
+    const full = path.join(dir, entry.name);
+    if(entry.isDirectory()) walkFiles(full, out);
+    else out.push(full);
+  }
+  return out;
+}
+
+const secretPatterns = [
+  ['Google API key', /AIza[0-9A-Za-z_-]{20,}/],
+  ['Vercel Blob token', /vercel_blob_rw_[0-9A-Za-z_-]{20,}/i],
+  ['chave privada', /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/],
+  ['Bearer token literal', /Bearer\s+[A-Za-z0-9._-]{32,}/i],
+];
+for(const file of walkFiles(process.cwd())){
+  if(/\.(png|jpe?g|gif|webp|ico|pdf|zip|woff2?|ttf)$/i.test(file)) continue;
+  let content;
+  try{ content = fs.readFileSync(file, 'utf8'); }catch{ continue; }
+  for(const [label, pattern] of secretPatterns){
+    if(pattern.test(content)) fail(`${path.relative(process.cwd(), file)}: possível segredo exposto (${label})`);
+  }
 }
 
 if(failed) process.exit(1);
