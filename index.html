@@ -1127,7 +1127,9 @@ let frete = { status: 'idle', distanciaKm: null, valor: 0, estimativa: null }; /
 let freteRequestId = 0;
 
 const PAYMENT_LABELS = { pix: 'Pix', dinheiro: 'Dinheiro' };
-function paymentOptionsForMethod(){ return ['pix', 'dinheiro']; }
+function paymentOptionsForMethod(){
+  return deliveryMethod === 'entrega' ? ['pix'] : ['pix', 'dinheiro'];
+}
 function taxaServicoPorDistancia(distanciaKm){
   if(!Number.isFinite(distanciaKm) || distanciaKm <= 0) return 0;
   if(distanciaKm <= 5) return CONFIG.entrega.taxaServico.ate5Km;
@@ -1404,6 +1406,12 @@ document.querySelectorAll('.method-btn').forEach(btn => {
     document.querySelectorAll('.method-btn').forEach(b => b.classList.toggle('active', b === btn));
     enderecoBlockEl.style.display = deliveryMethod === 'entrega' ? 'block' : 'none';
     resetFrete();
+    const opcoesPagamento = paymentOptionsForMethod();
+    if(!opcoesPagamento.includes(paymentMethod)){
+      paymentMethod = opcoesPagamento[0];
+      precisaTroco = false;
+      trocoPara = '';
+    }
     renderPaymentOptions();
     renderCheckout();
   });
