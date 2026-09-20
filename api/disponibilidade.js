@@ -108,7 +108,11 @@ const PRODUTOS = [
   ['Cerveja lata', 'Bebidas'],
   ['Cerveja Long Neck', 'Bebidas'],
   ['Jujutuba 2L', 'Bebidas'],
-  ['Refrico 2L', 'Bebidas'],
+  ['Refriko 2L', 'Bebidas'],
+  ['Suco Tampico 450 ml', 'Bebidas'],
+  ['Suco Tampico 2L', 'Bebidas'],
+  ['Del Valle 1L Laranja', 'Bebidas'],
+  ['Del Valle 1L Uva', 'Bebidas'],
   ['Coca-Cola 1L', 'Bebidas'],
   ['Kuat 2L', 'Bebidas'],
   ['Coca-Cola 2L', 'Bebidas'],
@@ -147,7 +151,11 @@ function mergeState(raw){
       if(typeof raw.ingredientes?.[id] === 'boolean') base.ingredientes[id] = raw.ingredientes[id];
     }
     for(const [nome] of PRODUTOS){
-      if(typeof raw.produtos?.[nome] === 'boolean') base.produtos[nome] = raw.produtos[nome];
+      if(typeof raw.produtos?.[nome] === 'boolean'){
+        base.produtos[nome] = raw.produtos[nome];
+      }else if(nome === 'Refriko 2L' && typeof raw.produtos?.['Refrico 2L'] === 'boolean'){
+        base.produtos[nome] = raw.produtos['Refrico 2L'];
+      }
     }
     const demanda = raw.operacao?.demanda;
     if(['baixa','normal','alta'].includes(demanda)) base.operacao.demanda = demanda;
