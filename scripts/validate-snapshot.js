@@ -146,7 +146,7 @@ if(fs.existsSync('api/catalogo.json')){
     const catalogo = JSON.parse(fs.readFileSync('api/catalogo.json', 'utf8'));
     const nomesProdutos = Object.keys(catalogo.produtos || {});
     const nomesAdicionais = Object.keys(catalogo.adicionais || {});
-    if(nomesProdutos.length !== 23) fail('api/catalogo.json: quantidade de produtos inesperada');
+    if(nomesProdutos.length !== 27) fail('api/catalogo.json: quantidade de produtos inesperada');
     if(nomesAdicionais.length !== 17) fail('api/catalogo.json: quantidade de adicionais inesperada');
 
     for(const file of ['index.html', 'mesa.html']){
