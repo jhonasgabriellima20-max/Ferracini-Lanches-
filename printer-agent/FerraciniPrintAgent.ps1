@@ -240,6 +240,9 @@ function Format-Receipt($Pedido, [int]$Width) {
   } elseif ($pag -eq 'pix') {
     $lines.Add('PAGAMENTO: PIX')
     $lines.Add('Conferir comprovante no WhatsApp')
+  } elseif ($pag -eq 'cartao') {
+    $lines.Add('PAGAMENTO: CARTAO')
+    $lines.Add('Pagamento na retirada')
   } else {
     $lines.Add('PAGAMENTO: NAO INFORMADO')
   }
