@@ -7,6 +7,14 @@ const AUTH_MAX_FAILURES = 5;
 const failedLogins = globalThis.__ferraciniAdminFailures || new Map();
 globalThis.__ferraciniAdminFailures = failedLogins;
 
+const PUBLIC_CACHE_TTL_MS = 5 * 60 * 1000;
+const disponibilidadeCache = globalThis.__ferraciniDisponibilidadeCache || {
+  state: null,
+  storageMode: null,
+  expiresAt: 0,
+};
+globalThis.__ferraciniDisponibilidadeCache = disponibilidadeCache;
+
 const INGREDIENTES = [
   ['pao', 'Pão'],
   ['salsicha', 'Salsicha'],
@@ -171,21 +179,49 @@ function isNotFound(err){
   return err?.status === 404 || err?.statusCode === 404 || err?.code === 'not_found' || err?.code === 'BLOB_NOT_FOUND';
 }
 
-async function readState(){
+function saveCache(state, storageMode){
+  disponibilidadeCache.state = mergeState(state);
+  disponibilidadeCache.storageMode = storageMode || disponibilidadeCache.storageMode || null;
+  disponibilidadeCache.expiresAt = Date.now() + PUBLIC_CACHE_TTL_MS;
+}
+
+async function readState({ force = false } = {}){
+  const now = Date.now();
+  if(!force && disponibilidadeCache.state && disponibilidadeCache.expiresAt > now){
+    return {
+      state: disponibilidadeCache.state,
+      storageReady: true,
+      storageMode: disponibilidadeCache.storageMode,
+      cacheHit: true,
+    };
+  }
+
   const result = await readJson(BLOB_PATH);
-  if(result.value) return { state: mergeState(result.value), storageReady: true, storageMode: result.mode };
+  if(result.value){
+    const state = mergeState(result.value);
+    saveCache(state, result.mode);
+    return { state, storageReady: true, storageMode: result.mode, cacheHit: false };
+  }
 
   const state = defaults();
   const saved = await writeJson(BLOB_PATH, state, { allowOverwrite: true });
-  return { state, storageReady: true, storageMode: saved.mode };
+  saveCache(state, saved.mode);
+  return { state, storageReady: true, storageMode: saved.mode, cacheHit: false };
 }
 
 async function writeState(state){
-  return writeJson(BLOB_PATH, state, { allowOverwrite: true });
+  const saved = await writeJson(BLOB_PATH, state, { allowOverwrite: true });
+  saveCache(state, saved.mode);
+  return saved;
 }
 
 module.exports = async function handler(req, res){
-  res.setHeader('Cache-Control', 'no-store, max-age=0');
+  const adminRequest = Boolean(req.headers['x-admin-password']);
+  if(req.method === 'GET' && !adminRequest){
+    res.setHeader('Cache-Control', 'public, max-age=60, s-maxage=300, stale-while-revalidate=900');
+  }else{
+    res.setHeader('Cache-Control', 'no-store, max-age=0');
+  }
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Robots-Tag', 'noindex, nofollow');
 
@@ -210,11 +246,20 @@ module.exports = async function handler(req, res){
     }
 
     try{
-      const { state, storageReady, storageMode } = await readState();
-      return res.status(200).json({ ...state, catalogo: catalogo(), storageReady, storageMode, adminConfigured: Boolean(adminPassword), authenticated });
+      const { state, storageReady, storageMode, cacheHit } = await readState({ force: Boolean(recebida) });
+      return res.status(200).json({ ...state, catalogo: catalogo(), storageReady, storageMode, cacheHit, adminConfigured: Boolean(adminPassword), authenticated });
     }catch(err){
       console.error('Falha ao ler disponibilidade:', err);
-      return res.status(200).json({ ...defaults(), catalogo: catalogo(), storageReady: false, adminConfigured: Boolean(adminPassword), authenticated });
+      const staleState = disponibilidadeCache.state || defaults();
+      return res.status(200).json({
+        ...staleState,
+        catalogo: catalogo(),
+        storageReady: false,
+        storageMode: disponibilidadeCache.storageMode,
+        cacheHit: Boolean(disponibilidadeCache.state),
+        adminConfigured: Boolean(adminPassword),
+        authenticated,
+      });
     }
   }
 
