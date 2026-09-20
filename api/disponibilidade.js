@@ -218,9 +218,13 @@ async function writeState(state){
 module.exports = async function handler(req, res){
   const adminRequest = Boolean(req.headers['x-admin-password']);
   if(req.method === 'GET' && !adminRequest){
-    res.setHeader('Cache-Control', 'public, max-age=60, s-maxage=300, stale-while-revalidate=900');
+    res.setHeader('Cache-Control', 'public, max-age=60');
+    res.setHeader('CDN-Cache-Control', 'public, max-age=300, stale-while-revalidate=900');
+    res.setHeader('Vercel-CDN-Cache-Control', 'public, max-age=300, stale-while-revalidate=900');
   }else{
     res.setHeader('Cache-Control', 'no-store, max-age=0');
+    res.setHeader('CDN-Cache-Control', 'no-store');
+    res.setHeader('Vercel-CDN-Cache-Control', 'no-store');
   }
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Robots-Tag', 'noindex, nofollow');
