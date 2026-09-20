@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 
 const required = [
-  'index.html', 'admin.html', 'mesa.html', 'vercel.json', 'package.json',
+  'index.html', 'admin.html', 'mesa.html', 'pedidos.html', 'vercel.json', 'package.json',
   'api/catalogo.json', 'api/comanda.js', 'api/distancia.js', 'api/disponibilidade.js',
   'api/painel-pedidos.js', 'api/pedidos.js', 'lib/delivery-distance.js', 'lib/blob-storage.js'
 ];
@@ -21,16 +21,21 @@ function checkHtml(file, isMesa){
   if(!fs.existsSync(file)) return;
   const html = fs.readFileSync(file, 'utf8');
   const checks = [
-    ['/api/distancia', 'endpoint de frete'],
     ['/api/pedidos', 'registro seguro de pedidos'],
-    [/valorPorKm\s*:\s*2\.30\b/, 'valor de R$ 2,30/km'],
-    [/Math\.ceil\(\(data\.distanciaKm\s*\*\s*CONFIG\.entrega\.valorPorKm\)\s*-\s*1e-9\)/, 'arredondamento inteiro do frete'],
-    ['endCep', 'campo CEP'],
     ['carregarDisponibilidade', 'disponibilidade'],
     ['montarPayloadPedido', 'payload da fila de impressão'],
     ['clientRequestIdAtual', 'idempotência do envio'],
     ['registrarPedidoNoSistema', 'registro direto no sistema'],
   ];
+
+  if(!isMesa){
+    checks.push(
+      ['/api/distancia', 'endpoint de frete'],
+      [/valorPorKm\s*:\s*2\.30\b/, 'valor de R$ 2,30/km'],
+      [/Math\.ceil\(\(data\.distanciaKm\s*\*\s*CONFIG\.entrega\.valorPorKm\)\s*-\s*1e-9\)/, 'arredondamento inteiro do frete'],
+      ['endCep', 'campo CEP']
+    );
+  }
 
   for(const [check, label] of checks){
     const ok = check instanceof RegExp ? check.test(html) : html.includes(check);
@@ -66,6 +71,17 @@ function checkHtml(file, isMesa){
 
 checkHtml('index.html', false);
 checkHtml('mesa.html', true);
+
+if(fs.existsSync('pedidos.html')){
+  const html = fs.readFileSync('pedidos.html', 'utf8');
+  const scripts = [...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)];
+  for(const [, attrs, source] of scripts){
+    if(/\bsrc\s*=/.test(attrs)) continue;
+    try{ new Function(source); }
+    catch(err){ fail(`pedidos.html: JavaScript inválido — ${err.message}`); }
+  }
+  if(!html.includes('/api/painel-pedidos')) fail('pedidos.html: endpoint do painel ausente');
+}
 
 if(fs.existsSync('api/pedidos.js')){
   const api = fs.readFileSync('api/pedidos.js', 'utf8');
