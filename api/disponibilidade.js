@@ -4,6 +4,7 @@ const { readJson, writeJson, isAuthError } = require('../lib/blob-storage');
 const BLOB_PATH = 'config/disponibilidade.json';
 const AUTH_WINDOW_MS = 15 * 60 * 1000;
 const AUTH_MAX_FAILURES = 5;
+const MAX_BODY_BYTES = 32 * 1024;
 const failedLogins = globalThis.__ferraciniAdminFailures || new Map();
 globalThis.__ferraciniAdminFailures = failedLogins;
 
@@ -171,6 +172,22 @@ function catalogo(){
   };
 }
 
+function origemPermitida(req){
+  if(String(req.headers['sec-fetch-site'] || '').toLowerCase() === 'cross-site') return false;
+  const origin = String(req.headers.origin || '').trim();
+  if(!origin) return true;
+  try{
+    const url = new URL(origin);
+    if(url.protocol !== 'https:' && url.hostname !== 'localhost') return false;
+    return url.hostname === 'ferracinilanches.com.br' ||
+      url.hostname === 'www.ferracinilanches.com.br' ||
+      /^ferracini-lanches(?:-[a-z0-9-]+)?(?:-jho-n)?\.vercel\.app$/i.test(url.hostname) ||
+      url.hostname === 'localhost';
+  }catch{
+    return false;
+  }
+}
+
 function passwordOk(recebida, esperada){
   if(!recebida || !esperada) return false;
   const a = Buffer.from(String(recebida));
@@ -330,6 +347,7 @@ module.exports = async function handler(req, res){
   }
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+  res.setHeader('Vary', 'X-Admin-Password');
 
   if(req.method === 'GET'){
     const recebida = req.headers['x-admin-password'];
@@ -337,6 +355,7 @@ module.exports = async function handler(req, res){
     let authenticated;
 
     if(recebida){
+      if(!origemPermitida(req)) return res.status(403).json({ error: 'Origem não permitida.' });
       if(authRateLimited(req, res)) return;
       authenticated = passwordOk(recebida, adminPassword);
       if(!authenticated){
@@ -372,6 +391,15 @@ module.exports = async function handler(req, res){
   }
 
   if(req.method === 'POST'){
+    if(!origemPermitida(req)) return res.status(403).json({ error: 'Origem não permitida.' });
+    const contentType = String(req.headers['content-type'] || '').toLowerCase();
+    if(!contentType.includes('application/json')){
+      return res.status(415).json({ error: 'Conteúdo deve ser enviado em JSON.' });
+    }
+    const contentLength = Number(req.headers['content-length'] || 0);
+    if(Number.isFinite(contentLength) && contentLength > MAX_BODY_BYTES){
+      return res.status(413).json({ error: 'Requisição muito grande.' });
+    }
     const adminPassword = process.env.ADMIN_PASSWORD || '';
     const recebida = req.headers['x-admin-password'];
     if(!adminPassword){
