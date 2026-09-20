@@ -1005,7 +1005,9 @@ function renderMenu(){
 
 renderMenu();
 carregarDisponibilidade();
-setInterval(() => carregarDisponibilidade({ silencioso:false }), 20000);
+setInterval(() => {
+  if(!document.hidden) carregarDisponibilidade({ silencioso:false });
+}, 5 * 60 * 1000);
 
 
 /* ---------------------------------------------------------------------
