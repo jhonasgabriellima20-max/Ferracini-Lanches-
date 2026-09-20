@@ -43,6 +43,10 @@ function checkHtml(file, isMesa){
   }
 
   if(!html.includes('https://wa.me/') || !html.includes('5543998075190')) fail(`${file}: WhatsApp da loja ausente`);
+  if(!html.includes('armazenamentoDegradado')) fail(`${file}: contingência rápida do armazenamento ausente`);
+  if(!html.includes('registroFallbackWhatsapp')) fail(`${file}: fallback imediato para WhatsApp ausente`);
+  if(!html.includes('controller.abort(), 4000')) fail(`${file}: timeout de registro deve ser 4 segundos`);
+  if(html.includes('controller.abort(), 12000')) fail(`${file}: timeout antigo de 12 segundos ainda presente`);
 
   if(/fetch\(['"]\/api\/comanda/.test(html)) fail(`${file}: ainda usa endpoint legado de comanda`);
   if(html.includes('\\`') || html.includes('\\${')) fail(`${file}: template literal escapado incorretamente`);

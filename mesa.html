@@ -797,6 +797,7 @@ const cart = {}; // { "Nome do produto": { qty, preco, adicionais:[{nome,preco}]
 let disponibilidade = { ingredientes: {}, produtos: {} };
 let disponibilidadeAtualizadaEm = null;
 let demandaAtual = 'normal';
+let armazenamentoDegradado = false;
 
 function ingredienteDisponivel(id){
   return disponibilidade.ingredientes?.[id] !== false;
@@ -843,6 +844,7 @@ async function carregarDisponibilidade({ silencioso = true } = {}){
     };
     disponibilidadeAtualizadaEm = data.updatedAt || null;
     demandaAtual = ['baixa','normal','alta'].includes(data.operacao?.demanda) ? data.operacao.demanda : 'normal';
+      armazenamentoDegradado = data.storageDegraded === true;
     const removeu = removerItensIndisponiveisDoCarrinho();
     renderMenu();
     if(removeu && !silencioso){
@@ -1497,9 +1499,23 @@ function montarPayloadPedido(clientRequestId){
   };
 }
 
+function registroFallbackWhatsapp(payload){
+  const base = String(payload?.clientRequestId || '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+  const numero = 'W' + (base.slice(-6) || Math.random().toString(36).slice(2, 8).toUpperCase());
+  return {
+    pedido: { id: null, numero, status: 'whatsapp' },
+    duplicado: false,
+    impressaoAtiva: false,
+    storageDegraded: true,
+    warning: 'Armazenamento temporariamente indisponível. Finalize o envio pelo WhatsApp.',
+  };
+}
+
 async function registrarPedidoNoSistema(payload){
+  if(armazenamentoDegradado) return registroFallbackWhatsapp(payload);
+
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 12000);
+  const timeout = setTimeout(() => controller.abort(), 4000);
   try{
     const resp = await fetch('/api/pedidos', {
       method: 'POST',
@@ -1509,6 +1525,7 @@ async function registrarPedidoNoSistema(payload){
     });
     const data = await resp.json().catch(() => ({}));
     if(!resp.ok) throw new Error(data?.error || 'Não foi possível registrar o pedido.');
+    armazenamentoDegradado = data?.storageDegraded === true;
     if(!data?.pedido?.numero) throw new Error('O sistema não confirmou o pedido. Tente novamente.');
     if(!data?.storageDegraded && !data?.pedido?.id) throw new Error('O sistema não confirmou o pedido. Tente novamente.');
     return data;
