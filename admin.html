@@ -120,7 +120,7 @@ $('salvar').addEventListener('click',async()=>{
     if(!r.ok) throw new Error(data.error||'Não foi possível salvar.');
     estado={ingredientes:data.ingredientes||{},produtos:data.produtos||{},operacao:data.operacao||{demanda:'normal'}}; catalogo=data.catalogo||catalogo; storageReady=true;
     $('status').textContent=`Salvo agora: ${new Date(data.updatedAt).toLocaleString('pt-BR')}`;
-    $('systemMsg').innerHTML=notice('Alterações salvas. O cardápio dos clientes será atualizado automaticamente em até 20 segundos.','ok');
+    $('systemMsg').innerHTML=notice('Alterações salvas. O cardápio dos clientes será atualizado automaticamente em até alguns minutos.','ok');
     render();
   }catch(e){ $('systemMsg').innerHTML=notice(e.message||'Erro ao salvar.','err'); }
   finally{btn.disabled=false;btn.textContent='Salvar alterações';}
