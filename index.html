@@ -1693,7 +1693,7 @@ function montarPayloadPedido(clientRequestId){
 
 async function registrarPedidoNoSistema(payload){
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 30000);
+  const timeout = setTimeout(() => controller.abort(), 12000);
   try{
     const resp = await fetch('/api/pedidos', {
       method: 'POST',
@@ -1703,7 +1703,8 @@ async function registrarPedidoNoSistema(payload){
     });
     const data = await resp.json().catch(() => ({}));
     if(!resp.ok) throw new Error(data?.error || 'Não foi possível registrar o pedido.');
-    if(!data?.pedido?.id || !data?.pedido?.numero) throw new Error('O sistema não confirmou o pedido. Tente novamente.');
+    if(!data?.pedido?.numero) throw new Error('O sistema não confirmou o pedido. Tente novamente.');
+    if(!data?.storageDegraded && !data?.pedido?.id) throw new Error('O sistema não confirmou o pedido. Tente novamente.');
     return data;
   }finally{
     clearTimeout(timeout);
@@ -1767,14 +1768,30 @@ btnEnviarPedidoEl.addEventListener('click', async () => {
     return;
   }
 
-  const destinoWhatsApp = linkWhatsApp(montarMensagemPedido());
-
   btnEnviarPedidoEl.disabled = true;
-  btnEnviarPedidoEl.textContent = 'Abrindo WhatsApp...';
+  btnEnviarPedidoEl.textContent = 'Registrando pedido...';
 
-  // Contingência enquanto o Blob está suspenso: não tenta persistir no
-  // armazenamento. O WhatsApp recebe a comanda completa normalmente.
-  checkoutConfirmEl.innerHTML = '✅ Abrindo o WhatsApp com sua comanda completa. Confira a mensagem e toque em enviar.';
+  const clientRequestId = clientRequestIdAtual || criarIdPedido();
+  clientRequestIdAtual = clientRequestId;
+  const payload = montarPayloadPedido(clientRequestId);
+  let registro = null;
+  let avisoSistema = '';
+
+  try{
+    registro = await registrarPedidoNoSistema(payload);
+    avisoSistema = registro?.storageDegraded
+      ? '⚠️ O armazenamento está temporariamente indisponível, mas sua comanda seguirá normalmente pelo WhatsApp.'
+      : `✅ Comanda ${registro.pedido.numero} registrada no sistema. Abrindo o WhatsApp para envio.`;
+  }catch(err){
+    console.warn('[checkout] registro_sistema_falhou_whatsapp_preservado', { error: String(err) });
+    avisoSistema = '⚠️ Não foi possível registrar a comanda no sistema agora, mas seu pedido seguirá normalmente pelo WhatsApp.';
+  }
+
+  const numeroComanda = registro?.pedido?.numero || '';
+  const destinoWhatsApp = linkWhatsApp(montarMensagemPedido(numeroComanda));
+
+  btnEnviarPedidoEl.textContent = 'Abrindo WhatsApp...';
+  checkoutConfirmEl.innerHTML = avisoSistema;
   checkoutConfirmEl.style.display = 'block';
   window.location.assign(destinoWhatsApp);
 });
