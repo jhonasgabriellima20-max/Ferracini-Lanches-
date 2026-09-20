@@ -1461,7 +1461,7 @@ function montarPayloadPedido(clientRequestId){
         complemento: document.getElementById('endComplemento').value.trim(),
         bairro: document.getElementById('endBairro').value.trim(),
         cidade: document.getElementById('endCidade').value.trim(),
-        cep: formatarCep(somenteDigitos(document.getElementById('endCep').value)),
+        cep: '',
       },
       distanciaKm: frete.distanciaKm,
       taxaEntregaCentavos: Math.round(frete.valor * 100),
