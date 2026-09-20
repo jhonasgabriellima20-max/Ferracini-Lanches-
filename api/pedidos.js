@@ -52,13 +52,13 @@ function statusHorarioPedidos(agora = new Date()){
   if(dia >= 1 && dia <= 4) aberto = entre(18 * 60, 23 * 60);
   if(dia === 5) aberto = minutos >= 18 * 60;
   if(dia === 6) aberto = minutos < 60 || minutos >= 18 * 60;
-  if(dia === 0) aberto = minutos < 60 || entre(19 * 60, 23 * 60);
+  if(dia === 0) aberto = minutos < 60 || entre(18 * 60, 23 * 60);
 
   return {
     aberto,
     mensagem: aberto
       ? 'Pedidos online abertos agora.'
-      : 'Estamos fechados no momento. Horários: seg–qui 18h às 23h; sex–sáb 18h à 1h; domingo 19h às 23h.',
+      : 'Estamos fechados no momento. Horários: seg–qui 18h às 23h; sex–sáb 18h à 1h; domingo 18h às 23h.',
   };
 }
 
@@ -313,6 +313,7 @@ function validarPayload(raw){
 
   const metodo = texto(raw.pagamento?.metodo, 20);
   if(!['pix', 'dinheiro'].includes(metodo)) throw new Error('Forma de pagamento inválida.');
+  if(tipo === 'entrega' && metodo !== 'pix') throw new Error('Para entrega, o pagamento deve ser via Pix.');
   const pagamento = {
     metodo,
     precisaTroco: metodo === 'dinheiro' && raw.pagamento?.precisaTroco === true,
