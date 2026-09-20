@@ -243,11 +243,18 @@ function validarPayload(raw){
     throw new Error('Identificador do pedido inválido.');
   }
 
+  const tipo = texto(raw.atendimento?.tipo, 20);
+  if(!['retirada', 'entrega', 'mesa'].includes(tipo)) throw new Error('Tipo de atendimento inválido.');
+
   const nome = texto(raw.cliente?.nome, 80);
   const telefone = texto(raw.cliente?.telefone, 30);
   const telefoneDigitos = telefone.replace(/\D/g, '');
   if(nome.length < 2) throw new Error('Informe o nome do cliente.');
-  if(telefoneDigitos.length < 8 || telefoneDigitos.length > 15){
+  if(tipo === 'mesa'){
+    if(telefoneDigitos.length > 0 && (telefoneDigitos.length < 8 || telefoneDigitos.length > 15)){
+      throw new Error('Informe um telefone válido ou deixe o campo em branco.');
+    }
+  }else if(telefoneDigitos.length < 8 || telefoneDigitos.length > 15){
     throw new Error('Informe um telefone válido.');
   }
 
@@ -256,9 +263,6 @@ function validarPayload(raw){
   }
   const itens = raw.itens.map(validarItem);
   if(itens.some(item => !item)) throw new Error('Há um item inválido no pedido.');
-
-  const tipo = texto(raw.atendimento?.tipo, 20);
-  if(!['retirada', 'entrega', 'mesa'].includes(tipo)) throw new Error('Tipo de atendimento inválido.');
 
   const atendimento = { tipo };
   if(tipo === 'retirada'){
@@ -547,6 +551,8 @@ module.exports = async function handler(req, res){
         'A taxa de entrega não confere. Calcule novamente.',
         'A taxa de serviço não confere. Calcule novamente.',
         'Forma de pagamento inválida.',
+        'Para entrega, o pagamento deve ser via Pix.',
+        'Informe um telefone válido ou deixe o campo em branco.',
         'Valor do pedido inválido.',
         'Valor do troco inválido.',
         'JSON inválido.',
