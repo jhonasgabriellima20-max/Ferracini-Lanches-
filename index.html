@@ -782,7 +782,11 @@ const CONFIG = {
     { categoria:"bebidas", nome:"Cerveja lata", preco:7.00 },
     { categoria:"bebidas", nome:"Cerveja Long Neck", preco:12.00 },
     { categoria:"bebidas", nome:"Jujutuba 2L", preco:10.00 },
-    { categoria:"bebidas", nome:"Refrico 2L", preco:12.00 },
+    { categoria:"bebidas", nome:"Refriko 2L", preco:12.00 },
+    { categoria:"bebidas", nome:"Suco Tampico 450 ml", preco:null },
+    { categoria:"bebidas", nome:"Suco Tampico 2L", preco:null },
+    { categoria:"bebidas", nome:"Del Valle 1L Laranja", preco:null },
+    { categoria:"bebidas", nome:"Del Valle 1L Uva", preco:null },
     { categoria:"bebidas", nome:"Coca-Cola 1L", preco:12.00 },
     { categoria:"bebidas", nome:"Kuat 2L", preco:15.00 },
     { categoria:"bebidas", nome:"Coca-Cola 2L", preco:17.00 },
@@ -968,7 +972,9 @@ const menuGridEl = document.getElementById('menuGrid');
 
 function productCardHTML(p){
   const disponivel = produtoDisponivel(p);
-  const addonsHTML = disponivel ? (p.adicionais || []).filter(adicionalDisponivel).map(a => `
+  const precoDefinido = Number.isFinite(p.preco);
+  const vendavel = disponivel && precoDefinido;
+  const addonsHTML = vendavel ? (p.adicionais || []).filter(adicionalDisponivel).map(a => `
     <div class="addon-row">
       <label>
         <input type="checkbox" class="addon-check" data-nome="${a.nome}" data-preco="${a.preco}">
@@ -978,20 +984,24 @@ function productCardHTML(p){
     </div>
   `).join('') : '';
 
+  const statusProduto = !disponivel
+    ? '<span class="unavailable-badge">Indisponível no momento</span>'
+    : (!precoDefinido ? '<span class="unavailable-badge">Preço a definir</span>' : '');
+
   return `
-    <div class="product-card ${disponivel ? '' : 'is-unavailable'}" data-name="${p.nome}" data-available="${disponivel ? '1' : '0'}">
+    <div class="product-card ${disponivel ? '' : 'is-unavailable'}" data-name="${p.nome}" data-available="${vendavel ? '1' : '0'}">
       <h3>${p.nome}</h3>
       ${p.descricao ? `<p class="desc">${p.descricao}</p>` : ''}
       <div class="product-foot">
-        <span class="price">${fmtPreco(p.preco)}</span>
-        ${disponivel ? `
+        <span class="price">${precoDefinido ? fmtPreco(p.preco) : 'Preço a definir'}</span>
+        ${vendavel ? `
         <div class="qty-stepper" data-name="${p.nome}" data-price="${p.preco}">
           <button type="button" class="qty-btn minus" aria-label="Diminuir quantidade">−</button>
           <span class="qty-value">${cart[p.nome]?.qty || 0}</span>
           <button type="button" class="qty-btn plus" aria-label="Aumentar quantidade">+</button>
-        </div>` : '<span class="unavailable-badge">Indisponível no momento</span>'}
+        </div>` : statusProduto}
       </div>
-      ${disponivel ? `<div class="card-extra ${cart[p.nome]?.qty > 0 ? 'open' : ''}">
+      ${vendavel ? `<div class="card-extra ${cart[p.nome]?.qty > 0 ? 'open' : ''}">
         ${addonsHTML ? `<div class="addon-list">${addonsHTML}</div>` : ''}
         <textarea class="obs-input" rows="1" placeholder="Observação (opcional) — ex: sem cebola" data-nome="${p.nome}">${cart[p.nome]?.observacao || ''}</textarea>
       </div>` : ''}
