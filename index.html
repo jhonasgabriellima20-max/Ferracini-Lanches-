@@ -811,6 +811,9 @@ const cart = {}; // { "Nome do produto": { qty, preco, adicionais:[{nome,preco}]
 let disponibilidade = { ingredientes: {}, produtos: {} };
 let disponibilidadeAtualizadaEm = null;
 let demandaAtual = 'normal';
+const DISPONIBILIDADE_REFRESH_MS = 5 * 60 * 1000;
+let disponibilidadeUltimaTentativa = 0;
+let disponibilidadeConsultaEmAndamento = null;
 
 function ingredienteDisponivel(id){
   return disponibilidade.ingredientes?.[id] !== false;
@@ -846,25 +849,36 @@ function removerItensIndisponiveisDoCarrinho(){
   return removeu;
 }
 
-async function carregarDisponibilidade({ silencioso = true } = {}){
-  try{
-    const resp = await fetch(`/api/disponibilidade?t=${Date.now()}`, { cache:'no-store' });
-    if(!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    const data = await resp.json();
-    disponibilidade = {
-      ingredientes: data.ingredientes || {},
-      produtos: data.produtos || {},
-    };
-    disponibilidadeAtualizadaEm = data.updatedAt || null;
-    demandaAtual = ['baixa','normal','alta'].includes(data.operacao?.demanda) ? data.operacao.demanda : 'normal';
-    const removeu = removerItensIndisponiveisDoCarrinho();
-    renderMenu();
-    if(removeu && !silencioso){
-      alert('Um item do seu carrinho ficou indisponível e foi removido automaticamente.');
+async function carregarDisponibilidade({ silencioso = true, force = false } = {}){
+  const agora = Date.now();
+  if(disponibilidadeConsultaEmAndamento) return disponibilidadeConsultaEmAndamento;
+  if(!force && (agora - disponibilidadeUltimaTentativa) < DISPONIBILIDADE_REFRESH_MS) return;
+
+  disponibilidadeUltimaTentativa = agora;
+  disponibilidadeConsultaEmAndamento = (async () => {
+    try{
+      const resp = await fetch('/api/disponibilidade', { cache:'default' });
+      if(!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const data = await resp.json();
+      disponibilidade = {
+        ingredientes: data.ingredientes || {},
+        produtos: data.produtos || {},
+      };
+      disponibilidadeAtualizadaEm = data.updatedAt || null;
+      demandaAtual = ['baixa','normal','alta'].includes(data.operacao?.demanda) ? data.operacao.demanda : 'normal';
+      const removeu = removerItensIndisponiveisDoCarrinho();
+      renderMenu();
+      if(removeu && !silencioso){
+        alert('Um item do seu carrinho ficou indisponível e foi removido automaticamente.');
+      }
+    }catch(err){
+      console.warn('Não foi possível atualizar a disponibilidade agora; mantendo o cardápio atual.', err);
+    }finally{
+      disponibilidadeConsultaEmAndamento = null;
     }
-  }catch(err){
-    console.warn('Não foi possível atualizar a disponibilidade agora; mantendo o cardápio atual.', err);
-  }
+  })();
+
+  return disponibilidadeConsultaEmAndamento;
 }
 
 
@@ -1004,9 +1018,14 @@ function renderMenu(){
 }
 
 renderMenu();
-// Contingência: o Vercel Blob da conta está temporariamente suspenso por cota.
-// O cardápio continua operacional com o catálogo publicado e sem chamadas
-// repetidas ao armazenamento até a cota ser restabelecida.
+// Consulta leve: uma vez ao abrir e, no máximo, a cada 5 minutos quando o
+// cliente volta para a aba. O endpoint também usa cache compartilhado, evitando
+// que cada cliente gere uma leitura nova no Blob.
+carregarDisponibilidade({ silencioso:true, force:true });
+document.addEventListener('visibilitychange', () => {
+  if(!document.hidden) carregarDisponibilidade({ silencioso:true });
+});
+window.addEventListener('focus', () => carregarDisponibilidade({ silencioso:true }));
 
 
 /* ---------------------------------------------------------------------
