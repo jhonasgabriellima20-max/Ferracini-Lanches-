@@ -7,6 +7,9 @@ const AUTH_WINDOW_MS = 15 * 60 * 1000;
 const AUTH_MAX_FAILURES = 5;
 const failedLogins = globalThis.__ferraciniPainelPedidosFailures || new Map();
 globalThis.__ferraciniPainelPedidosFailures = failedLogins;
+const pedidoReadCache = globalThis.__ferraciniPainelPedidoReadCache || new Map();
+globalThis.__ferraciniPainelPedidoReadCache = pedidoReadCache;
+const PEDIDO_CACHE_FALLBACK_MS = 30 * 1000;
 
 function passwordOk(recebida, esperada){
   if(!recebida || !esperada) return false;
@@ -79,17 +82,49 @@ async function lerJson(pathname){
   return (await readJson(pathname)).value;
 }
 
+function blobSignature(blob){
+  const uploadedAt = blob?.uploadedAt ? String(blob.uploadedAt) : '';
+  const size = Number(blob?.size) || 0;
+  return uploadedAt || size ? `${uploadedAt}:${size}` : '';
+}
+
+async function lerPedidoComCache(blob){
+  const pathname = blob.pathname;
+  const signature = blobSignature(blob);
+  const cached = pedidoReadCache.get(pathname);
+  const now = Date.now();
+
+  if(cached){
+    if(signature && cached.signature === signature) return cached.value;
+    if(!signature && (now - cached.cachedAt) < PEDIDO_CACHE_FALLBACK_MS) return cached.value;
+  }
+
+  const value = await lerJson(pathname);
+  pedidoReadCache.set(pathname, { signature, cachedAt: now, value });
+  return value;
+}
+
 async function listarPedidos(data, limite){
   const resultado = await listBlobs({ prefix: `${FILA_DIR}/${data}/`, limit: Math.min(100, Math.max(1, limite || 50)) });
   const pedidos = [];
+  const atuais = new Set();
+
   for(const blob of resultado.blobs || []){
+    atuais.add(blob.pathname);
     try{
-      const pedido = await lerJson(blob.pathname);
+      const pedido = await lerPedidoComCache(blob);
       if(pedido) pedidos.push(pedido);
     }catch(err){
       console.warn('[painel-pedidos] leitura_falhou', { pathname: blob.pathname, error: String(err) });
     }
   }
+
+  for(const pathname of pedidoReadCache.keys()){
+    if(pathname.startsWith(`${FILA_DIR}/${data}/`) && !atuais.has(pathname)){
+      pedidoReadCache.delete(pathname);
+    }
+  }
+
   pedidos.sort((a,b) => String(b.criadoEm || '').localeCompare(String(a.criadoEm || '')));
   return pedidos;
 }
