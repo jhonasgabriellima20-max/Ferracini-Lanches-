@@ -982,10 +982,9 @@ function renderMenu(){
 }
 
 renderMenu();
-carregarDisponibilidade();
-setInterval(() => {
-  if(!document.hidden) carregarDisponibilidade({ silencioso:false });
-}, 5 * 60 * 1000);
+// Contingência: o Vercel Blob da conta está temporariamente suspenso por cota.
+// O cardápio continua operacional com o catálogo publicado e sem chamadas
+// repetidas ao armazenamento até a cota ser restabelecida.
 
 
 /* ---------------------------------------------------------------------
@@ -1520,24 +1519,13 @@ btnEnviarPedidoEl.addEventListener('click', async () => {
   }
   checkoutErrorBoxEl.innerHTML = '';
 
-  clientRequestIdAtual ||= criarIdPedido();
-  const payload = montarPayloadPedido(clientRequestIdAtual);
   const destinoWhatsApp = linkWhatsApp(montarMensagemPedido());
 
   btnEnviarPedidoEl.disabled = true;
   btnEnviarPedidoEl.textContent = 'Abrindo WhatsApp...';
 
-  // A comanda da mesa vai sempre para o WhatsApp. O registro interno fica
-  // como apoio e não bloqueia o atendimento se o armazenamento estiver fora.
-  try{
-    fetch('/api/pedidos', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-      keepalive: true,
-    }).catch(() => {});
-  }catch(_err){}
-
+  // Contingência enquanto o Blob está suspenso: a comanda da mesa segue
+  // direto para o WhatsApp sem depender do armazenamento.
   checkoutConfirmEl.innerHTML = '✅ Abrindo o WhatsApp com a comanda completa. Confira a mensagem e toque em enviar.';
   checkoutConfirmEl.style.display = 'block';
   window.location.assign(destinoWhatsApp);
