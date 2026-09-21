@@ -4,7 +4,7 @@ const path = require('path');
 const required = [
   'index.html', 'admin.html', 'mesa.html', 'pedidos.html', 'vercel.json', 'package.json',
   'api/catalogo.json', 'api/comanda.js', 'api/distancia.js', 'api/disponibilidade.js',
-  'api/painel-pedidos.js', 'api/pedidos.js', 'lib/delivery-distance.js', 'lib/blob-storage.js'
+  'api/painel-pedidos.js', 'api/pedidos.js', 'lib/delivery-distance.js', 'lib/postgres-storage.js'
 ];
 
 let failed = false;
@@ -99,7 +99,7 @@ if(fs.existsSync('api/pedidos.js')){
     ['rateLimit', 'limite de requisições'],
     ['MAX_BODY_BYTES', 'limite do corpo'],
     ['clientRequestId', 'idempotência'],
-    ["require('../lib/blob-storage')", 'camada segura de armazenamento'],
+    ["require('../lib/postgres-storage')", 'camada PostgreSQL de armazenamento'],
     ['Math.ceil((distanciaKm * 2.30) - 1e-9) * 100', 'validação do frete no servidor'],
     ['validarEntregaNoServidor', 'revalidação da distância antes de registrar pedido'],
     ['MAX_DISTANCE_DELTA_KM', 'tolerância controlada para divergência de distância'],
@@ -194,25 +194,30 @@ if(fs.existsSync('vercel.json')){
 if(fs.existsSync('package.json')){
   try{
     const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-    const blobVersion = String(pkg.dependencies?.['@vercel/blob'] || '');
-    if(!/^\^?2\.(?:8|9|[1-9]\d)\./.test(blobVersion)) fail('package.json: @vercel/blob precisa estar em 2.8.0 ou superior');
+    const neonVersion = String(pkg.dependencies?.['@neondatabase/serverless'] || '');
+    if(!/^\^?1\./.test(neonVersion)) fail('package.json: @neondatabase/serverless precisa estar na versão 1.x');
+    if(pkg.dependencies?.['@vercel/blob']) fail('package.json: dependência @vercel/blob deve estar removida');
+    if(pkg.dependencies?.['@vercel/oidc']) fail('package.json: dependência @vercel/oidc deve estar removida');
   }catch(err){ fail(`package.json inválido — ${err.message}`); }
 }
 
-if(fs.existsSync('lib/blob-storage.js')){
-  const storage = fs.readFileSync('lib/blob-storage.js', 'utf8');
+if(fs.existsSync('lib/postgres-storage.js')){
+  const storage = fs.readFileSync('lib/postgres-storage.js', 'utf8');
   for(const [needle, label] of [
-    ["aes-256-gcm", 'criptografia AES-256-GCM'],
-    ["access, useCache: false", 'leitura compatível por modo de acesso'],
-    ["'private'", 'preferência por armazenamento privado'],
-    ["'public'", 'fallback público criptografado'],
-    ['STORAGE_ENCRYPTION_KEY', 'chave de criptografia dedicada opcional'],
+    ["@neondatabase/serverless", 'driver oficial do Neon'],
+    ["CREATE TABLE IF NOT EXISTS ferracini_store", 'criação segura da tabela'],
+    ["pathname TEXT PRIMARY KEY", 'chave única para idempotência e reservas'],
+    ["ON CONFLICT (pathname)", 'atualização atômica do estado'],
+    ["mode: 'postgres'", 'identificação do armazenamento PostgreSQL'],
+    ["STORAGE_UNAVAILABLE", 'sinalização de indisponibilidade com fallback'],
   ]){
-    if(!storage.includes(needle)) fail(`lib/blob-storage.js: ${label}`);
+    if(!storage.includes(needle)) fail(`lib/postgres-storage.js: ${label}`);
   }
+}else{
+  fail('arquivo ausente: lib/postgres-storage.js');
 }
 
-for(const file of ['api/comanda.js', 'api/distancia.js', 'api/disponibilidade.js', 'api/painel-pedidos.js', 'api/pedidos.js', 'lib/delivery-distance.js', 'lib/blob-storage.js']){
+for(const file of ['api/comanda.js', 'api/distancia.js', 'api/disponibilidade.js', 'api/painel-pedidos.js', 'api/pedidos.js', 'lib/delivery-distance.js', 'lib/postgres-storage.js']){
   if(!fs.existsSync(file)) continue;
   try{ new Function(fs.readFileSync(file, 'utf8')); }
   catch(err){ fail(`${file}: JavaScript inválido — ${err.message}`); }
@@ -251,7 +256,8 @@ function walkFiles(dir, out = []){
 
 const secretPatterns = [
   ['Google API key', /AIza[0-9A-Za-z_-]{20,}/],
-  ['Vercel Blob token', /vercel_blob_rw_[0-9A-Za-z_-]{20,}/i],
+  ['Vercel Blob token legado', /vercel_blob_rw_[0-9A-Za-z_-]{20,}/i],
+  ['PostgreSQL URL', /postgres(?:ql)?:\/\/[^\s"']+:[^@\s"']+@/i],
   ['chave privada', /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/],
   ['Bearer token literal', /Bearer\s+[A-Za-z0-9._-]{32,}/i],
 ];
