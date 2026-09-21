@@ -1,5 +1,5 @@
 const crypto = require('crypto');
-const { readJson, listBlobs } = require('../lib/blob-storage');
+const { readJson, listBlobs } = require('../lib/postgres-storage');
 
 const TIME_ZONE = 'America/Sao_Paulo';
 const FILA_DIR = 'pedidos/fila';
