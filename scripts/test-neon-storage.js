@@ -49,3 +49,5 @@ function fail(code, label, err){
 })().catch(err => fail(49, 'UNKNOWN_FAIL', err));
 
 // retry after preview RLS refresh
+
+// retry using OIDC sub as Postgres role
