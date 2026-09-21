@@ -220,12 +220,12 @@ async function proximoNumero(dataAtual){
   throw new Error('limite_de_reservas_excedido');
 }
 
-function validarItem(raw){
+function validarItem(raw, catalogo = CATALOGO){
   const nome = texto(raw?.nome, 100);
   const quantidade = inteiro(raw?.quantidade, 1, 20);
   const precoUnitarioCentavos = inteiro(raw?.precoUnitarioCentavos, 0, 100000);
   const adicionaisRaw = Array.isArray(raw?.adicionais) ? raw.adicionais : [];
-  const produto = CATALOGO.produtos[nome];
+  const produto = Object.hasOwn(catalogo.produtos, nome) ? catalogo.produtos[nome] : null;
 
   if(!produto || quantidade === null || precoUnitarioCentavos !== produto.precoCentavos ||
      adicionaisRaw.length > 20 || (!produto.aceitaAdicionais && adicionaisRaw.length > 0)){
@@ -241,7 +241,7 @@ function validarItem(raw){
   if(adicionais.some(item =>
     !item.nome ||
     item.precoCentavos === null ||
-    CATALOGO.adicionais[item.nome] !== item.precoCentavos
+    catalogo.adicionais[item.nome] !== item.precoCentavos
   )){
     return null;
   }
@@ -255,7 +255,7 @@ function validarItem(raw){
   };
 }
 
-function validarPayload(raw){
+function validarPayload(raw, catalogo = CATALOGO){
   if(!raw || typeof raw !== 'object') throw new Error('Pedido inválido.');
   const clientRequestId = texto(raw.clientRequestId, 128);
   if(!/^[a-zA-Z0-9][a-zA-Z0-9._:-]{7,127}$/.test(clientRequestId)){
@@ -280,7 +280,7 @@ function validarPayload(raw){
   if(!Array.isArray(raw.itens) || raw.itens.length < 1 || raw.itens.length > 40){
     throw new Error('O pedido precisa ter entre 1 e 40 itens.');
   }
-  const itens = raw.itens.map(validarItem);
+  const itens = raw.itens.map(item => validarItem(item, catalogo));
   if(itens.some(item => !item)) throw new Error('Há um item inválido no pedido.');
 
   const atendimento = { tipo };
@@ -541,7 +541,9 @@ module.exports = async function handler(req, res){
     try{
       let body = req.body;
       if(typeof body === 'string') body = JSON.parse(body || '{}');
-      const payload = await validarEntregaNoServidor(validarPayload(body));
+      const hasCustom = Array.isArray(body?.itens) && body.itens.some(item => !Object.hasOwn(CATALOGO.produtos, item?.nome || '') || (Array.isArray(item?.adicionais) && item.adicionais.some(a => !Object.hasOwn(CATALOGO.adicionais, a?.nome || ''))));
+      const catalogo = hasCustom ? await require('./disponibilidade').readOrderCatalog() : CATALOGO;
+      const payload = await validarEntregaNoServidor(validarPayload(body, catalogo));
       const registro = await criarPedido(payload);
       return res.status(registro.duplicado ? 200 : 201).json({
         pedido: {

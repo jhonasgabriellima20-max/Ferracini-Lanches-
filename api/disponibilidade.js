@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const { addItem, orderCatalog } = require('../lib/custom-catalog');
 const { readJson, writeJson, isAuthError } = require('../lib/blob-storage');
 
 const BLOB_PATH = 'config/disponibilidade.json';
@@ -142,6 +143,7 @@ function defaults(){
     produtos: Object.fromEntries(PRODUTOS.map(([nome]) => [nome, true])),
     operacao: { demanda: 'normal' },
     updatedAt: null,
+    itensNovos: [],
   };
 }
 
@@ -158,6 +160,11 @@ function mergeState(raw){
         base.produtos[nome] = raw.produtos['Refrico 2L'];
       }
     }
+    base.itensNovos = Array.isArray(raw.itensNovos) ? raw.itensNovos : [];
+    for(const item of base.itensNovos){
+      if(item.categoria === 'adicional') base.ingredientes[item.id] = raw.ingredientes?.[item.id] !== false;
+      else base.produtos[item.nome] = raw.produtos?.[item.nome] !== false;
+    }
     const demanda = raw.operacao?.demanda;
     if(['baixa','normal','alta'].includes(demanda)) base.operacao.demanda = demanda;
     if(typeof raw.updatedAt === 'string') base.updatedAt = raw.updatedAt;
@@ -165,10 +172,10 @@ function mergeState(raw){
   return base;
 }
 
-function catalogo(){
+function catalogo(state = defaults()){
   return {
-    ingredientes: INGREDIENTES.map(([id, nome]) => ({ id, nome, afeta: DEPENDENCIAS[id] || [] })),
-    produtos: PRODUTOS.map(([nome, categoria]) => ({ nome, categoria })),
+    ingredientes: [...INGREDIENTES.map(([id, nome]) => ({ id, nome, afeta: [...(DEPENDENCIAS[id] || []), ...state.itensNovos.filter(i => i.ingredientes?.includes(id)).map(i => i.nome)] })), ...state.itensNovos.filter(i => i.categoria === 'adicional').map(i => ({id:i.id, nome:i.nome, afeta:[], precoCentavos:i.precoCentavos}))],
+    produtos: [...PRODUTOS.map(([nome, categoria]) => ({ nome, categoria })), ...state.itensNovos.filter(i => i.categoria !== 'adicional').map(i => ({...i, categoria: {'dog':'Lanches-Dog','x':'Lanches-X','bebidas':'Bebidas'}[i.categoria]}))],
   };
 }
 
@@ -372,13 +379,13 @@ module.exports = async function handler(req, res){
 
     try{
       const { state, storageReady, storageMode, cacheHit, storageBackoff: backoff, storageDegraded } = await readState({ force: Boolean(recebida) });
-      return res.status(200).json({ ...state, catalogo: catalogo(), storageReady, storageMode, cacheHit, storageBackoff: Boolean(backoff), storageDegraded: Boolean(storageDegraded), adminConfigured: Boolean(adminPassword), authenticated });
+      return res.status(200).json({ ...state, catalogo: catalogo(state), storageReady, storageMode, cacheHit, storageBackoff: Boolean(backoff), storageDegraded: Boolean(storageDegraded), adminConfigured: Boolean(adminPassword), authenticated });
     }catch(err){
       console.error('Falha ao ler disponibilidade:', err);
       const staleState = disponibilidadeCache.state || defaults();
       return res.status(200).json({
         ...staleState,
-        catalogo: catalogo(),
+        catalogo: catalogo(staleState),
         storageReady: false,
         storageMode: disponibilidadeCache.storageMode,
         cacheHit: Boolean(disponibilidadeCache.state),
@@ -420,17 +427,25 @@ module.exports = async function handler(req, res){
     try{
       let body = req.body;
       if(typeof body === 'string') body = JSON.parse(body || '{}');
-      const next = mergeState(body || {});
+      if(!body || typeof body !== 'object' || Array.isArray(body)) return res.status(400).json({error:'Dados inválidos.'});
+      if(Buffer.byteLength(JSON.stringify(body)) > MAX_BODY_BYTES) return res.status(413).json({error:'Requisição muito grande.'});
+      const current = await readState({force:true});
+      if(!current.storageReady) return res.status(503).json({error:'Armazenamento indisponível. Tente novamente.'});
+      if(body.updatedAt !== current.state.updatedAt) return res.status(409).json({error:'O painel foi atualizado em outro acesso. Recarregue a página antes de salvar.'});
+      const itensNovos = body.novoItem ? addItem(current.state.itensNovos, body.novoItem, INGREDIENTES.map(([id]) => id)) : current.state.itensNovos;
+      const next = mergeState({...body, itensNovos});
       next.updatedAt = new Date().toISOString();
       const saved = await writeState(next);
       return res.status(200).json({
         ...next,
-        catalogo: catalogo(),
+        catalogo: catalogo(next),
         storageReady: true,
         storageMode: saved.mode,
         storageDegraded: Boolean(saved.storageDegraded),
       });
     }catch(err){
+      if(err.status) return res.status(err.status).json({error:err.message});
+      if(err instanceof SyntaxError) return res.status(400).json({error:'JSON inválido.'});
       console.error('Falha ao salvar disponibilidade:', err);
       return res.status(503).json({ error: 'Não foi possível salvar. Verifique se um Vercel Blob está conectado ao projeto.' });
     }
@@ -439,3 +454,5 @@ module.exports = async function handler(req, res){
   res.setHeader('Allow', 'GET, POST');
   return res.status(405).json({ error: 'Método não permitido.' });
 };
+
+module.exports.readOrderCatalog = async function(){ const {state} = await readState({force:true}); return orderCatalog(state.itensNovos); };

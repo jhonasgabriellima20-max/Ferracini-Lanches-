@@ -794,6 +794,13 @@ const cart = {}; // { "Nome do produto": { qty, preco, adicionais:[{nome,preco}]
    bloqueia automaticamente todos os lanches que dependem dele e também
    deixa de aparecer como adicional.
    ===================================================================== */
+const PRODUTOS_ORIGINAIS = CONFIG.produtos.slice();
+const ADICIONAIS_ORIGINAIS = ADICIONAIS_PADRAO.slice();
+function aplicarItensNovos(items = []){
+  const extras = items.filter(i => i.categoria === 'adicional').map(i => ({nome:i.nome, ingrediente:i.id, preco:i.precoCentavos / 100}));
+  ADICIONAIS_PADRAO.splice(0, ADICIONAIS_PADRAO.length, ...ADICIONAIS_ORIGINAIS, ...extras);
+  CONFIG.produtos = [...PRODUTOS_ORIGINAIS, ...items.filter(i => i.categoria !== 'adicional').map(i => ({nome:i.nome, categoria:i.categoria, preco:i.precoCentavos / 100, descricao:i.descricao, ingredientes:i.ingredientes || [], adicionais:i.categoria === 'bebidas' ? [] : ADICIONAIS_PADRAO}))];
+}
 let disponibilidade = { ingredientes: {}, produtos: {} };
 let disponibilidadeAtualizadaEm = null;
 let demandaAtual = 'normal';
@@ -943,8 +950,8 @@ function productCardHTML(p){
   const addonsHTML = vendavel ? (p.adicionais || []).filter(adicionalDisponivel).map(a => `
     <div class="addon-row">
       <label>
-        <input type="checkbox" class="addon-check" data-nome="${a.nome}" data-preco="${a.preco}">
-        ${a.nome}
+        <input type="checkbox" class="addon-check" data-nome="${escapeHTML(a.nome)}" data-preco="${a.preco}">
+        ${escapeHTML(a.nome)}
       </label>
       <span>+ ${fmtPreco(a.preco)}</span>
     </div>
@@ -955,13 +962,13 @@ function productCardHTML(p){
     : (!precoDefinido ? '<span class="unavailable-badge">Preço a definir</span>' : '');
 
   return `
-    <div class="product-card ${disponivel ? '' : 'is-unavailable'}" data-name="${p.nome}" data-available="${vendavel ? '1' : '0'}">
-      <h3>${p.nome}</h3>
-      ${p.descricao ? `<p class="desc">${p.descricao}</p>` : ''}
+    <div class="product-card ${disponivel ? '' : 'is-unavailable'}" data-name="${escapeHTML(p.nome)}" data-available="${vendavel ? '1' : '0'}">
+      <h3>${escapeHTML(p.nome)}</h3>
+      ${p.descricao ? `<p class="desc">${escapeHTML(p.descricao)}</p>` : ''}
       <div class="product-foot">
         <span class="price">${precoDefinido ? fmtPreco(p.preco) : 'Preço a definir'}</span>
         ${vendavel ? `
-        <div class="qty-stepper" data-name="${p.nome}" data-price="${p.preco}">
+        <div class="qty-stepper" data-name="${escapeHTML(p.nome)}" data-price="${p.preco}">
           <button type="button" class="qty-btn minus" aria-label="Diminuir quantidade">−</button>
           <span class="qty-value">${cart[p.nome]?.qty || 0}</span>
           <button type="button" class="qty-btn plus" aria-label="Aumentar quantidade">+</button>
@@ -969,7 +976,7 @@ function productCardHTML(p){
       </div>
       ${vendavel ? `<div class="card-extra ${cart[p.nome]?.qty > 0 ? 'open' : ''}">
         ${addonsHTML ? `<div class="addon-list">${addonsHTML}</div>` : ''}
-        <textarea class="obs-input" rows="1" placeholder="Observação (opcional) — ex: sem cebola" data-nome="${p.nome}">${cart[p.nome]?.observacao || ''}</textarea>
+        <textarea class="obs-input" rows="1" placeholder="Observação (opcional) — ex: sem cebola" data-nome="${escapeHTML(p.nome)}">${escapeHTML(cart[p.nome]?.observacao || '')}</textarea>
       </div>` : ''}
     </div>`;
 }
