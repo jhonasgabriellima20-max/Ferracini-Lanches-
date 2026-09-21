@@ -206,8 +206,8 @@ if(fs.existsSync('lib/postgres-storage.js')){
   for(const [needle, label] of [
     ["@vercel/oidc", 'identidade OIDC da Vercel'],
     ["getVercelOidcToken", 'token OIDC automático'],
-    ["DATA_API_URL", 'endpoint seguro da Neon Data API'],
-    ["on_conflict=pathname", 'atualização atômica por pathname'],
+    ["STORAGE_FUNCTION_URL", 'Neon Function privada de armazenamento'],
+    ["callStorage", 'chamada autenticada ao armazenamento'],
     ["mode: 'postgres'", 'identificação do armazenamento PostgreSQL'],
     ["STORAGE_UNAVAILABLE", 'sinalização de indisponibilidade com fallback'],
   ]){
