@@ -1,8 +1,7 @@
 const crypto = require('crypto');
 const CATALOGO = require('./catalogo.json');
 const { calcularDistanciaEndereco } = require('../lib/delivery-distance');
-const { isAuthError } = require('../lib/blob-storage');
-const { readJson, writeJson, listBlobs } = require('../lib/blob-storage');
+const { isStorageUnavailable: isDatabaseUnavailable, readJson, writeJson, listBlobs } = require('../lib/postgres-storage');
 
 const TIME_ZONE = 'America/Sao_Paulo';
 const COUNTER_PATH = 'config/pedidos-sequencia.json';
@@ -96,17 +95,12 @@ function isConflict(err){
 }
 
 function isStorageUnavailable(err){
-  if(isAuthError(err)) return true;
+  if(isDatabaseUnavailable(err)) return true;
   const status = Number(err?.status || err?.statusCode || 0);
   const message = String(err?.message || err || '').toLowerCase();
-  const blobRelated =
-    message.includes('vercel blob') ||
-    message.includes('blob store') ||
-    message.includes('@vercel/blob');
-
-  if(!blobRelated) return false;
   return status === 429 || status >= 500 ||
-    message.includes('suspended') ||
+    message.includes('storage_unavailable') ||
+    message.includes('database_') ||
     message.includes('temporarily unavailable') ||
     message.includes('service unavailable') ||
     message.includes('too many requests') ||
