@@ -1,6 +1,6 @@
 const crypto = require('crypto');
 const { addItem, orderCatalog } = require('../lib/custom-catalog');
-const { readJson, writeJson, isAuthError } = require('../lib/blob-storage');
+const { readJson, writeJson, isStorageUnavailable } = require('../lib/postgres-storage');
 
 const BLOB_PATH = 'config/disponibilidade.json';
 const AUTH_WINDOW_MS = 15 * 60 * 1000;
@@ -317,9 +317,9 @@ async function readState({ force = false } = {}){
     writeRuntimeState(state).catch(() => {});
     return { state, storageReady: true, storageMode: saved.mode, cacheHit: false, storageBackoff: false, storageDegraded: false };
   }catch(err){
-    if(!isStorageSuspended(err) && !isAuthError(err)) throw err;
+    if(!isStorageSuspended(err) && !isStorageUnavailable(err)) throw err;
     armStorageBackoff(err);
-    console.warn('[disponibilidade] blob_indisponivel_usando_runtime_cache', { error: String(err) });
+    console.warn('[disponibilidade] storage_indisponivel_usando_runtime_cache', { error: String(err) });
     return readFallbackState();
   }
 }
@@ -332,9 +332,9 @@ async function writeState(state){
     writeRuntimeState(state).catch(() => {});
     return { ...saved, storageDegraded: false };
   }catch(err){
-    if(!isStorageSuspended(err) && !isAuthError(err)) throw err;
+    if(!isStorageSuspended(err) && !isStorageUnavailable(err)) throw err;
     armStorageBackoff(err);
-    console.warn('[disponibilidade] blob_indisponivel_salvando_runtime_cache', { error: String(err) });
+    console.warn('[disponibilidade] storage_indisponivel_salvando_runtime_cache', { error: String(err) });
     const saved = await writeRuntimeState(state);
     saveCache(saved.state, saved.mode);
     return saved;
