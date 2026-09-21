@@ -1,26 +1,28 @@
+const { readJson, writeJson, listBlobs } = require('../lib/postgres-storage');
+
 (async () => {
-  const { getVercelOidcToken } = await import('@vercel/oidc');
-  const token = await getVercelOidcToken();
-  if(!token) throw new Error('OIDC da Vercel indisponível');
+  const pathname = '__health__/preview-storage.json';
+  const marker = {
+    ok: true,
+    environment: String(process.env.VERCEL_ENV || 'unknown'),
+    commit: String(process.env.VERCEL_GIT_COMMIT_SHA || 'unknown'),
+    testedAt: new Date().toISOString(),
+  };
 
-  const url = new URL('https://ep-soft-mud-aczjydzb.apirest.sa-east-1.aws.neon.tech/ferracini/rest/v1/ferracini_store');
-  url.searchParams.set('select', 'pathname');
-  url.searchParams.set('limit', '1');
+  await writeJson(pathname, marker, { allowOverwrite: true });
 
-  const response = await fetch(url, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: 'application/json'
-    }
-  });
-
-  if(!response.ok){
-    const body = await response.text();
-    throw new Error(`Neon Data API respondeu ${response.status}: ${body.slice(0,180)}`);
+  const read = await readJson(pathname);
+  if(read?.mode !== 'postgres' || read?.value?.ok !== true){
+    throw new Error('neon_storage_read_failed');
   }
 
-  console.log('Neon Data API + Vercel OIDC: OK');
+  const listed = await listBlobs({ prefix:'__health__/', limit:10 });
+  if(!listed.blobs.some(item => item.pathname === pathname)){
+    throw new Error('neon_storage_list_failed');
+  }
+
+  console.log('NEON_STORAGE_OK');
 })().catch(err => {
-  console.error(err.message || String(err));
-  process.exit(1);
+  console.error('NEON_STORAGE_FAIL', String(err?.message || err));
+  process.exit(43);
 });
