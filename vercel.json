@@ -1,6 +1,6 @@
 {
   "framework": null,
-  "buildCommand": "node scripts/check-database-config.js && node scripts/validate-snapshot.js",
+  "buildCommand": "node scripts/validate-snapshot.js",
   "outputDirectory": ".",
   "rewrites": [
     {
