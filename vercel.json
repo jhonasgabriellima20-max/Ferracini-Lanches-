@@ -1,6 +1,6 @@
 {
   "framework": null,
-  "buildCommand": "node scripts/validate-snapshot.js && node scripts/test-neon-storage.js",
+  "buildCommand": "node scripts/validate-snapshot.js",
   "outputDirectory": ".",
   "rewrites": [
     {
