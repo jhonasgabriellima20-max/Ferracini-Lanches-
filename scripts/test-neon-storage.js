@@ -1,53 +1,26 @@
-const { readJson, writeJson, listBlobs } = require('../lib/postgres-storage');
-
-function fail(code, label, err){
-  const status = Number(err?.status || err?.statusCode || 0);
-  console.error(label, { status, code: String(err?.code || ''), message: String(err?.message || err || '') });
-  process.exit(code);
-}
-
 (async () => {
-  const pathname = '__health__/preview-storage.json';
-  const marker = {
-    ok: true,
-    commit: String(process.env.VERCEL_GIT_COMMIT_SHA || 'unknown'),
-    environment: String(process.env.VERCEL_ENV || 'unknown'),
-  };
+  const { getVercelOidcToken } = await import('@vercel/oidc');
+  const token = await getVercelOidcToken();
+  if(!token) process.exit(60);
 
+  let payload;
   try{
-    await writeJson(pathname, marker, { allowOverwrite: true });
-  }catch(err){
-    const status = Number(err?.status || err?.statusCode || 0);
-    if(String(err?.message || '').toLowerCase().includes('oidc')) fail(40, 'OIDC_FAIL', err);
-    if(status === 401) fail(41, 'DATA_API_401', err);
-    if(status === 403) fail(42, 'DATA_API_403', err);
-    if(status === 409) fail(43, 'DATA_API_409', err);
-    fail(44, 'WRITE_FAIL', err);
+    payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString('utf8'));
+  }catch{
+    process.exit(61);
   }
 
-  let read;
-  try{
-    read = await readJson(pathname);
-  }catch(err){
-    fail(45, 'READ_FAIL', err);
-  }
-  if(!read || read.mode !== 'postgres' || !read.value || read.value.ok !== true){
-    fail(46, 'READ_VERIFY_FAIL', new Error('read_value_invalid'));
-  }
+  const sub = String(payload.sub || '');
+  const aud = String(payload.aud || '');
+  const iss = String(payload.iss || '');
 
-  let listed;
-  try{
-    listed = await listBlobs({ prefix: '__health__/', limit: 10 });
-  }catch(err){
-    fail(47, 'LIST_FAIL', err);
-  }
-  if(!listed || !Array.isArray(listed.blobs) || !listed.blobs.some(item => item.pathname === pathname)){
-    fail(48, 'LIST_VERIFY_FAIL', new Error('list_value_invalid'));
-  }
-
-  console.log('NEON_STORAGE_OK');
-})().catch(err => fail(49, 'UNKNOWN_FAIL', err));
-
-// retry after preview RLS refresh
-
-// retry using OIDC sub as Postgres role
+  const expected = 'owner:jho-n:project:ferracini-lanches:environment:preview';
+  if(sub === expected) process.exit(62);
+  if(sub.startsWith('owner:jho-n:project:ferracini-lanches:')) process.exit(63);
+  if(sub.includes('project:ferracini-lanches')) process.exit(64);
+  if(sub.includes('environment:preview')) process.exit(65);
+  if(aud === 'https://vercel.com/jho-n') process.exit(66);
+  if(iss === 'https://oidc.vercel.com/jho-n') process.exit(67);
+  if(iss === 'https://oidc.vercel.com') process.exit(68);
+  process.exit(69);
+})().catch(() => process.exit(70));
