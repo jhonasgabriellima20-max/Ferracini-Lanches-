@@ -1,5 +1,5 @@
 const crypto = require('crypto');
-const { readJson, writeJson } = require('../lib/blob-storage');
+const { readJson, writeJson } = require('../lib/postgres-storage');
 
 const COUNTER_PATH = 'config/comanda-sequencia.json';
 const RESERVA_DIR = 'comandas';
