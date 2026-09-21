@@ -1,6 +1,6 @@
 {
   "framework": null,
-  "buildCommand": "",
+  "buildCommand": "node scripts/check-database-config.js",
   "outputDirectory": ".",
   "rewrites": [
     {

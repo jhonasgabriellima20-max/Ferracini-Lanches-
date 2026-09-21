@@ -1,0 +1,1 @@
+console.log('FERRACINI_DATABASE_CONFIG', JSON.stringify({environment:process.env.VERCEL_ENV, DATABASE_URL:Boolean(process.env.DATABASE_URL), POSTGRES_URL:Boolean(process.env.POSTGRES_URL), POSTGRES_URL_NON_POOLING:Boolean(process.env.POSTGRES_URL_NON_POOLING)}));
