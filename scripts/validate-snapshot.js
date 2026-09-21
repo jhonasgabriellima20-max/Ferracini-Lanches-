@@ -194,20 +194,20 @@ if(fs.existsSync('vercel.json')){
 if(fs.existsSync('package.json')){
   try{
     const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-    const neonVersion = String(pkg.dependencies?.['@neondatabase/serverless'] || '');
-    if(!/^\^?1\./.test(neonVersion)) fail('package.json: @neondatabase/serverless precisa estar na versão 1.x');
+    const oidcVersion = String(pkg.dependencies?.['@vercel/oidc'] || '');
+    if(!oidcVersion) fail('package.json: @vercel/oidc precisa estar configurado');
     if(pkg.dependencies?.['@vercel/blob']) fail('package.json: dependência @vercel/blob deve estar removida');
-    if(pkg.dependencies?.['@vercel/oidc']) fail('package.json: dependência @vercel/oidc deve estar removida');
+    if(pkg.dependencies?.['@neondatabase/serverless']) fail('package.json: conexão direta com senha deve estar removida');
   }catch(err){ fail(`package.json inválido — ${err.message}`); }
 }
 
 if(fs.existsSync('lib/postgres-storage.js')){
   const storage = fs.readFileSync('lib/postgres-storage.js', 'utf8');
   for(const [needle, label] of [
-    ["@neondatabase/serverless", 'driver oficial do Neon'],
-    ["CREATE TABLE IF NOT EXISTS ferracini_store", 'criação segura da tabela'],
-    ["pathname TEXT PRIMARY KEY", 'chave única para idempotência e reservas'],
-    ["ON CONFLICT (pathname)", 'atualização atômica do estado'],
+    ["@vercel/oidc", 'identidade OIDC da Vercel'],
+    ["getVercelOidcToken", 'token OIDC automático'],
+    ["DATA_API_URL", 'endpoint seguro da Neon Data API'],
+    ["on_conflict=pathname", 'atualização atômica por pathname'],
     ["mode: 'postgres'", 'identificação do armazenamento PostgreSQL'],
     ["STORAGE_UNAVAILABLE", 'sinalização de indisponibilidade com fallback'],
   ]){
