@@ -6,18 +6,28 @@ module.exports = async function handler(req, res){
     const token = await getVercelOidcToken();
     if(!token) return res.status(503).json({ ok:false, stage:'oidc' });
 
-    const url = new URL('https://ep-soft-mud-aczjydzb.apirest.sa-east-1.aws.neon.tech/ferracini/rest/v1/ferracini_store');
-    url.searchParams.set('select','pathname');
-    url.searchParams.set('limit','1');
-
-    const response = await fetch(url,{
-      headers:{ Authorization:`Bearer ${token}`, Accept:'application/json' }
+    const response = await fetch('https://br-shiny-snow-awm66ato-ferracinistore.compute.c-12.us-east-1.aws.neon.tech/',{
+      method:'POST',
+      headers:{
+        Authorization:`Bearer ${token}`,
+        'Content-Type':'application/json',
+        Accept:'application/json'
+      },
+      body:JSON.stringify({ op:'read', pathname:'config/disponibilidade.json' })
     });
+
+    const text=await response.text();
     if(!response.ok){
-      const body = await response.text().catch(()=> '');
-      return res.status(503).json({ ok:false, stage:'neon', status:response.status, detail:body.slice(0,120) });
+      return res.status(503).json({ ok:false, stage:'neon-function', status:response.status, detail:text.slice(0,120) });
     }
-    return res.status(200).json({ ok:true, storage:'neon-postgres', auth:'vercel-oidc' });
+    let data=null;
+    try{ data=text?JSON.parse(text):null; }catch{}
+    return res.status(200).json({
+      ok:true,
+      storage:'neon-function',
+      auth:'vercel-oidc',
+      stateLoaded:Boolean(data && Object.hasOwn(data,'value'))
+    });
   }catch(err){
     return res.status(503).json({ ok:false, stage:'exception', error:String(err?.message||err).slice(0,120) });
   }
