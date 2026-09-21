@@ -47,3 +47,5 @@ function fail(code, label, err){
 
   console.log('NEON_STORAGE_OK');
 })().catch(err => fail(49, 'UNKNOWN_FAIL', err));
+
+// retry after granting OIDC role to authenticator
