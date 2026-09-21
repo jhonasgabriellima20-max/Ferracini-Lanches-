@@ -6,7 +6,7 @@
     "node": "24.x"
   },
   "dependencies": {
-    "@neondatabase/serverless": "^1.1.0",
-    "@vercel/functions": "^3.9.8"
+    "@vercel/functions": "^3.9.8",
+    "@vercel/oidc": "^3.8.8"
   }
 }
