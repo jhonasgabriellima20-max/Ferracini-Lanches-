@@ -6,7 +6,6 @@
     "node": "24.x"
   },
   "dependencies": {
-    "@vercel/blob": "^2.8.0",
     "@vercel/functions": "^3.9.8",
     "@vercel/oidc": "^3.8.8"
   }
