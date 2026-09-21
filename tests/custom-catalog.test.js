@@ -50,3 +50,21 @@ test('novo lanche, adicional e bebida validam preços no servidor sem aceitar ad
  assert.equal(validate({nome:'Suco novo',quantidade:1,precoUnitarioCentavos:950,adicionais:item.adicionais},catalog),null);
  assert.ok(validate({nome:'Dog Simples',quantidade:1,precoUnitarioCentavos:1200},catalog));
 });
+test('site e mesa integram itens novos, adicionais, bloqueios e escape HTML',()=>{
+ for(const page of ['index.html','mesa.html']){
+  const html=fs.readFileSync(page,'utf8');const script=html.match(/<script>\s*([\s\S]*?)<\/script>/)[1];
+  const start=script.indexOf('const ADICIONAIS_PADRAO');const end=script.indexOf('function removerItensIndisponiveisDoCarrinho');
+  const context={document:{getElementById:()=>({})},console};vm.createContext(context);
+  vm.runInContext(script.slice(start,end)+`\nthis.testApi={aplicarItensNovos,produtoDisponivel,adicionalDisponivel,CONFIG,ADICIONAIS_PADRAO,disponibilidade,escapeHTML};`,context);
+  const api=context.testApi;
+  api.aplicarItensNovos([{id:'novo_a',nome:'Creme novo',categoria:'adicional',precoCentavos:550},{id:'novo_x',nome:'X "Novo"',categoria:'x',precoCentavos:2900,descricao:'Queijo & pão',ingredientes:['frango']},{id:'novo_b',nome:'Suco novo',categoria:'bebidas',precoCentavos:900}]);
+  assert.equal(api.CONFIG.produtos.length,30-1); // 27 base + 2 new products
+  const lanche=api.CONFIG.produtos.find(i=>i.nome==='X "Novo"');
+  assert.equal(lanche.adicionais.at(-1).preco,5.5);assert.equal(api.CONFIG.produtos[0].adicionais.at(-1).nome,'Creme novo');
+  assert.equal(api.CONFIG.produtos.at(-1).adicionais.length,0);
+  api.disponibilidade.ingredientes.frango=false;assert.equal(api.produtoDisponivel(lanche),false);
+  api.disponibilidade.ingredientes.novo_a=false;assert.equal(api.adicionalDisponivel(lanche.adicionais.at(-1)),false);
+  assert.equal(api.escapeHTML('X "Novo"'),'X &quot;Novo&quot;');
+  api.aplicarItensNovos([]);assert.equal(api.CONFIG.produtos.length,27);assert.equal(api.ADICIONAIS_PADRAO.length,17);
+ }
+});
