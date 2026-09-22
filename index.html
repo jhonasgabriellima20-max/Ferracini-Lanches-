@@ -826,6 +826,14 @@ function aplicarItensNovos(items = []){
 let disponibilidade = { ingredientes: {}, produtos: {} };
 let disponibilidadeAtualizadaEm = null;
 let demandaAtual = 'normal';
+const DIAS_HORARIO = ['domingo','segunda','terca','quarta','quinta','sexta','sabado'];
+const HORARIOS_PADRAO = {
+  domingo:{abertura:'18:00',fechamento:'23:00'}, segunda:{abertura:'18:00',fechamento:'23:00'},
+  terca:{abertura:'18:00',fechamento:'23:00'}, quarta:{abertura:'18:00',fechamento:'23:00'},
+  quinta:{abertura:'18:00',fechamento:'23:00'}, sexta:{abertura:'18:00',fechamento:'01:00'},
+  sabado:{abertura:'18:00',fechamento:'01:00'}
+};
+let operacaoLoja = { modoLoja:'automatico', horarios: HORARIOS_PADRAO };
 let armazenamentoDegradado = false;
 const DISPONIBILIDADE_REFRESH_MS = 5 * 60 * 1000;
 let disponibilidadeUltimaTentativa = 0;
@@ -873,7 +881,8 @@ async function carregarDisponibilidade({ silencioso = true, force = false } = {}
   disponibilidadeUltimaTentativa = agora;
   disponibilidadeConsultaEmAndamento = (async () => {
     try{
-      const resp = await fetch('/api/disponibilidade', { cache:'default' });
+      const urlDisponibilidade = force ? '/api/disponibilidade?fresh=1&t=' + Date.now() : '/api/disponibilidade';
+      const resp = await fetch(urlDisponibilidade, { cache: force ? 'no-store' : 'default' });
       if(!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const data = await resp.json();
       disponibilidade = {
@@ -883,7 +892,13 @@ async function carregarDisponibilidade({ silencioso = true, force = false } = {}
       aplicarItensNovos(data.itensNovos || []);
       disponibilidadeAtualizadaEm = data.updatedAt || null;
       demandaAtual = ['baixa','normal','alta'].includes(data.operacao?.demanda) ? data.operacao.demanda : 'normal';
+      operacaoLoja = {
+        modoLoja: ['automatico','aberto','fechado'].includes(data.operacao?.modoLoja) ? data.operacao.modoLoja : 'automatico',
+        horarios: normalizarHorariosLoja(data.operacao?.horarios),
+      };
       armazenamentoDegradado = data.storageDegraded === true;
+      atualizarTabelaHorarios();
+      atualizarStatusHorarioPedidos();
       const removeu = removerItensIndisponiveisDoCarrinho();
       renderMenu();
       if(removeu && !silencioso){
@@ -1506,27 +1521,67 @@ function partesHorarioLoja(agora = new Date()){
   };
 }
 
+function horarioValidoLoja(value, fallback){
+  return typeof value === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(value) ? value : fallback;
+}
+
+function normalizarHorariosLoja(raw){
+  return Object.fromEntries(DIAS_HORARIO.map(dia => [dia, {
+    abertura: horarioValidoLoja(raw?.[dia]?.abertura, HORARIOS_PADRAO[dia].abertura),
+    fechamento: horarioValidoLoja(raw?.[dia]?.fechamento, HORARIOS_PADRAO[dia].fechamento),
+  }]));
+}
+
+function minutosHorarioLoja(value){
+  const [hora,minuto] = String(value || '00:00').split(':').map(Number);
+  return hora * 60 + minuto;
+}
+
+function formatarHorarioLoja(value){
+  const [hora,minuto] = String(value || '').split(':').map(Number);
+  if(!Number.isFinite(hora) || !Number.isFinite(minuto)) return value;
+  return minuto === 0 ? `${hora}h` : `${hora}h${String(minuto).padStart(2,'0')}`;
+}
+
+function atualizarTabelaHorarios(){
+  const rows = document.querySelectorAll('#localizacao .hours-table .hours-row');
+  const ordem = ['segunda','terca','quarta','quinta','sexta','sabado','domingo'];
+  rows.forEach((row,i) => {
+    const horario = normalizarHorariosLoja(operacaoLoja.horarios)[ordem[i]];
+    const valor = row.querySelector('span:last-child');
+    if(valor) valor.textContent = `${formatarHorarioLoja(horario.abertura)} às ${formatarHorarioLoja(horario.fechamento)}`;
+  });
+}
+
 function statusHorarioPedidos(agora = new Date()){
+  const modo = operacaoLoja?.modoLoja || 'automatico';
+  if(modo === 'aberto') return { aberto:true, mensagem:'Pedidos online abertos agora.' };
+  if(modo === 'fechado') return { aberto:false, mensagem:'A loja encerrou os pedidos no momento.' };
+
+  const horarios = normalizarHorariosLoja(operacaoLoja?.horarios);
   const { dia, minutos } = partesHorarioLoja(agora);
-  const entre = (inicio, fim) => minutos >= inicio && minutos < fim;
+  const hoje = horarios[DIAS_HORARIO[dia]];
+  const ontem = horarios[DIAS_HORARIO[(dia + 6) % 7]];
+  const inicioHoje = minutosHorarioLoja(hoje.abertura);
+  const fimHoje = minutosHorarioLoja(hoje.fechamento);
+  const inicioOntem = minutosHorarioLoja(ontem.abertura);
+  const fimOntem = minutosHorarioLoja(ontem.fechamento);
   let aberto = false;
 
-  // Segunda a quinta: 18h–23h.
-  if(dia >= 1 && dia <= 4) aberto = entre(18 * 60, 23 * 60);
-
-  // Sexta: 18h–00h. Sábado: 00h–01h (continuação de sexta) e 18h–00h.
-  if(dia === 5) aberto = minutos >= 18 * 60;
-  if(dia === 6) aberto = minutos < 60 || minutos >= 18 * 60;
-
-  // Domingo 00h–01h é continuação de sábado. O horário de domingo
-  // Domingo abre às 18h e fecha às 23h.
-  if(dia === 0) aberto = minutos < 60 || entre(18 * 60, 23 * 60);
+  if(inicioHoje !== fimHoje){
+    aberto = fimHoje > inicioHoje
+      ? minutos >= inicioHoje && minutos < fimHoje
+      : minutos >= inicioHoje;
+  }
+  if(!aberto && inicioOntem !== fimOntem && fimOntem < inicioOntem){
+    aberto = minutos < fimOntem;
+  }
 
   return {
     aberto,
     mensagem: aberto
       ? 'Pedidos online abertos agora.'
-      : 'Estamos fechados no momento. Horários: seg–qui 18h às 23h; sex–sáb 18h à 1h; domingo 18h às 23h.',
+      : 'Estamos fechados no momento. Consulte os horários de atendimento.',
   };
 }
 
@@ -1538,9 +1593,10 @@ function atualizarStatusHorarioPedidos(){
   el.style.color = status.aberto ? '#7ee787' : '#ff8a70';
 }
 
-function abrirCheckout(){
+async function abrirCheckout(){
   if(btnEnviarPedidoEl.disabled && btnEnviarPedidoEl.style.display !== 'none') return;
   if(cartTotals().totalQty === 0) return;
+  await carregarDisponibilidade({ silencioso:true, force:true });
   const horario = statusHorarioPedidos();
   if(!horario.aberto){
     alert(horario.mensagem);
@@ -1745,7 +1801,11 @@ async function registrarPedidoNoSistema(payload){
       signal: controller.signal,
     });
     const data = await resp.json().catch(() => ({}));
-    if(!resp.ok) throw new Error(data?.error || 'Não foi possível registrar o pedido.');
+    if(!resp.ok){
+      const erro = new Error(data?.error || 'Não foi possível registrar o pedido.');
+      if(data?.pedidosAbertos === false) erro.pedidosAbertos = false;
+      throw erro;
+    }
     armazenamentoDegradado = data?.storageDegraded === true;
     if(!data?.pedido?.numero) throw new Error('O sistema não confirmou o pedido. Tente novamente.');
     if(!data?.storageDegraded && !data?.pedido?.id) throw new Error('O sistema não confirmou o pedido. Tente novamente.');
@@ -1782,6 +1842,7 @@ btnEnviarPedidoEl.addEventListener('click', async () => {
   if(btnEnviarPedidoEl.disabled) return;
   checkoutErrorBoxEl.innerHTML = '';
 
+  await carregarDisponibilidade({ silencioso:true, force:true });
   const horario = statusHorarioPedidos();
   if(!horario.aberto){
     checkoutErrorBoxEl.innerHTML = `<div class="checkout-error">⚠️ ${escapeHTML(horario.mensagem)}</div>`;
@@ -1827,6 +1888,13 @@ btnEnviarPedidoEl.addEventListener('click', async () => {
       ? '⚠️ O armazenamento está temporariamente indisponível, mas sua comanda seguirá normalmente pelo WhatsApp.'
       : `✅ Comanda ${registro.pedido.numero} registrada no sistema. Abrindo o WhatsApp para envio.`;
   }catch(err){
+    if(err?.pedidosAbertos === false){
+      btnEnviarPedidoEl.disabled = false;
+      btnEnviarPedidoEl.textContent = 'Enviar pedido pelo WhatsApp';
+      checkoutErrorBoxEl.innerHTML = `<div class="checkout-error">⚠️ ${escapeHTML(err.message || 'A loja está fechada no momento.')}</div>`;
+      atualizarStatusHorarioPedidos();
+      return;
+    }
     console.warn('[checkout] registro_sistema_falhou_whatsapp_preservado', { error: String(err) });
     avisoSistema = '⚠️ Não foi possível registrar a comanda no sistema agora, mas seu pedido seguirá normalmente pelo WhatsApp.';
   }
