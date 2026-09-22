@@ -72,7 +72,10 @@ function pagamento(p){
     return 'Dinheiro';
   }
   if(p.pagamento?.metodo === 'pix') return 'Pix · conferir comprovante no WhatsApp';
-  if(p.pagamento?.metodo === 'cartao') return 'Cartão · pagamento na retirada';
+  const local = p.atendimento?.tipo === 'entrega' ? 'na entrega' : 'na retirada';
+  if(p.pagamento?.metodo === 'credito') return `Crédito · máquina ${local}`;
+  if(p.pagamento?.metodo === 'debito') return `Débito · máquina ${local}`;
+  if(p.pagamento?.metodo === 'cartao') return `Cartão · máquina ${local}`;
   return 'Forma de pagamento não informada';
 }
 
