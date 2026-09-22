@@ -429,7 +429,8 @@ async function writeState(state){
 
 module.exports = async function handler(req, res){
   const adminRequest = Boolean(req.headers['x-admin-password']);
-  if(req.method === 'GET' && !adminRequest){
+  const freshRequest = req.method === 'GET' && String(req.query?.fresh || '') === '1';
+  if(req.method === 'GET' && !adminRequest && !freshRequest){
     res.setHeader('Cache-Control', 'public, max-age=60');
     res.setHeader('CDN-Cache-Control', 'public, max-age=300, stale-while-revalidate=900');
     res.setHeader('Vercel-CDN-Cache-Control', 'public, max-age=300, stale-while-revalidate=900');
@@ -464,7 +465,7 @@ module.exports = async function handler(req, res){
     }
 
     try{
-      const { state, storageReady, storageMode, cacheHit, storageBackoff: backoff, storageDegraded } = await readState({ force: Boolean(recebida) });
+      const { state, storageReady, storageMode, cacheHit, storageBackoff: backoff, storageDegraded } = await readState({ force: Boolean(recebida) || freshRequest });
       return res.status(200).json({ ...state, statusLoja: statusHorarioPedidos(state), catalogo: catalogo(state), storageReady, storageMode, cacheHit, storageBackoff: Boolean(backoff), storageDegraded: Boolean(storageDegraded), adminConfigured: Boolean(adminPassword), authenticated });
     }catch(err){
       console.error('Falha ao ler disponibilidade:', err);
@@ -525,6 +526,7 @@ module.exports = async function handler(req, res){
       const saved = await writeState(next);
       return res.status(200).json({
         ...next,
+        statusLoja: statusHorarioPedidos(next),
         catalogo: catalogo(next),
         storageReady: true,
         storageMode: saved.mode,
