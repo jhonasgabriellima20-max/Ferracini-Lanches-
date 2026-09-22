@@ -137,11 +137,94 @@ const DEPENDENCIAS = {
   maionese: ['Dog Simples','Dog Duplo','Dog Presunto Queijo','Dog Frango','Dog Bacon','Dog Frango Bacon (1 Kilo)','Simples Burguer','X-Burguer','X-Salada','X-Egg','X-Frango','X-Bacon (1 Kilo)'],
 };
 
+
+const HORARIO_PADRAO = {
+  domingo: { abertura: '18:00', fechamento: '23:00' },
+  segunda: { abertura: '18:00', fechamento: '23:00' },
+  terca: { abertura: '18:00', fechamento: '23:00' },
+  quarta: { abertura: '18:00', fechamento: '23:00' },
+  quinta: { abertura: '18:00', fechamento: '23:00' },
+  sexta: { abertura: '18:00', fechamento: '01:00' },
+  sabado: { abertura: '18:00', fechamento: '01:00' },
+};
+const DIAS_SEMANA = ['domingo','segunda','terca','quarta','quinta','sexta','sabado'];
+
+function horarioValido(value, fallback){
+  if(typeof value !== 'string' || !/^([01]\d|2[0-3]):[0-5]\d$/.test(value)) return fallback;
+  return value;
+}
+
+function normalizarHorarios(raw){
+  return Object.fromEntries(DIAS_SEMANA.map(dia => {
+    const padrao = HORARIO_PADRAO[dia];
+    return [dia, {
+      abertura: horarioValido(raw?.[dia]?.abertura, padrao.abertura),
+      fechamento: horarioValido(raw?.[dia]?.fechamento, padrao.fechamento),
+    }];
+  }));
+}
+
+function partesHorarioLoja(agora = new Date()){
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Sao_Paulo',
+    weekday: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(agora);
+  const values = {};
+  parts.forEach(part => { if(part.type !== 'literal') values[part.type] = part.value; });
+  const dias = { Sun:0, Mon:1, Tue:2, Wed:3, Thu:4, Fri:5, Sat:6 };
+  return { dia: dias[values.weekday], minutos: Number(values.hour) * 60 + Number(values.minute) };
+}
+
+function minutosHorario(value){
+  const [hora, minuto] = String(value || '00:00').split(':').map(Number);
+  return hora * 60 + minuto;
+}
+
+function statusHorarioPedidos(state, agora = new Date()){
+  const operacao = state?.operacao || {};
+  if(operacao.modoLoja === 'aberto'){
+    return { aberto: true, modo: 'aberto', mensagem: 'Pedidos online abertos manualmente.' };
+  }
+  if(operacao.modoLoja === 'fechado'){
+    return { aberto: false, modo: 'fechado', mensagem: 'A loja encerrou os pedidos manualmente no momento.' };
+  }
+
+  const horarios = normalizarHorarios(operacao.horarios);
+  const { dia, minutos } = partesHorarioLoja(agora);
+  const hoje = horarios[DIAS_SEMANA[dia]];
+  const ontem = horarios[DIAS_SEMANA[(dia + 6) % 7]];
+  const inicioHoje = minutosHorario(hoje.abertura);
+  const fimHoje = minutosHorario(hoje.fechamento);
+  const inicioOntem = minutosHorario(ontem.abertura);
+  const fimOntem = minutosHorario(ontem.fechamento);
+
+  let aberto = false;
+  if(inicioHoje !== fimHoje){
+    aberto = fimHoje > inicioHoje
+      ? minutos >= inicioHoje && minutos < fimHoje
+      : minutos >= inicioHoje;
+  }
+  if(!aberto && inicioOntem !== fimOntem && fimOntem < inicioOntem){
+    aberto = minutos < fimOntem;
+  }
+
+  return {
+    aberto,
+    modo: 'automatico',
+    mensagem: aberto
+      ? 'Pedidos online abertos agora.'
+      : 'Estamos fechados no momento. Consulte os horários de atendimento.',
+  };
+}
+
 function defaults(){
   return {
     ingredientes: Object.fromEntries(INGREDIENTES.map(([id]) => [id, true])),
     produtos: Object.fromEntries(PRODUTOS.map(([nome]) => [nome, true])),
-    operacao: { demanda: 'normal' },
+    operacao: { demanda: 'normal', modoLoja: 'automatico', horarios: normalizarHorarios(HORARIO_PADRAO) },
     updatedAt: null,
     itensNovos: [],
   };
@@ -167,6 +250,9 @@ function mergeState(raw){
     }
     const demanda = raw.operacao?.demanda;
     if(['baixa','normal','alta'].includes(demanda)) base.operacao.demanda = demanda;
+    const modoLoja = raw.operacao?.modoLoja;
+    if(['automatico','aberto','fechado'].includes(modoLoja)) base.operacao.modoLoja = modoLoja;
+    base.operacao.horarios = normalizarHorarios(raw.operacao?.horarios);
     if(typeof raw.updatedAt === 'string') base.updatedAt = raw.updatedAt;
   }
   return base;
@@ -379,12 +465,13 @@ module.exports = async function handler(req, res){
 
     try{
       const { state, storageReady, storageMode, cacheHit, storageBackoff: backoff, storageDegraded } = await readState({ force: Boolean(recebida) });
-      return res.status(200).json({ ...state, catalogo: catalogo(state), storageReady, storageMode, cacheHit, storageBackoff: Boolean(backoff), storageDegraded: Boolean(storageDegraded), adminConfigured: Boolean(adminPassword), authenticated });
+      return res.status(200).json({ ...state, statusLoja: statusHorarioPedidos(state), catalogo: catalogo(state), storageReady, storageMode, cacheHit, storageBackoff: Boolean(backoff), storageDegraded: Boolean(storageDegraded), adminConfigured: Boolean(adminPassword), authenticated });
     }catch(err){
       console.error('Falha ao ler disponibilidade:', err);
       const staleState = disponibilidadeCache.state || defaults();
       return res.status(200).json({
         ...staleState,
+        statusLoja: statusHorarioPedidos(staleState),
         catalogo: catalogo(staleState),
         storageReady: false,
         storageMode: disponibilidadeCache.storageMode,
@@ -456,3 +543,5 @@ module.exports = async function handler(req, res){
 };
 
 module.exports.readOrderCatalog = async function(){ const {state} = await readState({force:true}); return orderCatalog(state.itensNovos); };
+module.exports.readStoreStatus = async function(){ const {state} = await readState({force:true}); return statusHorarioPedidos(state); };
+module.exports.statusHorarioPedidos = statusHorarioPedidos;
