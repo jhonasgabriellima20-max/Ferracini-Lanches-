@@ -1161,9 +1161,9 @@ let trocoPara = '';
 let frete = { status: 'idle', distanciaKm: null, valor: 0, estimativa: null }; // idle | loading | ok | error
 let freteRequestId = 0;
 
-const PAYMENT_LABELS = { pix: 'Pix', dinheiro: 'Dinheiro', cartao: 'Cartão' };
+const PAYMENT_LABELS = { pix: 'Pix', dinheiro: 'Dinheiro', debito: 'Débito', credito: 'Crédito' };
 function paymentOptionsForMethod(){
-  return deliveryMethod === 'entrega' ? ['pix'] : ['pix', 'dinheiro', 'cartao'];
+  return ['pix', 'dinheiro', 'debito', 'credito'];
 }
 function taxaServicoPorDistancia(distanciaKm){
   if(!Number.isFinite(distanciaKm) || distanciaKm <= 0) return 0;
@@ -1194,7 +1194,9 @@ function erroTroco(){
 }
 function descricaoPagamento(){
   if(paymentMethod === 'pix') return `Pix manual — chave ${CONFIG.pix.tipo}: ${CONFIG.pix.chave}\nEnviar o comprovante pelo WhatsApp`;
-  if(paymentMethod === 'cartao') return 'Cartão — pagamento na retirada';
+  const localPagamento = deliveryMethod === 'entrega' ? 'na entrega' : 'na retirada';
+  if(paymentMethod === 'credito') return `Crédito — pagamento ${localPagamento}`;
+  if(paymentMethod === 'debito') return `Débito — pagamento ${localPagamento}`;
   if(!precisaTroco) return 'Dinheiro — sem troco';
   return `Dinheiro — troco para ${fmtPreco(valorTrocoCentavos()/100)}\nTroco a devolver: ${fmtPreco((valorTrocoCentavos()-totalPedidoCentavos())/100)}`;
 }
