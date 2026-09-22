@@ -240,9 +240,15 @@ function Format-Receipt($Pedido, [int]$Width) {
   } elseif ($pag -eq 'pix') {
     $lines.Add('PAGAMENTO: PIX')
     $lines.Add('Conferir comprovante no WhatsApp')
+  } elseif ($pag -eq 'credito') {
+    $lines.Add('PAGAMENTO: CREDITO')
+    if ([string]$Pedido.atendimento.tipo -eq 'entrega') { $lines.Add('Maquina na entrega') } else { $lines.Add('Pagamento na retirada') }
+  } elseif ($pag -eq 'debito') {
+    $lines.Add('PAGAMENTO: DEBITO')
+    if ([string]$Pedido.atendimento.tipo -eq 'entrega') { $lines.Add('Maquina na entrega') } else { $lines.Add('Pagamento na retirada') }
   } elseif ($pag -eq 'cartao') {
     $lines.Add('PAGAMENTO: CARTAO')
-    $lines.Add('Pagamento na retirada')
+    if ([string]$Pedido.atendimento.tipo -eq 'entrega') { $lines.Add('Maquina na entrega') } else { $lines.Add('Pagamento na retirada') }
   } else {
     $lines.Add('PAGAMENTO: NAO INFORMADO')
   }
