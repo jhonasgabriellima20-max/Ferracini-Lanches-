@@ -4,7 +4,7 @@ const path = require('path');
 const required = [
   'index.html', 'admin.html', 'mesa.html', 'pedidos.html', 'vercel.json', 'package.json',
   'api/catalogo.json', 'api/comanda.js', 'api/distancia.js', 'api/disponibilidade.js',
-  'api/painel-pedidos.js', 'api/pedidos.js', 'lib/delivery-distance.js', 'lib/blob-storage.js'
+  'api/painel-pedidos.js', 'api/pedidos.js', 'lib/delivery-distance.js', 'lib/postgres-storage.js'
 ];
 
 let failed = false;
@@ -99,7 +99,7 @@ if(fs.existsSync('api/pedidos.js')){
     ['rateLimit', 'limite de requisições'],
     ['MAX_BODY_BYTES', 'limite do corpo'],
     ['clientRequestId', 'idempotência'],
-    ["require('../lib/blob-storage')", 'camada segura de armazenamento'],
+    ["require('../lib/postgres-storage')", 'camada persistente Neon/Postgres'],
     ['Math.ceil((distanciaKm * 2.30) - 1e-9) * 100', 'validação do frete no servidor'],
     ['validarEntregaNoServidor', 'revalidação da distância antes de registrar pedido'],
     ['MAX_DISTANCE_DELTA_KM', 'tolerância controlada para divergência de distância'],
@@ -194,25 +194,25 @@ if(fs.existsSync('vercel.json')){
 if(fs.existsSync('package.json')){
   try{
     const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-    const blobVersion = String(pkg.dependencies?.['@vercel/blob'] || '');
-    if(!/^\^?2\.(?:8|9|[1-9]\d)\./.test(blobVersion)) fail('package.json: @vercel/blob precisa estar em 2.8.0 ou superior');
+    const oidcVersion = String(pkg.dependencies?.['@vercel/oidc'] || '');
+    if(!oidcVersion) fail('package.json: @vercel/oidc precisa estar configurado para o armazenamento Neon');
   }catch(err){ fail(`package.json inválido — ${err.message}`); }
 }
 
-if(fs.existsSync('lib/blob-storage.js')){
-  const storage = fs.readFileSync('lib/blob-storage.js', 'utf8');
+if(fs.existsSync('lib/postgres-storage.js')){
+  const storage = fs.readFileSync('lib/postgres-storage.js', 'utf8');
   for(const [needle, label] of [
-    ["aes-256-gcm", 'criptografia AES-256-GCM'],
-    ["access, useCache: false", 'leitura compatível por modo de acesso'],
-    ["'private'", 'preferência por armazenamento privado'],
-    ["'public'", 'fallback público criptografado'],
-    ['STORAGE_ENCRYPTION_KEY', 'chave de criptografia dedicada opcional'],
+    ['getVercelOidcToken', 'autenticação OIDC da Vercel'],
+    ['STORAGE_UNAVAILABLE', 'tratamento explícito de indisponibilidade'],
+    ["op:'read'", 'operação de leitura'],
+    ["op:'write'", 'operação de gravação'],
+    ["op:'list'", 'operação de listagem'],
   ]){
-    if(!storage.includes(needle)) fail(`lib/blob-storage.js: ${label}`);
+    if(!storage.includes(needle)) fail(`lib/postgres-storage.js: ${label}`);
   }
 }
 
-for(const file of ['api/comanda.js', 'api/distancia.js', 'api/disponibilidade.js', 'api/painel-pedidos.js', 'api/pedidos.js', 'lib/delivery-distance.js', 'lib/blob-storage.js']){
+for(const file of ['api/comanda.js', 'api/distancia.js', 'api/disponibilidade.js', 'api/painel-pedidos.js', 'api/pedidos.js', 'lib/delivery-distance.js', 'lib/postgres-storage.js']){
   if(!fs.existsSync(file)) continue;
   try{ new Function(fs.readFileSync(file, 'utf8')); }
   catch(err){ fail(`${file}: JavaScript inválido — ${err.message}`); }
@@ -221,22 +221,32 @@ for(const file of ['api/comanda.js', 'api/distancia.js', 'api/disponibilidade.js
 
 if(fs.existsSync('index.html')){
   const html = fs.readFileSync('index.html', 'utf8');
-  if(!/PAYMENT_LABELS\s*=\s*\{[^}]*cartao\s*:\s*['"]Cartão['"]/s.test(html)){
-    fail('index.html: cartão precisa existir nas opções de retirada');
+  if(!html.includes("const PAYMENT_LABELS = { pix: 'Pix', dinheiro: 'Dinheiro', debito: 'Débito', credito: 'Crédito' };")){
+    fail('index.html: Pix, dinheiro, débito e crédito precisam existir nas opções de pagamento');
   }
-  if(!/deliveryMethod\s*===\s*['"]entrega['"]\s*\?\s*\[['"]pix['"]\]\s*:\s*\[['"]pix['"]\s*,\s*['"]dinheiro['"]\s*,\s*['"]cartao['"]\]/.test(html)){
-    fail('index.html: entrega deve continuar somente Pix e retirada deve aceitar Pix, dinheiro e cartão');
+  if(!html.includes("return ['pix', 'dinheiro', 'debito', 'credito'];")){
+    fail('index.html: retirada e entrega devem oferecer Pix, dinheiro, débito e crédito');
   }
 }
 
 if(fs.existsSync('pedidos.html')){
   const html = fs.readFileSync('pedidos.html', 'utf8');
-  if(!html.includes('Cartão · pagamento na retirada')) fail('pedidos.html: cartão não é exibido corretamente');
+  if(!html.includes('Crédito · máquina ${local}') || !html.includes('Débito · máquina ${local}')){
+    fail('pedidos.html: débito e crédito não são exibidos corretamente');
+  }
+  if(!html.includes('Horário do pedido: ${hora(p.criadoEm)}')){
+    fail('pedidos.html: horário do pedido precisa aparecer na comanda');
+  }
 }
 
 if(fs.existsSync('printer-agent/FerraciniPrintAgent.ps1')){
   const ps = fs.readFileSync('printer-agent/FerraciniPrintAgent.ps1', 'utf8');
-  if(!ps.includes("PAGAMENTO: CARTAO")) fail('printer-agent: cartão não é reconhecido na impressão');
+  if(!ps.includes("PAGAMENTO: CREDITO") || !ps.includes("PAGAMENTO: DEBITO")){
+    fail('printer-agent: débito e crédito não são reconhecidos na impressão');
+  }
+  if(!ps.includes('HORARIO DO PEDIDO: ')){
+    fail('printer-agent: horário do pedido precisa aparecer na comanda impressa');
+  }
 }
 
 function walkFiles(dir, out = []){
