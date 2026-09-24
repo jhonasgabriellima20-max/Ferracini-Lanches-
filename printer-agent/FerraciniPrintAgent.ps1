@@ -163,9 +163,12 @@ function Format-Receipt($Pedido, [int]$Width) {
     $dto = [DateTimeOffset]::Parse([string]$Pedido.criadoEm)
     $tz = [TimeZoneInfo]::FindSystemTimeZoneById('E. South America Standard Time')
     $local = [TimeZoneInfo]::ConvertTime($dto, $tz)
-    $lines.Add('Data: ' + $local.ToString('dd/MM/yyyy HH:mm:ss'))
+    $lines.Add('DATA: ' + $local.ToString('dd/MM/yyyy'))
+    $lines.Add('HORARIO DO PEDIDO: ' + $local.ToString('HH:mm'))
   } catch {
-    $lines.Add('Data: ' + (Get-Date -Format 'dd/MM/yyyy HH:mm:ss'))
+    $agoraLocal = Get-Date
+    $lines.Add('DATA: ' + $agoraLocal.ToString('dd/MM/yyyy'))
+    $lines.Add('HORARIO DO PEDIDO: ' + $agoraLocal.ToString('HH:mm'))
   }
 
   $tipo = [string]$Pedido.atendimento.tipo
