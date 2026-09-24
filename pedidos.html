@@ -37,7 +37,7 @@ let timer = null;
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const dinheiro = centavos => (Number(centavos || 0)/100).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
-const hora = iso => { try{return new Date(iso).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});}catch{return '';} };
+const hora = iso => { try{return new Date(iso).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Sao_Paulo'});}catch{return '';} };
 const notice = (text,type='ok') => `<div class="notice ${type}">${esc(text)}</div>`;
 
 function tocarAviso(){
@@ -98,7 +98,7 @@ function render(pedidos){
     const end=endereco(p);
     const previsao=p.atendimento?.estimativaMinutos;
     return `<article class="order ${novo?'new':''}">
-      <div class="order-head"><div><div class="num">Comanda ${esc(p.numero||'—')}</div><div class="tag">${tipoAtendimento(p)}</div></div><div class="time">${hora(p.criadoEm)}</div></div>
+      <div class="order-head"><div><div class="num">Comanda ${esc(p.numero||'—')}</div><div class="tag">${tipoAtendimento(p)}</div></div><div class="time">Horário do pedido: ${hora(p.criadoEm)}</div></div>
       <div class="customer">${esc(p.cliente?.nome||'Cliente')}</div><div class="phone">${esc(p.cliente?.telefone||'')}</div>
       <div class="items">${itens}</div>
       <div class="details">${end?`<div>📍 ${end}</div>`:''}${p.atendimento?.taxaEntregaCentavos?`<div>🚚 Taxa: ${dinheiro(p.atendimento.taxaEntregaCentavos)}</div>`:''}${previsao?`<div>⏱️ Previsão: ${esc(previsao.minimo)} a ${esc(previsao.maximo)} min</div>`:''}<div>💳 ${esc(pagamento(p))}</div></div>
