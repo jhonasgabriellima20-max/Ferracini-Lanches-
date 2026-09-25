@@ -1403,7 +1403,17 @@ function linkWhatsApp(mensagem){
   return `https://wa.me/${CONFIG.whatsapp}?text=${encodeURIComponent(mensagem)}`;
 }
 
-function montarMensagemPedido(comanda = ''){
+function horarioPedidoWhatsApp(criadoEm = ''){
+  const data = criadoEm ? new Date(criadoEm) : new Date();
+  const segura = Number.isNaN(data.getTime()) ? new Date() : data;
+  return new Intl.DateTimeFormat('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
+    hour: '2-digit',
+    minute: '2-digit'
+  }).format(segura);
+}
+
+function montarMensagemPedido(comanda = '', criadoEm = ''){
   const { items, subtotal } = cartTotals();
   const nome = document.getElementById('clienteNome').value.trim();
   const telefone = document.getElementById('clienteTelefone').value.trim();
@@ -1437,6 +1447,7 @@ function montarMensagemPedido(comanda = ''){
   return [
     '🔔 NOVO PEDIDO — MESA',
     comanda ? `🧾 COMANDA ${comanda}` : '',
+    `🕐 HORÁRIO DO PEDIDO: ${horarioPedidoWhatsApp(criadoEm)}`,
     '',
     `👤 CLIENTE\n${nome}\n${telefone}`,
     '',
@@ -1593,7 +1604,7 @@ btnEnviarPedidoEl.addEventListener('click', async () => {
   }
 
   const numeroComanda = registro?.pedido?.numero || '';
-  const destinoWhatsApp = linkWhatsApp(montarMensagemPedido(numeroComanda));
+  const destinoWhatsApp = linkWhatsApp(montarMensagemPedido(numeroComanda, registro?.pedido?.criadoEm));
 
   btnEnviarPedidoEl.textContent = 'Abrindo WhatsApp...';
   checkoutConfirmEl.innerHTML = avisoSistema;
