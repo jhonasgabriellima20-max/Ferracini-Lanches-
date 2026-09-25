@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const CATALOGO = require('./catalogo.json');
 const { calcularDistanciaEndereco } = require('../lib/delivery-distance');
 const { isStorageUnavailable: isDatabaseUnavailable, readJson, writeJson, listBlobs } = require('../lib/postgres-storage');
+const { estimarPrazo } = require('../lib/prep-estimator');
 
 const TIME_ZONE = 'America/Sao_Paulo';
 const COUNTER_PATH = 'config/pedidos-sequencia.json';
@@ -374,6 +375,28 @@ async function validarEntregaNoServidor(payload){
   return payload;
 }
 
+async function aplicarEstimativaInteligente(payload){
+  try{
+    const config = await require('./disponibilidade').readPrepConfig();
+    const calculo = await estimarPrazo({
+      itens: payload.itens,
+      tipo: payload.atendimento.tipo,
+      distanciaKm: payload.atendimento.distanciaKm,
+      config,
+    });
+    payload.atendimento.estimativaMinutos = calculo.estimativaMinutos;
+    payload.atendimento.estimativaDetalhes = {
+      filaMinutos: calculo.filaMinutos,
+      preparoMinutos: calculo.preparoMinutos,
+      deslocamentoMinutos: calculo.deslocamentoMinutos,
+      quantidadeLanches: calculo.quantidadeLanches,
+    };
+  }catch(err){
+    console.warn('[pedidos] estimativa_inteligente_indisponivel', { error: String(err) });
+  }
+  return payload;
+}
+
 function hashId(value){
   return crypto.createHash('sha256').update(value).digest('hex');
 }
@@ -506,7 +529,8 @@ module.exports = async function handler(req, res){
       if(typeof body === 'string') body = JSON.parse(body || '{}');
       const hasCustom = Array.isArray(body?.itens) && body.itens.some(item => !Object.hasOwn(CATALOGO.produtos, item?.nome || '') || (Array.isArray(item?.adicionais) && item.adicionais.some(a => !Object.hasOwn(CATALOGO.adicionais, a?.nome || ''))));
       const catalogo = hasCustom ? await require('./disponibilidade').readOrderCatalog() : CATALOGO;
-      const payload = await validarEntregaNoServidor(validarPayload(body, catalogo));
+      const payloadValidado = await validarEntregaNoServidor(validarPayload(body, catalogo));
+      const payload = await aplicarEstimativaInteligente(payloadValidado);
       const registro = await criarPedido(payload);
       return res.status(registro.duplicado ? 200 : 201).json({
         pedido: {
@@ -515,6 +539,7 @@ module.exports = async function handler(req, res){
           data: registro.pedido.data,
           criadoEm: registro.pedido.criadoEm,
           status: registro.pedido.status,
+          estimativaMinutos: registro.pedido.atendimento?.estimativaMinutos || null,
         },
         duplicado: registro.duplicado,
         impressaoAtiva: Boolean(process.env.PRINT_AGENT_TOKEN),
