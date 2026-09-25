@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const { addItem, orderCatalog } = require('../lib/custom-catalog');
 const { readJson, writeJson, isStorageUnavailable } = require('../lib/postgres-storage');
+const { DEFAULT_PREP_MINUTES } = require('../lib/prep-estimator');
 
 const BLOB_PATH = 'config/disponibilidade.json';
 const AUTH_WINDOW_MS = 15 * 60 * 1000;
@@ -149,6 +150,26 @@ const HORARIO_PADRAO = {
 };
 const DIAS_SEMANA = ['domingo','segunda','terca','quarta','quinta','sexta','sabado'];
 
+function normalizarTemposPreparo(raw, itensNovos = []){
+  const produtos = [
+    ...PRODUTOS.map(([nome, categoria]) => ({ nome, categoria })),
+    ...itensNovos
+      .filter(item => item && item.categoria !== 'adicional')
+      .map(item => ({ nome: item.nome, categoria: item.categoria === 'bebidas' ? 'Bebidas' : 'Lanches' })),
+  ];
+  const result = {};
+  for(const produto of produtos){
+    const padrao = Object.hasOwn(DEFAULT_PREP_MINUTES, produto.nome)
+      ? DEFAULT_PREP_MINUTES[produto.nome]
+      : (produto.categoria === 'Bebidas' ? 0 : 12);
+    const recebido = Number(raw?.[produto.nome]);
+    result[produto.nome] = Number.isFinite(recebido)
+      ? Math.min(90, Math.max(0, Math.round(recebido)))
+      : padrao;
+  }
+  return result;
+}
+
 function horarioValido(value, fallback){
   if(typeof value !== 'string' || !/^([01]\d|2[0-3]):[0-5]\d$/.test(value)) return fallback;
   return value;
@@ -224,7 +245,7 @@ function defaults(){
   return {
     ingredientes: Object.fromEntries(INGREDIENTES.map(([id]) => [id, true])),
     produtos: Object.fromEntries(PRODUTOS.map(([nome]) => [nome, true])),
-    operacao: { demanda: 'normal', modoLoja: 'automatico', horarios: normalizarHorarios(HORARIO_PADRAO) },
+    operacao: { demanda: 'normal', modoLoja: 'automatico', horarios: normalizarHorarios(HORARIO_PADRAO), temposPreparo: normalizarTemposPreparo(null, []), atrasoExtraMinutos: 0 },
     updatedAt: null,
     itensNovos: [],
   };
@@ -253,6 +274,11 @@ function mergeState(raw){
     const modoLoja = raw.operacao?.modoLoja;
     if(['automatico','aberto','fechado'].includes(modoLoja)) base.operacao.modoLoja = modoLoja;
     base.operacao.horarios = normalizarHorarios(raw.operacao?.horarios);
+    base.operacao.temposPreparo = normalizarTemposPreparo(raw.operacao?.temposPreparo, base.itensNovos);
+    const atrasoExtraMinutos = Number(raw.operacao?.atrasoExtraMinutos);
+    if(Number.isFinite(atrasoExtraMinutos)){
+      base.operacao.atrasoExtraMinutos = Math.min(120, Math.max(0, Math.round(atrasoExtraMinutos)));
+    }
     if(typeof raw.updatedAt === 'string') base.updatedAt = raw.updatedAt;
   }
   return base;
@@ -546,4 +572,12 @@ module.exports = async function handler(req, res){
 
 module.exports.readOrderCatalog = async function(){ const {state} = await readState({force:true}); return orderCatalog(state.itensNovos); };
 module.exports.readStoreStatus = async function(){ const {state} = await readState({force:true}); return statusHorarioPedidos(state); };
+module.exports.readPrepConfig = async function(){
+  const {state} = await readState({force:true});
+  return {
+    demanda: state.operacao?.demanda || 'normal',
+    atrasoExtraMinutos: Number(state.operacao?.atrasoExtraMinutos) || 0,
+    temposPreparo: normalizarTemposPreparo(state.operacao?.temposPreparo, state.itensNovos),
+  };
+};
 module.exports.statusHorarioPedidos = statusHorarioPedidos;
