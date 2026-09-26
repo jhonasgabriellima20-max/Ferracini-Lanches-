@@ -731,7 +731,6 @@ const CONFIG = {
   retirada: {
     // Taxa de serviço fixa para pedidos retirados no local.
     taxaServico: 3.00,
-    estimativaMinutos: { minimo: 45, maximo: 60 },
   },
 
   entrega: {
@@ -1160,8 +1159,6 @@ let precisaTroco = false;
 let trocoPara = '';
 let frete = { status: 'idle', distanciaKm: null, valor: 0, estimativa: null }; // idle | loading | ok | error
 let freteRequestId = 0;
-let estimativaRetirada = null;
-let estimativaRequestId = 0;
 
 const PAYMENT_LABELS = { pix: 'Pix', dinheiro: 'Dinheiro', debito: 'Débito', credito: 'Crédito' };
 function paymentOptionsForMethod(){
@@ -1392,22 +1389,6 @@ async function buscarEstimativaDinamica(tipo, distanciaKm = 0){
   return data.estimativaMinutos;
 }
 
-async function atualizarEstimativaRetirada(){
-  const requestId = ++estimativaRequestId;
-  estimativaRetirada = null;
-  renderCheckout();
-  try{
-    const calculada = await buscarEstimativaDinamica('retirada');
-    if(requestId !== estimativaRequestId) return;
-    estimativaRetirada = calculada;
-  }catch(err){
-    if(requestId !== estimativaRequestId) return;
-    console.warn('[checkout] estimativa_retirada_fallback', { error: String(err) });
-    estimativaRetirada = CONFIG.retirada.estimativaMinutos;
-  }
-  renderCheckout();
-}
-
 async function calcularFrete(){
   resetFrete();
   const requestId = freteRequestId;
@@ -1489,7 +1470,6 @@ document.querySelectorAll('.method-btn').forEach(btn => {
     document.querySelectorAll('.method-btn').forEach(b => b.classList.toggle('active', b === btn));
     enderecoBlockEl.style.display = deliveryMethod === 'entrega' ? 'block' : 'none';
     resetFrete();
-    if(deliveryMethod === 'retirada') atualizarEstimativaRetirada();
     const opcoesPagamento = paymentOptionsForMethod();
     if(!opcoesPagamento.includes(paymentMethod)){
       paymentMethod = opcoesPagamento[0];
@@ -1541,7 +1521,6 @@ function renderCheckout(){
     }
   } else if(deliveryMethod === 'retirada'){
     entregaLinha = `<div class="summary-row"><span>Taxa de serviço</span><span>${fmtPreco(taxaServico)}</span></div>`;
-    entregaLinha += '<div class="summary-row"><span>Prazo estimado para retirada</span><span>' + (estimativaRetirada ? textoEstimativa(estimativaRetirada) : 'Calculando pela fila…') + '</span></div>';
   }
 
   document.getElementById('summaryBox').innerHTML = `
@@ -1664,10 +1643,8 @@ async function abrirCheckout(){
   btnEnviarPedidoEl.disabled = false;
   btnEnviarPedidoEl.textContent = 'Enviar pedido pelo WhatsApp';
   renderPaymentOptions();
-  estimativaRetirada = null;
   renderCheckout();
   checkoutOverlayEl.classList.add('open');
-  atualizarEstimativaRetirada();
 }
 
 function fecharCheckout(){
@@ -1746,7 +1723,7 @@ function montarMensagemPedido(comanda = '', criadoEm = ''){
     const cepLinha = cep.length === 8 ? `\nCEP: ${formatarCep(cep)}` : '';
     blocoEntrega = `🚚 ENTREGA\n${rua}, ${numero}${complemento ? ' - ' + complemento : ''}\n${bairro} — ${cidade}${cepLinha}\n\n📍 Distância: ${frete.distanciaKm.toFixed(1)} km\n🚚 Taxa de entrega: ${fmtPreco(frete.valor)}\n🧾 Taxa de serviço: ${fmtPreco(taxaServico)}\n⏱️ Previsão de entrega: ${textoEstimativa(frete.estimativa)}`;
   } else {
-    blocoEntrega = `🏪 RETIRADA NO LOCAL\n⏱️ Prazo: ${textoEstimativa(estimativaRetirada || CONFIG.retirada.estimativaMinutos)}`;
+    blocoEntrega = '🏪 RETIRADA NO LOCAL';
   }
 
   const blocoPagamento = `💳 PAGAMENTO\n${descricaoPagamento()}`;
@@ -1807,7 +1784,6 @@ function montarPayloadPedido(clientRequestId){
     atendimento = {
       tipo: 'retirada',
       taxaServicoCentavos: Math.round(CONFIG.retirada.taxaServico * 100),
-      estimativaMinutos: estimativaRetirada || CONFIG.retirada.estimativaMinutos,
     };
   }
 
@@ -1946,12 +1922,8 @@ btnEnviarPedidoEl.addEventListener('click', async () => {
   try{
     registro = await registrarPedidoNoSistema(payload);
     const estimativaConfirmada = registro?.pedido?.estimativaMinutos;
-    if(estimativaConfirmada){
-      if(deliveryMethod === 'entrega'){
-        frete = { ...frete, estimativa: estimativaConfirmada };
-      }else{
-        estimativaRetirada = estimativaConfirmada;
-      }
+    if(deliveryMethod === 'entrega' && estimativaConfirmada){
+      frete = { ...frete, estimativa: estimativaConfirmada };
     }
     avisoSistema = registro?.storageDegraded
       ? '⚠️ O armazenamento está temporariamente indisponível, mas sua comanda seguirá normalmente pelo WhatsApp.'
