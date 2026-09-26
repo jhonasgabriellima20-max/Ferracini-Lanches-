@@ -4,6 +4,8 @@ const {
   contarLanches,
   calcularTempoInternoLanches,
   calcularFilaTempoInterno,
+  calcularFila,
+  estimarPrazo,
 } = require('../lib/prep-estimator');
 
 assert.equal(MINUTOS_POR_LANCHE, 5);
@@ -61,3 +63,32 @@ assert.equal(calcularFilaTempoInterno(duasComandasImediatas, t0).filaMinutos, 35
 assert.equal(calcularFilaTempoInterno(pedidosFila, new Date(t0.getTime() + 25 * 60000)).filaMinutos, 0);
 
 console.log('OK - fila acumulada: 20 + 15 = 35 min; apos 5 min = 30 min');
+
+(async () => {
+  const agora = new Date('2026-09-26T23:00:00.000Z');
+  const data = '2026-09-26';
+  const pedidos = Array.from({length: 37}, (_, indice) => ({
+    data, numeroSequencial: indice + 1,
+    criadoEm: new Date(agora.getTime() - 30 * 60000 + indice * 1000).toISOString(),
+    itens: [{nome:'X-Salada', quantidade:1}],
+    atendimento: {tempoInternoMinutos:5},
+  }));
+  const config = {comandaEmPreparo:12, dataComandaEmPreparo:data};
+  const fila = calcularFila(pedidos, agora, config);
+  assert.equal(fila.pedidosConsiderados, 26);
+  assert.ok(fila.filaMinutos >= 130);
+  const estimativa = await estimarPrazo({
+    itens:[{nome:'X-Frango',quantidade:1}], tipo:'entrega', distanciaKm:3,
+    config, agora, pedidos,
+  });
+  assert.ok(estimativa.estimativaMinutos.minimo >= 170);
+  assert.equal(estimativa.estimativaMinutos.maximo, 180);
+  const lotada = await estimarPrazo({
+    itens:[{nome:'X-Tudo (2 Kilo)',quantidade:5}], tipo:'entrega', distanciaKm:15,
+    config, agora, pedidos,
+  });
+  assert.deepEqual(lotada.estimativaMinutos, {minimo:180,maximo:180});
+  assert.equal(lotada.limiteAtingido, true);
+  assert.equal(calcularFila(pedidos, agora, {...config,dataComandaEmPreparo:'2026-09-25'}).pedidosConsiderados, 37);
+  console.log('OK - comanda 38, cozinha na 12: fila de 26 comandas; entrega até 3h');
+})().catch(err => { console.error(err); process.exitCode = 1; });
