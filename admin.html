@@ -61,7 +61,12 @@
           <option value="normal">Normal — usar fila real</option>
           <option value="alta">Alta — adicionar margem de segurança</option>
         </select>
-        <div class="row-note">A fila é calculada automaticamente pelas comandas do dia. Você não precisa dar baixa manual para o prazo cair.</div>
+        <div class="row-note">A fila usa os lanches de cada comanda e o tempo de preparo configurado abaixo.</div>
+      </div>
+      <div class="field" style="margin-top:14px">
+        <label for="comandaEmPreparo">Comanda em preparo agora</label>
+        <input id="comandaEmPreparo" type="number" min="1" max="999999" step="1" inputmode="numeric" placeholder="Ex.: 12">
+        <div class="row-note">Informe a primeira comanda que ainda falta preparar e salve. Atualize conforme a cozinha avança. Deixe vazio para estimativa automática; o número vence ao fim do dia.</div>
       </div>
       <div class="field" style="margin-top:14px">
         <label for="atrasoCozinha">Atraso extra manual</label>
@@ -192,7 +197,20 @@ function render(){
     estado.operacao = { ...(estado.operacao||{}), atrasoExtraMinutos: Number($('atrasoCozinha').value) || 0 };
     $('status').textContent='Alterações ainda não salvas';
   };
+  $('comandaEmPreparo').value = estado.operacao?.dataComandaEmPreparo === dataLocalHoje()
+    ? (estado.operacao?.comandaEmPreparo || '') : '';
+  $('comandaEmPreparo').onchange = () => {
+    const numero = Number($('comandaEmPreparo').value);
+    estado.operacao = { ...(estado.operacao||{}), comandaEmPreparo: Number.isSafeInteger(numero) && numero > 0 ? numero : 0, dataComandaEmPreparo: dataLocalHoje() };
+    $('status').textContent='Posição da cozinha ainda não salva';
+  };
 
+}
+
+function dataLocalHoje(){
+  const partes = new Intl.DateTimeFormat('en-CA', {timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());
+  const campo = tipo => partes.find(p => p.type === tipo)?.value;
+  return `${campo('year')}-${campo('month')}-${campo('day')}`;
 }
 
 async function abrirPainel(){
