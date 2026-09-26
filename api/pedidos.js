@@ -2,7 +2,6 @@ const crypto = require('crypto');
 const CATALOGO = require('./catalogo.json');
 const { calcularDistanciaEndereco } = require('../lib/delivery-distance');
 const { isStorageUnavailable: isDatabaseUnavailable, readJson, writeJson, listBlobs } = require('../lib/postgres-storage');
-const { estimarPrazo } = require('../lib/prep-estimator');
 
 const TIME_ZONE = 'America/Sao_Paulo';
 const COUNTER_PATH = 'config/pedidos-sequencia.json';
@@ -375,24 +374,9 @@ async function validarEntregaNoServidor(payload){
 }
 
 async function aplicarEstimativaInteligente(payload){
-  if(payload.atendimento?.tipo === 'retirada') return payload;
-  try{
-    const config = await require('./disponibilidade').readPrepConfig();
-    const calculo = await estimarPrazo({
-      itens: payload.itens,
-      tipo: payload.atendimento.tipo,
-      distanciaKm: payload.atendimento.distanciaKm,
-      config,
-    });
-    payload.atendimento.estimativaMinutos = calculo.estimativaMinutos;
-    payload.atendimento.estimativaDetalhes = {
-      filaMinutos: calculo.filaMinutos,
-      preparoMinutos: calculo.preparoMinutos,
-      deslocamentoMinutos: calculo.deslocamentoMinutos,
-      quantidadeLanches: calculo.quantidadeLanches,
-    };
-  }catch(err){
-    console.warn('[pedidos] estimativa_inteligente_indisponivel', { error: String(err) });
+  if(payload.atendimento){
+    delete payload.atendimento.estimativaMinutos;
+    delete payload.atendimento.estimativaDetalhes;
   }
   return payload;
 }
