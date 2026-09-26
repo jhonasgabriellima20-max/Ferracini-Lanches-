@@ -245,7 +245,7 @@ function defaults(){
   return {
     ingredientes: Object.fromEntries(INGREDIENTES.map(([id]) => [id, true])),
     produtos: Object.fromEntries(PRODUTOS.map(([nome]) => [nome, true])),
-    operacao: { demanda: 'normal', modoLoja: 'automatico', horarios: normalizarHorarios(HORARIO_PADRAO), temposPreparo: normalizarTemposPreparo(null, []), atrasoExtraMinutos: 0 },
+    operacao: { demanda: 'normal', modoLoja: 'automatico', horarios: normalizarHorarios(HORARIO_PADRAO), temposPreparo: normalizarTemposPreparo(null, []), atrasoExtraMinutos: 0, comandaEmPreparo: 0, dataComandaEmPreparo: '' },
     updatedAt: null,
     itensNovos: [],
   };
@@ -278,6 +278,13 @@ function mergeState(raw){
     const atrasoExtraMinutos = Number(raw.operacao?.atrasoExtraMinutos);
     if(Number.isFinite(atrasoExtraMinutos)){
       base.operacao.atrasoExtraMinutos = Math.min(120, Math.max(0, Math.round(atrasoExtraMinutos)));
+    }
+    const comandaEmPreparo = Number(raw.operacao?.comandaEmPreparo);
+    if(Number.isSafeInteger(comandaEmPreparo) && comandaEmPreparo >= 0 && comandaEmPreparo <= 999999){
+      base.operacao.comandaEmPreparo = comandaEmPreparo;
+    }
+    if(/^\d{4}-\d{2}-\d{2}$/.test(String(raw.operacao?.dataComandaEmPreparo || ''))){
+      base.operacao.dataComandaEmPreparo = raw.operacao.dataComandaEmPreparo;
     }
     if(typeof raw.updatedAt === 'string') base.updatedAt = raw.updatedAt;
   }
@@ -577,6 +584,8 @@ module.exports.readPrepConfig = async function(){
   return {
     demanda: state.operacao?.demanda || 'normal',
     atrasoExtraMinutos: Number(state.operacao?.atrasoExtraMinutos) || 0,
+    comandaEmPreparo: Number(state.operacao?.comandaEmPreparo) || 0,
+    dataComandaEmPreparo: state.operacao?.dataComandaEmPreparo || '',
     temposPreparo: normalizarTemposPreparo(state.operacao?.temposPreparo, state.itensNovos),
   };
 };
