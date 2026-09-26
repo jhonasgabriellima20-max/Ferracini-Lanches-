@@ -999,6 +999,7 @@ function updateCartBar(){
   }
 
   if(checkoutOverlayEl && checkoutOverlayEl.classList.contains('open') && checkoutConfirmEl.style.display !== 'block'){
+    if(deliveryMethod === 'entrega' && frete.status === 'ok') atualizarPrevisaoEntrega();
     renderCheckout();
   }
 }
@@ -1381,7 +1382,30 @@ function textoEstimativa(estimativa){
   const formatar = minutos => minutos >= 60
     ? (minutos % 60 === 0 ? (minutos / 60) + 'h' : Math.floor(minutos / 60) + 'h' + String(minutos % 60).padStart(2,'0'))
     : minutos + ' min';
-  return formatar(estimativa.minimo) + ' a ' + formatar(estimativa.maximo);
+  return estimativa.minimo === estimativa.maximo
+    ? 'até ' + formatar(estimativa.maximo)
+    : formatar(estimativa.minimo) + ' a ' + formatar(estimativa.maximo);
+}
+
+let previsaoRequestId = 0;
+let previsaoTimer = null;
+function atualizarPrevisaoEntrega(){
+  clearTimeout(previsaoTimer);
+  const id = ++previsaoRequestId;
+  frete.estimativa = null;
+  previsaoTimer = setTimeout(async () => {
+    if(frete.status !== 'ok' || deliveryMethod !== 'entrega') return;
+    try{
+      const resultado = await buscarEstimativaDinamica('entrega', frete.distanciaKm);
+      if(id !== previsaoRequestId) return;
+      frete.estimativa = resultado;
+    }catch(err){
+      if(id !== previsaoRequestId) return;
+      console.warn('[checkout] previsao_entrega_indisponivel', {error:String(err)});
+      frete.estimativa = 'indisponivel';
+    }
+    renderCheckout();
+  }, 250);
 }
 
 async function buscarEstimativaDinamica(tipo, distanciaKm = 0){
@@ -1449,6 +1473,7 @@ async function calcularFrete(){
     }
     const valor = Math.ceil((data.distanciaKm * CONFIG.entrega.valorPorKm) - 1e-9);
     frete = { status: 'ok', distanciaKm: data.distanciaKm, valor, estimativa: null };
+    atualizarPrevisaoEntrega();
     freteBoxEl.className = 'frete-box ok';
     const taxaServico = taxaServicoPorDistancia(data.distanciaKm);
     freteBoxEl.textContent = `📍 Distância: ${data.distanciaKm.toFixed(1)} km · Taxa de entrega: ${fmtPreco(valor)} · Taxa de serviço: ${fmtPreco(taxaServico)}`;
@@ -1520,6 +1545,7 @@ function renderCheckout(){
   if(deliveryMethod === 'entrega'){
     entregaLinha = `<div class="summary-row"><span>Taxa de entrega</span><span>${frete.status==='ok' ? fmtPreco(taxaEntrega) : 'a calcular'}</span></div>`;
     entregaLinha += `<div class="summary-row"><span>Taxa de serviço</span><span>${frete.status==='ok' ? fmtPreco(taxaServico) : 'a calcular'}</span></div>`;
+    if(frete.status === 'ok') entregaLinha += `<div class="summary-row"><span>Previsão de entrega</span><span>${frete.estimativa && frete.estimativa !== 'indisponivel' ? textoEstimativa(frete.estimativa) : frete.estimativa === 'indisponivel' ? 'Consulte a loja' : 'Calculando…'}</span></div>`;
   } else if(deliveryMethod === 'retirada'){
     const tempoRetirada = tempoRetiradaMinutos();
     entregaLinha = `<div class="summary-row"><span>Taxa de serviço</span><span>${fmtPreco(taxaServico)}</span></div>`;
@@ -1701,7 +1727,7 @@ function horarioPedidoWhatsApp(criadoEm = ''){
   }).format(segura);
 }
 
-function montarMensagemPedido(comanda = '', criadoEm = '', estimativaRetirada = null){
+function montarMensagemPedido(comanda = '', criadoEm = '', estimativaPedido = null){
   const { items, subtotal } = cartTotals();
   const nome = document.getElementById('clienteNome').value.trim();
   const telefone = document.getElementById('clienteTelefone').value.trim();
@@ -1727,8 +1753,9 @@ function montarMensagemPedido(comanda = '', criadoEm = '', estimativaRetirada = 
     const cep = somenteDigitos(document.getElementById('endCep').value);
     const cepLinha = cep.length === 8 ? `\nCEP: ${formatarCep(cep)}` : '';
     blocoEntrega = `🚚 ENTREGA\n${rua}, ${numero}${complemento ? ' - ' + complemento : ''}\n${bairro} — ${cidade}${cepLinha}\n\n📍 Distância: ${frete.distanciaKm.toFixed(1)} km\n🚚 Taxa de entrega: ${fmtPreco(frete.valor)}\n🧾 Taxa de serviço: ${fmtPreco(taxaServico)}`;
+    if(estimativaPedido) blocoEntrega += `\n⏱️ Previsão de entrega: ${textoEstimativa(estimativaPedido)}`;
   } else {
-    const tempo = Number(estimativaRetirada?.minimo) || tempoRetiradaMinutos();
+    const tempo = Number(estimativaPedido?.minimo) || tempoRetiradaMinutos();
     blocoEntrega = '🏪 RETIRADA NO LOCAL' + (tempo > 0 ? `\n⏱️ Previsão de retirada: ${tempo} min` : '');
   }
 
@@ -1940,10 +1967,10 @@ btnEnviarPedidoEl.addEventListener('click', async () => {
   }
 
   const numeroComanda = registro?.pedido?.numero || '';
-  const estimativaRetirada = deliveryMethod === 'retirada'
-    ? (registro?.pedido?.estimativaMinutos || { minimo: tempoRetiradaMinutos(), maximo: tempoRetiradaMinutos() })
-    : null;
-  const destinoWhatsApp = linkWhatsApp(montarMensagemPedido(numeroComanda, registro?.pedido?.criadoEm, estimativaRetirada));
+  const estimativaPedido = registro?.pedido?.estimativaMinutos ||
+    (deliveryMethod === 'retirada' ? { minimo: tempoRetiradaMinutos(), maximo: tempoRetiradaMinutos() } :
+      (frete.estimativa && frete.estimativa !== 'indisponivel' ? frete.estimativa : null));
+  const destinoWhatsApp = linkWhatsApp(montarMensagemPedido(numeroComanda, registro?.pedido?.criadoEm, estimativaPedido));
 
   btnEnviarPedidoEl.textContent = 'Abrindo WhatsApp...';
   checkoutConfirmEl.innerHTML = avisoSistema;
