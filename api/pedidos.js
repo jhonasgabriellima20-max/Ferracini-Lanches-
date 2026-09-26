@@ -539,7 +539,9 @@ module.exports = async function handler(req, res){
           data: registro.pedido.data,
           criadoEm: registro.pedido.criadoEm,
           status: registro.pedido.status,
-          estimativaMinutos: registro.pedido.atendimento?.estimativaMinutos || null,
+          estimativaMinutos: registro.pedido.atendimento?.tipo === 'entrega'
+            ? (registro.pedido.atendimento?.estimativaMinutos || null)
+            : null,
         },
         duplicado: registro.duplicado,
         impressaoAtiva: Boolean(process.env.PRINT_AGENT_TOKEN),
