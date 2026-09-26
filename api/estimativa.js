@@ -88,10 +88,10 @@ module.exports = async function handler(req, res){
     if(typeof body === 'string') body = JSON.parse(body || '{}');
 
     const tipo = texto(body?.tipo, 20);
-    if(!['retirada', 'entrega'].includes(tipo)) throw new Error('Tipo de atendimento inválido.');
+    if(tipo !== 'entrega') throw new Error('Tipo de atendimento inválido.');
     const itens = validarItens(body?.itens);
-    const distanciaKm = tipo === 'entrega' ? Number(body?.distanciaKm) : 0;
-    if(tipo === 'entrega' && (!Number.isFinite(distanciaKm) || distanciaKm <= 0 || distanciaKm > 35)){
+    const distanciaKm = Number(body?.distanciaKm);
+    if(!Number.isFinite(distanciaKm) || distanciaKm <= 0 || distanciaKm > 35){
       throw new Error('Distância inválida.');
     }
 
