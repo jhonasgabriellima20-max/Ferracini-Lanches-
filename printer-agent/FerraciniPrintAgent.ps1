@@ -196,9 +196,6 @@ function Format-Receipt($Pedido, [int]$Width) {
     if ($Pedido.atendimento.distanciaKm) {
       $lines.Add(('Distancia: {0:N1} km' -f [double]$Pedido.atendimento.distanciaKm))
     }
-    if ($Pedido.atendimento.estimativaMinutos) {
-      $lines.Add(('Previsao: {0} a {1} min' -f $Pedido.atendimento.estimativaMinutos.minimo, $Pedido.atendimento.estimativaMinutos.maximo))
-    }
   }
 
   $lines.Add($doubleSep)
