@@ -178,6 +178,9 @@ function Format-Receipt($Pedido, [int]$Width) {
     $lines.Add('ATENDIMENTO: ENTREGA')
   } else {
     $lines.Add('ATENDIMENTO: RETIRADA')
+    if ($Pedido.atendimento.estimativaMinutos) {
+      $lines.Add(('PREVISAO RETIRADA: {0} MIN' -f $Pedido.atendimento.estimativaMinutos.minimo))
+    }
   }
 
   $lines.Add($sep)
