@@ -375,11 +375,18 @@ async function validarEntregaNoServidor(payload){
 }
 
 async function aplicarEstimativaInteligente(payload){
-  if(payload.atendimento){
-    delete payload.atendimento.estimativaMinutos;
-    delete payload.atendimento.estimativaDetalhes;
-    payload.atendimento.tempoInternoMinutos = calcularTempoInternoLanches(payload.itens);
+  if(!payload.atendimento) return payload;
+
+  delete payload.atendimento.estimativaMinutos;
+  delete payload.atendimento.estimativaDetalhes;
+
+  const tempo = calcularTempoInternoLanches(payload.itens);
+  payload.atendimento.tempoInternoMinutos = tempo;
+
+  if(payload.atendimento.tipo === 'retirada' && tempo > 0){
+    payload.atendimento.estimativaMinutos = { minimo: tempo, maximo: tempo };
   }
+
   return payload;
 }
 
@@ -525,9 +532,7 @@ module.exports = async function handler(req, res){
           data: registro.pedido.data,
           criadoEm: registro.pedido.criadoEm,
           status: registro.pedido.status,
-          estimativaMinutos: registro.pedido.atendimento?.tipo === 'entrega'
-            ? (registro.pedido.atendimento?.estimativaMinutos || null)
-            : null,
+          estimativaMinutos: registro.pedido.atendimento?.estimativaMinutos || null,
         },
         duplicado: registro.duplicado,
         impressaoAtiva: Boolean(process.env.PRINT_AGENT_TOKEN),
