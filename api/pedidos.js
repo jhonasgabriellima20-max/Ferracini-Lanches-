@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const CATALOGO = require('./catalogo.json');
 const { calcularDistanciaEndereco } = require('../lib/delivery-distance');
+const { calcularTempoInternoLanches } = require('../lib/prep-estimator');
 const { isStorageUnavailable: isDatabaseUnavailable, readJson, writeJson, listBlobs } = require('../lib/postgres-storage');
 
 const TIME_ZONE = 'America/Sao_Paulo';
@@ -377,6 +378,7 @@ async function aplicarEstimativaInteligente(payload){
   if(payload.atendimento){
     delete payload.atendimento.estimativaMinutos;
     delete payload.atendimento.estimativaDetalhes;
+    payload.atendimento.tempoInternoMinutos = calcularTempoInternoLanches(payload.itens);
   }
   return payload;
 }
