@@ -1436,18 +1436,10 @@ async function calcularFrete(){
       throw new Error('Endereço não localizado');
     }
     const valor = Math.ceil((data.distanciaKm * CONFIG.entrega.valorPorKm) - 1e-9);
-    let estimativa = estimarEntrega(data.distanciaKm);
-    try{
-      const calculada = await buscarEstimativaDinamica('entrega', data.distanciaKm);
-      if(requestId !== freteRequestId) return;
-      if(calculada) estimativa = calculada;
-    }catch(err){
-      console.warn('[checkout] estimativa_entrega_fallback', { error: String(err) });
-    }
-    frete = { status: 'ok', distanciaKm: data.distanciaKm, valor, estimativa };
+    frete = { status: 'ok', distanciaKm: data.distanciaKm, valor, estimativa: null };
     freteBoxEl.className = 'frete-box ok';
     const taxaServico = taxaServicoPorDistancia(data.distanciaKm);
-    freteBoxEl.textContent = `📍 Distância: ${data.distanciaKm.toFixed(1)} km · Taxa de entrega: ${fmtPreco(valor)} · Taxa de serviço: ${fmtPreco(taxaServico)} · ⏱️ Previsão: ${textoEstimativa(estimativa)}`;
+    freteBoxEl.textContent = `📍 Distância: ${data.distanciaKm.toFixed(1)} km · Taxa de entrega: ${fmtPreco(valor)} · Taxa de serviço: ${fmtPreco(taxaServico)}`;
   } catch(err){
     if(requestId !== freteRequestId) return;
     frete = { status: 'error', distanciaKm: null, valor: 0, estimativa: null };
@@ -1516,9 +1508,6 @@ function renderCheckout(){
   if(deliveryMethod === 'entrega'){
     entregaLinha = `<div class="summary-row"><span>Taxa de entrega</span><span>${frete.status==='ok' ? fmtPreco(taxaEntrega) : 'a calcular'}</span></div>`;
     entregaLinha += `<div class="summary-row"><span>Taxa de serviço</span><span>${frete.status==='ok' ? fmtPreco(taxaServico) : 'a calcular'}</span></div>`;
-    if(frete.status === 'ok' && frete.estimativa){
-      entregaLinha += `<div class="summary-row"><span>Previsão de entrega</span><span>${textoEstimativa(frete.estimativa)}</span></div>`;
-    }
   } else if(deliveryMethod === 'retirada'){
     entregaLinha = `<div class="summary-row"><span>Taxa de serviço</span><span>${fmtPreco(taxaServico)}</span></div>`;
   }
@@ -1721,7 +1710,7 @@ function montarMensagemPedido(comanda = '', criadoEm = ''){
     const cidade = document.getElementById('endCidade').value.trim();
     const cep = somenteDigitos(document.getElementById('endCep').value);
     const cepLinha = cep.length === 8 ? `\nCEP: ${formatarCep(cep)}` : '';
-    blocoEntrega = `🚚 ENTREGA\n${rua}, ${numero}${complemento ? ' - ' + complemento : ''}\n${bairro} — ${cidade}${cepLinha}\n\n📍 Distância: ${frete.distanciaKm.toFixed(1)} km\n🚚 Taxa de entrega: ${fmtPreco(frete.valor)}\n🧾 Taxa de serviço: ${fmtPreco(taxaServico)}\n⏱️ Previsão de entrega: ${textoEstimativa(frete.estimativa)}`;
+    blocoEntrega = `🚚 ENTREGA\n${rua}, ${numero}${complemento ? ' - ' + complemento : ''}\n${bairro} — ${cidade}${cepLinha}\n\n📍 Distância: ${frete.distanciaKm.toFixed(1)} km\n🚚 Taxa de entrega: ${fmtPreco(frete.valor)}\n🧾 Taxa de serviço: ${fmtPreco(taxaServico)}`;
   } else {
     blocoEntrega = '🏪 RETIRADA NO LOCAL';
   }
@@ -1774,9 +1763,6 @@ function montarPayloadPedido(clientRequestId){
       distanciaKm: frete.distanciaKm,
       taxaEntregaCentavos: Math.round(frete.valor * 100),
       taxaServicoCentavos: Math.round(taxaServicoPorDistancia(frete.distanciaKm) * 100),
-      estimativaMinutos: frete.estimativa
-        ? { minimo: frete.estimativa.minimo, maximo: frete.estimativa.maximo }
-        : undefined,
     };
   }
 
@@ -1921,10 +1907,6 @@ btnEnviarPedidoEl.addEventListener('click', async () => {
 
   try{
     registro = await registrarPedidoNoSistema(payload);
-    const estimativaConfirmada = registro?.pedido?.estimativaMinutos;
-    if(deliveryMethod === 'entrega' && estimativaConfirmada){
-      frete = { ...frete, estimativa: estimativaConfirmada };
-    }
     avisoSistema = registro?.storageDegraded
       ? '⚠️ O armazenamento está temporariamente indisponível, mas sua comanda seguirá normalmente pelo WhatsApp.'
       : `✅ Comanda ${registro.pedido.numero} registrada no sistema. Abrindo o WhatsApp para envio.`;
