@@ -96,7 +96,7 @@ function render(pedidos){
     }).join('');
     const wa=telefoneWa(p.cliente?.telefone);
     const end=endereco(p);
-    const previsao=p.atendimento?.estimativaMinutos;
+    const previsao=p.atendimento?.tipo === 'entrega' ? p.atendimento?.estimativaMinutos : null;
     return `<article class="order ${novo?'new':''}">
       <div class="order-head"><div><div class="num">Comanda ${esc(p.numero||'—')}</div><div class="tag">${tipoAtendimento(p)}</div></div><div class="time">Horário do pedido: ${hora(p.criadoEm)}</div></div>
       <div class="customer">${esc(p.cliente?.nome||'Cliente')}</div><div class="phone">${esc(p.cliente?.telefone||'')}</div>
