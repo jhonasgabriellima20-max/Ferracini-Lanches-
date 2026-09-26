@@ -1,7 +1,7 @@
 const crypto = require('crypto');
 const CATALOGO = require('./catalogo.json');
 const { calcularDistanciaEndereco } = require('../lib/delivery-distance');
-const { calcularTempoInternoLanches, calcularFilaTempoInterno, listarPedidosRecentes } = require('../lib/prep-estimator');
+const { calcularTempoInternoLanches, calcularFilaTempoInterno, listarPedidosRecentes, estimarPrazo } = require('../lib/prep-estimator');
 const { isStorageUnavailable: isDatabaseUnavailable, readJson, writeJson, listBlobs } = require('../lib/postgres-storage');
 
 const TIME_ZONE = 'America/Sao_Paulo';
@@ -290,11 +290,6 @@ function validarPayload(raw, catalogo = CATALOGO){
     atendimento.distanciaKm = Math.round(distanciaKm * 100) / 100;
     atendimento.taxaEntregaCentavos = taxaEntregaCentavos;
     atendimento.taxaServicoCentavos = taxaServicoCentavos;
-    const minimo = inteiro(raw.atendimento?.estimativaMinutos?.minimo, 1, 240);
-    const maximo = inteiro(raw.atendimento?.estimativaMinutos?.maximo, 1, 240);
-    if(minimo !== null && maximo !== null && maximo >= minimo){
-      atendimento.estimativaMinutos = { minimo, maximo };
-    }
   }
 
   const metodo = texto(raw.pagamento?.metodo, 20);
@@ -401,6 +396,25 @@ async function aplicarEstimativaInteligente(payload){
       pedidoMinutos: tempo,
       pedidosConsiderados: fila.pedidosConsiderados,
     };
+  } else if(payload.atendimento.tipo === 'entrega'){
+    try{
+      const config = await require('./disponibilidade').readPrepConfig();
+      const previsao = await estimarPrazo({
+        itens: payload.itens,
+        tipo: 'entrega',
+        distanciaKm: payload.atendimento.distanciaKm,
+        config,
+      });
+      payload.atendimento.estimativaMinutos = previsao.estimativaMinutos;
+      payload.atendimento.estimativaDetalhes = {
+        filaMinutos: previsao.filaMinutos,
+        preparoMinutos: previsao.preparoMinutos,
+        deslocamentoMinutos: previsao.deslocamentoMinutos,
+        limiteAtingido: previsao.limiteAtingido,
+      };
+    }catch(err){
+      console.warn('[pedidos] previsao_entrega_indisponivel', { error: String(err) });
+    }
   }
 
   return payload;
