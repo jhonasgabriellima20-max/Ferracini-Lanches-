@@ -964,6 +964,18 @@ function cartTotals(){
   return { items, totalQty, subtotal };
 }
 
+function quantidadeLanchesNoCarrinho(){
+  return cartTotals().items.reduce((total,[nome,item]) => {
+    const produto = CONFIG.produtos.find(p => p.nome === nome);
+    const ehLanche = produto && (produto.categoria === 'dog' || produto.categoria === 'x');
+    return total + (ehLanche ? item.qty : 0);
+  }, 0);
+}
+
+function tempoRetiradaMinutos(){
+  return quantidadeLanchesNoCarrinho() * 5;
+}
+
 function updateCartBar(){
   const { totalQty, subtotal } = cartTotals();
   const floatBtn = document.getElementById('waFloatBtn');
@@ -1509,7 +1521,11 @@ function renderCheckout(){
     entregaLinha = `<div class="summary-row"><span>Taxa de entrega</span><span>${frete.status==='ok' ? fmtPreco(taxaEntrega) : 'a calcular'}</span></div>`;
     entregaLinha += `<div class="summary-row"><span>Taxa de serviço</span><span>${frete.status==='ok' ? fmtPreco(taxaServico) : 'a calcular'}</span></div>`;
   } else if(deliveryMethod === 'retirada'){
+    const tempoRetirada = tempoRetiradaMinutos();
     entregaLinha = `<div class="summary-row"><span>Taxa de serviço</span><span>${fmtPreco(taxaServico)}</span></div>`;
+    if(tempoRetirada > 0){
+      entregaLinha += `<div class="summary-row"><span>Previsão de retirada</span><span>${tempoRetirada} min</span></div>`;
+    }
   }
 
   document.getElementById('summaryBox').innerHTML = `
@@ -1685,7 +1701,7 @@ function horarioPedidoWhatsApp(criadoEm = ''){
   }).format(segura);
 }
 
-function montarMensagemPedido(comanda = '', criadoEm = ''){
+function montarMensagemPedido(comanda = '', criadoEm = '', estimativaRetirada = null){
   const { items, subtotal } = cartTotals();
   const nome = document.getElementById('clienteNome').value.trim();
   const telefone = document.getElementById('clienteTelefone').value.trim();
@@ -1712,7 +1728,8 @@ function montarMensagemPedido(comanda = '', criadoEm = ''){
     const cepLinha = cep.length === 8 ? `\nCEP: ${formatarCep(cep)}` : '';
     blocoEntrega = `🚚 ENTREGA\n${rua}, ${numero}${complemento ? ' - ' + complemento : ''}\n${bairro} — ${cidade}${cepLinha}\n\n📍 Distância: ${frete.distanciaKm.toFixed(1)} km\n🚚 Taxa de entrega: ${fmtPreco(frete.valor)}\n🧾 Taxa de serviço: ${fmtPreco(taxaServico)}`;
   } else {
-    blocoEntrega = '🏪 RETIRADA NO LOCAL';
+    const tempo = Number(estimativaRetirada?.minimo) || tempoRetiradaMinutos();
+    blocoEntrega = '🏪 RETIRADA NO LOCAL' + (tempo > 0 ? `\n⏱️ Previsão de retirada: ${tempo} min` : '');
   }
 
   const blocoPagamento = `💳 PAGAMENTO\n${descricaoPagamento()}`;
@@ -1923,7 +1940,10 @@ btnEnviarPedidoEl.addEventListener('click', async () => {
   }
 
   const numeroComanda = registro?.pedido?.numero || '';
-  const destinoWhatsApp = linkWhatsApp(montarMensagemPedido(numeroComanda, registro?.pedido?.criadoEm));
+  const estimativaRetirada = deliveryMethod === 'retirada'
+    ? (registro?.pedido?.estimativaMinutos || { minimo: tempoRetiradaMinutos(), maximo: tempoRetiradaMinutos() })
+    : null;
+  const destinoWhatsApp = linkWhatsApp(montarMensagemPedido(numeroComanda, registro?.pedido?.criadoEm, estimativaRetirada));
 
   btnEnviarPedidoEl.textContent = 'Abrindo WhatsApp...';
   checkoutConfirmEl.innerHTML = avisoSistema;
