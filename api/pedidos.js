@@ -251,7 +251,6 @@ function validarPayload(raw, catalogo = CATALOGO){
   if(tipo === 'retirada'){
     // Taxa fixa de serviço para retirada no local.
     atendimento.taxaServicoCentavos = 300;
-    atendimento.estimativaMinutos = { minimo: 45, maximo: 60 };
   }
   if(tipo === 'mesa'){
     const mesa = inteiro(Number(raw.atendimento?.mesa), 1, 999);
@@ -376,6 +375,7 @@ async function validarEntregaNoServidor(payload){
 }
 
 async function aplicarEstimativaInteligente(payload){
+  if(payload.atendimento?.tipo === 'retirada') return payload;
   try{
     const config = await require('./disponibilidade').readPrepConfig();
     const calculo = await estimarPrazo({
