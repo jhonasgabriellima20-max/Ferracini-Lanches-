@@ -1,7 +1,7 @@
 const crypto = require('crypto');
 const CATALOGO = require('./catalogo.json');
 const { calcularDistanciaEndereco } = require('../lib/delivery-distance');
-const { calcularTempoInternoLanches } = require('../lib/prep-estimator');
+const { calcularTempoInternoLanches, calcularFilaTempoInterno, listarPedidosRecentes } = require('../lib/prep-estimator');
 const { isStorageUnavailable: isDatabaseUnavailable, readJson, writeJson, listBlobs } = require('../lib/postgres-storage');
 
 const TIME_ZONE = 'America/Sao_Paulo';
@@ -384,7 +384,23 @@ async function aplicarEstimativaInteligente(payload){
   payload.atendimento.tempoInternoMinutos = tempo;
 
   if(payload.atendimento.tipo === 'retirada' && tempo > 0){
-    payload.atendimento.estimativaMinutos = { minimo: tempo, maximo: tempo };
+    const agora = new Date();
+    let fila = { filaMinutos: 0, pedidosConsiderados: 0 };
+
+    try{
+      const existentes = await listarPedidosRecentes(agora);
+      fila = calcularFilaTempoInterno(existentes, agora);
+    }catch(err){
+      console.warn('[pedidos] fila_retirada_indisponivel', { error: String(err) });
+    }
+
+    const estimativa = Math.min(300, Math.max(tempo, fila.filaMinutos + tempo));
+    payload.atendimento.estimativaMinutos = { minimo: estimativa, maximo: estimativa };
+    payload.atendimento.estimativaDetalhes = {
+      filaMinutos: fila.filaMinutos,
+      pedidoMinutos: tempo,
+      pedidosConsiderados: fila.pedidosConsiderados,
+    };
   }
 
   return payload;
