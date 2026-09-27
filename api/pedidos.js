@@ -9,6 +9,8 @@ const COUNTER_PATH = 'config/pedidos-sequencia.json';
 const RESERVA_DIR = 'pedidos/reservas';
 const FILA_DIR = 'pedidos/fila';
 const IDEMPOTENCIA_DIR = 'pedidos/idempotencia';
+const RASCUNHO_DIR = 'pedidos/aguardando-whatsapp';
+const CONFIRMACAO_DIR = 'pedidos/confirmacoes-em-andamento';
 const MAX_BODY_BYTES = 64 * 1024;
 const MAX_ROUTE_KM = 35;
 const MAX_DISTANCE_DELTA_KM = 0.35;
@@ -424,6 +426,61 @@ function hashId(value){
   return crypto.createHash('sha256').update(value).digest('hex');
 }
 
+async function prepararPedidoWhatsapp(payload){
+  const data = dataOperacao();
+  const hash = hashId(payload.clientRequestId);
+  const pathname = `${RASCUNHO_DIR}/${data}/${hash}.json`;
+  const existente = await lerJson(pathname);
+  if(existente) return { rascunho: existente, duplicado: true };
+  const rascunho = {
+    referencia: 'F' + hash.slice(0, 10).toUpperCase(),
+    data,
+    criadoEm: new Date().toISOString(),
+    status: 'aguardando_whatsapp',
+    payload,
+  };
+  try{
+    await gravarJson(pathname, rascunho, false);
+    return { rascunho, duplicado: false };
+  }catch(err){
+    if(isConflict(err)){
+      const salvo = await lerJson(pathname);
+      if(salvo) return { rascunho: salvo, duplicado: true };
+    }
+    throw err;
+  }
+}
+
+async function confirmarPedidoWhatsapp(pathname){
+  if(!/^pedidos\/aguardando-whatsapp\/\d{4}-\d{2}-\d{2}\/[a-f0-9]{64}\.json$/.test(pathname)){
+    throw new Error('Referência inválida.');
+  }
+  const rascunho = await lerJson(pathname);
+  if(!rascunho?.payload?.clientRequestId) throw new Error('Referência não encontrada.');
+  if(rascunho.status === 'confirmado' && rascunho.numero){
+    return { numero: rascunho.numero, duplicado: true };
+  }
+  const hash = hashId(rascunho.payload.clientRequestId);
+  const lockPath = `${CONFIRMACAO_DIR}/${rascunho.data}/${hash}.json`;
+  const lock = await lerJson(lockPath);
+  if(lock && Date.now() - Date.parse(lock.criadoEm) < 60 * 1000){
+    throw new Error('Confirmação em andamento. Aguarde um minuto e atualize.');
+  }
+  try{
+    await gravarJson(lockPath, {criadoEm:new Date().toISOString()}, Boolean(lock));
+  }catch(err){
+    if(isConflict(err)) throw new Error('Confirmação em andamento. Aguarde um minuto e atualize.');
+    throw err;
+  }
+  const registro = await criarPedido(rascunho.payload);
+  rascunho.status = 'confirmado';
+  rascunho.numero = registro.pedido.numero;
+  rascunho.confirmadoEm = new Date().toISOString();
+  await gravarJson(pathname, rascunho, true);
+  return { numero: registro.pedido.numero, duplicado: registro.duplicado };
+}
+
+
 async function criarPedido(payload){
   const data = dataOperacao();
   const idemPath = `${IDEMPOTENCIA_DIR}/${data}/${hashId(payload.clientRequestId)}.json`;
@@ -554,15 +611,15 @@ module.exports = async function handler(req, res){
       const catalogo = hasCustom ? await require('./disponibilidade').readOrderCatalog() : CATALOGO;
       const payloadValidado = await validarEntregaNoServidor(validarPayload(body, catalogo));
       const payload = await aplicarEstimativaInteligente(payloadValidado);
-      const registro = await criarPedido(payload);
+      const registro = await prepararPedidoWhatsapp(payload);
       return res.status(registro.duplicado ? 200 : 201).json({
         pedido: {
-          id: registro.pedido.id,
-          numero: registro.pedido.numero,
-          data: registro.pedido.data,
-          criadoEm: registro.pedido.criadoEm,
-          status: registro.pedido.status,
-          estimativaMinutos: registro.pedido.atendimento?.estimativaMinutos || null,
+          id: null,
+          referencia: registro.rascunho.referencia,
+          data: registro.rascunho.data,
+          criadoEm: registro.rascunho.criadoEm,
+          status: registro.rascunho.status,
+          estimativaMinutos: registro.rascunho.payload.atendimento?.estimativaMinutos || null,
         },
         duplicado: registro.duplicado,
         impressaoAtiva: Boolean(process.env.PRINT_AGENT_TOKEN),
@@ -628,3 +685,6 @@ module.exports = async function handler(req, res){
   res.setHeader('Allow', 'GET, POST, PATCH');
   return res.status(405).json({ error: 'Método não permitido.' });
 };
+
+module.exports.confirmarPedidoWhatsapp = confirmarPedidoWhatsapp;
+module.exports.prepararPedidoWhatsapp = prepararPedidoWhatsapp;
