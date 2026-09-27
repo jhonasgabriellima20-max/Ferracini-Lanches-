@@ -8,6 +8,7 @@
 <style>
 :root{--bg:#14100c;--surface:#1e1812;--surface2:#282019;--line:#3a2e23;--text:#f7f0e8;--dim:#b9aa9b;--orange:#f04b23;--green:#2dbb68;--red:#df4e4e;--yellow:#d9a727;--radius:18px}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,system-ui,-apple-system,Segoe UI,sans-serif}.wrap{width:min(100% - 24px,900px);margin:0 auto;padding:22px 0 70px}.brand{font-weight:950;letter-spacing:.08em}.brand span{color:var(--orange)}h1{font-size:clamp(28px,7vw,44px);line-height:1;margin:8px 0}.sub{color:var(--dim);font-size:14px;line-height:1.5}.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:17px}.login{max-width:450px;margin:70px auto}.field{display:grid;gap:7px}.field label{font-size:13px;color:var(--dim);font-weight:750}.field input{width:100%;padding:14px 15px;border-radius:12px;border:1px solid var(--line);background:var(--surface2);color:var(--text);font-size:16px;outline:none}.btn{border:0;border-radius:12px;padding:13px 16px;font-weight:850;font-size:14px;cursor:pointer}.btn-primary{background:var(--orange);color:#fff;width:100%;margin-top:12px}.btn-ghost{background:var(--surface2);border:1px solid var(--line);color:var(--text)}.hidden{display:none!important}.top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:15px}.toolbar{position:sticky;top:0;z-index:10;background:rgba(20,16,12,.94);backdrop-filter:blur(10px);padding:10px 0 12px;display:flex;justify-content:space-between;gap:10px;align-items:center}.status{font-size:12px;color:var(--dim)}.count{font-size:12px;font-weight:900;background:var(--orange);padding:5px 9px;border-radius:999px}.orders{display:grid;gap:12px}.order{background:var(--surface);border:1px solid var(--line);border-left:5px solid var(--orange);border-radius:16px;padding:16px}.order-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}.num{font-size:24px;font-weight:950}.time{font-size:12px;color:var(--dim)}.tag{display:inline-flex;padding:5px 9px;border-radius:999px;font-size:11px;font-weight:850;background:#ffffff0b;border:1px solid var(--line);margin-top:6px}.customer{margin-top:13px;font-weight:850}.phone{font-size:13px;color:var(--dim);margin-top:2px}.items{margin:13px 0;padding:12px;background:var(--surface2);border-radius:12px}.item{padding:7px 0;border-bottom:1px solid var(--line);font-size:14px;line-height:1.45}.item:last-child{border-bottom:0}.addon,.obs{color:var(--dim);font-size:12px;margin-top:2px}.details{display:grid;gap:6px;font-size:13px;line-height:1.5}.total{margin-top:12px;padding-top:12px;border-top:1px solid var(--line);display:flex;justify-content:space-between;font-size:18px;font-weight:950}.actions{display:flex;gap:8px;margin-top:12px}.wa{display:block;text-align:center;text-decoration:none;background:#1f9d55;color:white;border-radius:11px;padding:11px 12px;font-weight:850;font-size:13px;flex:1}.empty{text-align:center;padding:34px 18px;color:var(--dim)}.notice{padding:12px 14px;border-radius:12px;font-size:12.5px;line-height:1.5;margin:12px 0}.notice.err{background:#3c1919;border:1px solid #6b2929;color:#ffc7c7}.notice.ok{background:#143420;border:1px solid #245d38;color:#bff1cf}.new{animation:pulse 1.2s ease 2}@keyframes pulse{50%{box-shadow:0 0 0 4px rgba(240,75,35,.22)}}
+.pending{border-left-color:var(--yellow)}.confirm-btn{background:var(--green);color:#102016;width:100%}.pending-title{font-size:21px;margin:24px 0 5px}.pending-help{color:var(--dim);font-size:14px;line-height:1.5;margin-bottom:12px}
 </style>
 </head>
 <body>
@@ -22,10 +23,13 @@
   </section>
 
   <main id="appView" class="hidden">
-    <div class="top"><div><div class="brand">FERRACINI<span>.</span></div><h1>Pedidos de hoje</h1><p class="sub">Atualiza automaticamente. O WhatsApp continua funcionando normalmente.</p></div><button class="btn btn-ghost" id="sair">Sair</button></div>
+    <div class="top"><div><div class="brand">FERRACINI<span>.</span></div><h1>Pedidos de hoje</h1><p class="sub">Confirme a referência quando a mensagem chegar no WhatsApp. Só depois a comanda entra na fila e na impressão.</p></div><button class="btn btn-ghost" id="sair">Sair</button></div>
     <div class="toolbar"><div class="status" id="status">Carregando…</div><div class="count" id="count">0 pedidos</div></div>
     <div id="systemMsg"></div>
     <div id="orders" class="orders"></div>
+    <h2 class="pending-title">Aguardando WhatsApp</h2>
+    <p class="pending-help">Estes são apenas pedidos preparados no site. Confira a referência na mensagem recebida antes de confirmar. Não contam como comandas.</p>
+    <div id="pendingOrders" class="orders"></div>
   </main>
 </div>
 <script>
@@ -113,6 +117,37 @@ function render(pedidos){
   primeiraCarga=false;
 }
 
+function renderAguardando(rascunhos){
+  $('pendingOrders').innerHTML = rascunhos.length ? rascunhos.map(p => `<article class="order pending">
+    <div class="order-head"><div><div class="num">Referência ${esc(p.referencia)}</div><div class="tag">Aguardando WhatsApp · sem comanda</div></div><div class="time">${hora(p.criadoEm)}</div></div>
+    <div class="customer">${esc(p.cliente?.nome||'Cliente')}</div>
+    <div class="items">${(p.itens||[]).map(i=>`<div class="item">${esc(i.quantidade)}x ${esc(i.nome)}</div>`).join('')}</div>
+    <div class="total"><span>Total</span><span>${dinheiro(p.totalCentavos)}</span></div>
+    <div class="actions"><button class="btn confirm-btn" data-confirmar="${esc(p.pathname)}">Recebi no WhatsApp — criar comanda</button></div>
+  </article>`).join('') : '<div class="card empty">Nenhuma referência aguardando hoje.</div>';
+}
+
+$('pendingOrders').addEventListener('click', async e => {
+  const botao = e.target.closest('button[data-confirmar]');
+  if(!botao || botao.disabled) return;
+  botao.disabled = true;
+  botao.textContent = 'Confirmando…';
+  try{
+    const r = await fetch('/api/painel-pedidos', {
+      method:'POST', headers:{'Content-Type':'application/json','X-Admin-Password':senhaAdmin},
+      body:JSON.stringify({acao:'confirmar_whatsapp',pathname:botao.dataset.confirmar}),
+    });
+    const data = await r.json().catch(()=>({}));
+    if(!r.ok) throw new Error(data.error||'Não foi possível confirmar.');
+    $('systemMsg').innerHTML = notice(`Comanda ${data.confirmado.numero} confirmada e enviada para a fila.`);
+    await carregar();
+  }catch(err){
+    $('systemMsg').innerHTML = notice(err.message||'Não foi possível confirmar.','err');
+    botao.disabled = false;
+    botao.textContent = 'Recebi no WhatsApp — criar comanda';
+  }
+});
+
 async function carregar(){
   try{
     const r=await fetch('/api/painel-pedidos?t='+Date.now(),{cache:'no-store',headers:{'X-Admin-Password':senhaAdmin}});
@@ -121,6 +156,7 @@ async function carregar(){
     if(!r.ok) throw new Error(data.error||'Não foi possível carregar os pedidos.');
     $('systemMsg').innerHTML='';
     render(data.pedidos||[]);
+    renderAguardando(data.aguardando||[]);
     $('status').textContent=`Atualizado às ${new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',second:'2-digit'})}`;
   }catch(e){
     $('systemMsg').innerHTML=notice(e.message||'Falha ao atualizar pedidos.','err');
@@ -136,6 +172,7 @@ async function abrirPainel(){
     if(!r.ok) throw new Error(data.error||'Não foi possível entrar.');
     $('loginView').classList.add('hidden'); $('appView').classList.remove('hidden');
     render(data.pedidos||[]);
+    renderAguardando(data.aguardando||[]);
     $('status').textContent='Painel conectado';
     clearInterval(timer); timer=setInterval(carregar,30000);
   }catch(e){ $('loginMsg').innerHTML=notice(e.message||'Não foi possível entrar.','err'); }

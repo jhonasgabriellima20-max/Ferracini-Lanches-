@@ -10,6 +10,7 @@
     "@vercel/oidc": "^3.8.8"
   },
   "scripts": {
-    "test:tempo": "node tests/tempo-interno.test.js"
+    "test:tempo": "node tests/tempo-interno.test.js",
+    "test:whatsapp": "node tests/whatsapp-confirmacao.test.js"
   }
 }
