@@ -3,7 +3,6 @@ const { readJson, listBlobs } = require('../lib/postgres-storage');
 
 const TIME_ZONE = 'America/Sao_Paulo';
 const FILA_DIR = 'pedidos/fila';
-const RASCUNHO_DIR = 'pedidos/aguardando-whatsapp';
 const AUTH_WINDOW_MS = 15 * 60 * 1000;
 const AUTH_MAX_FAILURES = 5;
 const failedLogins = globalThis.__ferraciniPainelPedidosFailures || new Map();
@@ -151,37 +150,14 @@ async function listarPedidos(data, limite){
   return pedidos;
 }
 
-async function listarAguardando(data){
-  const resultado = await listBlobs({ prefix: `${RASCUNHO_DIR}/${data}/`, limit: 1000 });
-  const aguardando = [];
-  for(const blob of resultado.blobs || []){
-    try{
-      const rascunho = await lerJson(blob.pathname);
-      if(rascunho?.status === 'aguardando_whatsapp') aguardando.push({
-        pathname: blob.pathname,
-        referencia: rascunho.referencia,
-        criadoEm: rascunho.criadoEm,
-        cliente: rascunho.payload?.cliente,
-        itens: rascunho.payload?.itens,
-        atendimento: rascunho.payload?.atendimento,
-        totalCentavos: rascunho.payload?.totalCentavos,
-      });
-    }catch(err){
-      console.warn('[painel-pedidos] rascunho_ignorado', { pathname: blob.pathname, error: String(err) });
-    }
-  }
-  aguardando.sort((a,b) => String(b.criadoEm).localeCompare(String(a.criadoEm)));
-  return aguardando;
-}
-
 module.exports = async function handler(req, res){
   res.setHeader('Cache-Control', 'no-store, max-age=0');
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Robots-Tag', 'noindex, nofollow');
   res.setHeader('Vary', 'X-Admin-Password');
 
-  if(req.method !== 'GET' && req.method !== 'POST'){
-    res.setHeader('Allow', 'GET, POST');
+  if(req.method !== 'GET'){
+    res.setHeader('Allow', 'GET');
     return res.status(405).json({ error: 'Método não permitido.' });
   }
 
@@ -209,33 +185,13 @@ module.exports = async function handler(req, res){
   }
   failedLogins.delete(clientKey(req));
 
-  if(req.method === 'POST'){
-    if(String(req.headers['content-type'] || '').toLowerCase().includes('application/json') === false){
-      return res.status(415).json({ error: 'Conteúdo deve ser enviado em JSON.' });
-    }
-    if(Number(req.headers['content-length'] || 0) > 2048) return res.status(413).json({ error: 'Requisição muito grande.' });
-    try{
-      const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
-      if(body?.acao !== 'confirmar_whatsapp') return res.status(400).json({ error: 'Ação inválida.' });
-      const pathname = String(body?.pathname || '');
-      const confirmado = await require('./pedidos').confirmarPedidoWhatsapp(pathname);
-      return res.status(200).json({ confirmado });
-    }catch(err){
-      console.error('[painel-pedidos] confirmacao_falhou', { error: String(err) });
-      const mensagem = ['Referência inválida.','Referência não encontrada.'].includes(err?.message)
-        ? err.message : 'Não foi possível confirmar. Tente novamente.';
-      return res.status(mensagem === err?.message ? 400 : 503).json({ error: mensagem });
-    }
-  }
-
   try{
     const params = queryParams(req);
     const dataParam = String(params.get('data') || '');
     const limitParam = Number(params.get('limit'));
     const data = /^\d{4}-\d{2}-\d{2}$/.test(dataParam) ? dataParam : dataOperacao();
     const pedidos = await listarPedidos(data, Number.isFinite(limitParam) ? limitParam : 50);
-    const aguardando = await listarAguardando(data);
-    return res.status(200).json({ data, pedidos, aguardando, atualizadoEm: new Date().toISOString() });
+    return res.status(200).json({ data, pedidos, atualizadoEm: new Date().toISOString() });
   }catch(err){
     console.error('[painel-pedidos] listagem_falhou', { error: String(err) });
     return res.status(503).json({ error: 'Não foi possível carregar os pedidos agora.' });

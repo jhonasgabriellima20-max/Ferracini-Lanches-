@@ -23,10 +23,6 @@ jobs:
           node-version: 24
       - name: Validate snapshot
         run: node scripts/validate-snapshot.js
-      - name: Verify WhatsApp confirmation and timing
-        run: |
-          npm run test:whatsapp
-          npm run test:tempo
       - name: Check API syntax
         run: |
           node --check api/comanda.js

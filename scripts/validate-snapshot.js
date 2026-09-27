@@ -103,8 +103,6 @@ if(fs.existsSync('api/pedidos.js')){
     ['Math.ceil((distanciaKm * 2.30) - 1e-9) * 100', 'validação do frete no servidor'],
     ['validarEntregaNoServidor', 'revalidação da distância antes de registrar pedido'],
     ['MAX_DISTANCE_DELTA_KM', 'tolerância controlada para divergência de distância'],
-    ['prepararPedidoWhatsapp(payload)', 'rascunho antes do WhatsApp sem reservar comanda'],
-    ['confirmarPedidoWhatsapp', 'confirmação administrativa antes da fila'],
     ["content-type", 'validação de Content-Type'],
   ];
   for(const [needle, label] of securityChecks){

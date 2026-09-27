@@ -1413,7 +1413,7 @@ function horarioPedidoWhatsApp(criadoEm = ''){
   }).format(segura);
 }
 
-function montarMensagemPedido(referencia = '', criadoEm = ''){
+function montarMensagemPedido(comanda = '', criadoEm = ''){
   const { items, subtotal } = cartTotals();
   const nome = document.getElementById('clienteNome').value.trim();
   const telefone = document.getElementById('clienteTelefone').value.trim();
@@ -1446,7 +1446,7 @@ function montarMensagemPedido(referencia = '', criadoEm = ''){
 
   return [
     '🔔 NOVO PEDIDO — MESA',
-    referencia ? `🧾 REFERÊNCIA ${referencia} — aguarde confirmação da loja` : '',
+    comanda ? `🧾 COMANDA ${comanda}` : '',
     `🕐 HORÁRIO DO PEDIDO: ${horarioPedidoWhatsApp(criadoEm)}`,
     '',
     `👤 CLIENTE\n${nome}\n${telefone}`,
@@ -1521,7 +1521,7 @@ function registroFallbackWhatsapp(payload){
   const base = String(payload?.clientRequestId || '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
   const numero = 'W' + (base.slice(-6) || Math.random().toString(36).slice(2, 8).toUpperCase());
   return {
-    pedido: { id: null, referencia: numero, status: 'whatsapp' },
+    pedido: { id: null, numero, status: 'whatsapp' },
     duplicado: false,
     impressaoAtiva: false,
     storageDegraded: true,
@@ -1544,7 +1544,8 @@ async function registrarPedidoNoSistema(payload){
     const data = await resp.json().catch(() => ({}));
     if(!resp.ok) throw new Error(data?.error || 'Não foi possível registrar o pedido.');
     armazenamentoDegradado = data?.storageDegraded === true;
-    if(!data?.pedido?.referencia) throw new Error('O sistema não preparou o pedido. Tente novamente.');
+    if(!data?.pedido?.numero) throw new Error('O sistema não confirmou o pedido. Tente novamente.');
+    if(!data?.storageDegraded && !data?.pedido?.id) throw new Error('O sistema não confirmou o pedido. Tente novamente.');
     return data;
   }finally{
     clearTimeout(timeout);
@@ -1584,7 +1585,7 @@ btnEnviarPedidoEl.addEventListener('click', async () => {
   checkoutErrorBoxEl.innerHTML = '';
 
   btnEnviarPedidoEl.disabled = true;
-  btnEnviarPedidoEl.textContent = 'Preparando pedido...';
+  btnEnviarPedidoEl.textContent = 'Registrando comanda...';
 
   const clientRequestId = clientRequestIdAtual || criarIdPedido();
   clientRequestIdAtual = clientRequestId;
@@ -1595,15 +1596,15 @@ btnEnviarPedidoEl.addEventListener('click', async () => {
   try{
     registro = await registrarPedidoNoSistema(payload);
     avisoSistema = registro?.storageDegraded
-      ? '⚠️ Não foi possível preparar o pedido no sistema. Envie a mensagem e peça à loja para anotar a comanda.'
-      : `Envie a mensagem no WhatsApp. Referência ${escapeHTML(registro.pedido.referencia)}: a loja criará a comanda quando recebê-la.`;
+      ? '⚠️ O armazenamento está temporariamente indisponível, mas a comanda seguirá normalmente pelo WhatsApp.'
+      : `✅ Comanda ${registro.pedido.numero} registrada no sistema. Abrindo o WhatsApp para envio.`;
   }catch(err){
     console.warn('[mesa] registro_sistema_falhou_whatsapp_preservado', { error: String(err) });
-    avisoSistema = '⚠️ Não foi possível preparar o pedido no sistema. Envie a mensagem e peça à loja para anotar a comanda.';
+    avisoSistema = '⚠️ Não foi possível registrar a comanda no sistema agora, mas ela seguirá normalmente pelo WhatsApp.';
   }
 
-  const referenciaPedido = registro?.pedido?.referencia || '';
-  const destinoWhatsApp = linkWhatsApp(montarMensagemPedido(referenciaPedido, registro?.pedido?.criadoEm));
+  const numeroComanda = registro?.pedido?.numero || '';
+  const destinoWhatsApp = linkWhatsApp(montarMensagemPedido(numeroComanda, registro?.pedido?.criadoEm));
 
   btnEnviarPedidoEl.textContent = 'Abrindo WhatsApp...';
   checkoutConfirmEl.innerHTML = avisoSistema;
