@@ -27,9 +27,12 @@ async function call(handler, request){
   await handler(request,response); return response;
 }
 (async()=>{
-  const body={clientRequestId:'teste-comanda-1234567890',cliente:{nome:'Cliente Teste',telefone:'43999999999'},
+  const body={clientRequestId:'teste-comanda-1234567890',origem:'mesa',cliente:{nome:'Cliente Teste',telefone:'43999999999'},
     itens:[{nome:'Dog Simples',quantidade:1,precoUnitarioCentavos:1200,adicionais:[]}],
-    atendimento:{tipo:'retirada'},pagamento:{metodo:'pix'}};
+    atendimento:{tipo:'mesa',mesa:1},pagamento:{metodo:'pix'}};
+  const retirada=await call(pedidosHandler,req('POST',{...body,clientRequestId:'teste-retirada-1234567890',origem:'site',atendimento:{tipo:'retirada'}}));
+  assert.equal(retirada.statusCode,400);
+  assert.equal([...storage.keys()].length,0);
   const created=await call(pedidosHandler,req('POST',body));
   assert.equal(created.statusCode,201);
   assert.equal(created.body.pedido.referencia,'1234567890');
