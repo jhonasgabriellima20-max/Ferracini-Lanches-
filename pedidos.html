@@ -22,9 +22,13 @@
   </section>
 
   <main id="appView" class="hidden">
-    <div class="top"><div><div class="brand">FERRACINI<span>.</span></div><h1>Pedidos de hoje</h1><p class="sub">Atualiza automaticamente. O WhatsApp continua funcionando normalmente.</p></div><button class="btn btn-ghost" id="sair">Sair</button></div>
+    <div class="top"><div><div class="brand">FERRACINI<span>.</span></div><h1>Pedidos de hoje</h1><p class="sub">Confira no WhatsApp a referência recebida e confirme abaixo. Só pedidos confirmados entram na fila e recebem número de comanda.</p></div><button class="btn btn-ghost" id="sair">Sair</button></div>
     <div class="toolbar"><div class="status" id="status">Carregando…</div><div class="count" id="count">0 pedidos</div></div>
     <div id="systemMsg"></div>
+    <h2>Tentativas aguardando mensagem no WhatsApp</h2>
+    <p class="sub">Não são pedidos confirmados. Confirme apenas quando a mensagem aparecer no WhatsApp da loja. Tentativas sem envio somem desta lista após uma hora.</p>
+    <div id="waiting" class="orders"></div>
+    <h2>Comandas confirmadas</h2>
     <div id="orders" class="orders"></div>
   </main>
 </div>
@@ -85,6 +89,25 @@ function endereco(p){
   return [e.rua, e.numero, e.complemento, e.bairro, e.cidade, e.cep].filter(Boolean).map(esc).join(' · ');
 }
 
+function renderAguardando(pedidos){
+  $('waiting').innerHTML = pedidos.length ? pedidos.map(p =>
+    `<article class="order"><div class="order-head"><div><div class="num">Referência ${esc(p.referencia)}</div><div class="tag">${tipoAtendimento(p)}</div></div><div class="time">Tentativa às ${hora(p.criadoEm)}</div></div><div class="customer">${esc(p.cliente?.nome)}</div><div class="phone">${esc(p.cliente?.telefone)}</div><div class="items">${(p.itens||[]).map(i=>`<div class="item">${esc(i.quantidade)}x ${esc(i.nome)}</div>`).join('')}</div><button class="btn btn-primary confirmar" data-id="${esc(p.id)}">Confirmar recebimento e gerar comanda</button></article>`
+  ).join('') : '<div class="card empty">Nenhuma tentativa aguardando.</div>';
+}
+
+$('waiting').addEventListener('click', async e => {
+  const btn = e.target.closest('button.confirmar');
+  if(!btn || btn.disabled) return;
+  btn.disabled = true;
+  try{
+    const r = await fetch('/api/painel-pedidos', { method:'POST', cache:'no-store',
+      headers:{'Content-Type':'application/json','X-Admin-Password':senhaAdmin}, body:JSON.stringify({id:btn.dataset.id}) });
+    const data = await r.json().catch(()=>({}));
+    if(!r.ok) throw new Error(data.error || 'Falha ao confirmar.');
+    await carregar();
+  }catch(err){ $('systemMsg').innerHTML=notice(err.message,'err'); btn.disabled=false; }
+});
+
 function render(pedidos){
   $('count').textContent = `${pedidos.length} ${pedidos.length===1?'pedido':'pedidos'}`;
   if(!pedidos.length){ $('orders').innerHTML='<div class="card empty">Nenhum pedido registrado hoje.</div>'; return; }
@@ -121,6 +144,7 @@ async function carregar(){
     if(!r.ok) throw new Error(data.error||'Não foi possível carregar os pedidos.');
     $('systemMsg').innerHTML='';
     render(data.pedidos||[]);
+    renderAguardando(data.aguardando||[]);
     $('status').textContent=`Atualizado às ${new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',second:'2-digit'})}`;
   }catch(e){
     $('systemMsg').innerHTML=notice(e.message||'Falha ao atualizar pedidos.','err');
@@ -136,6 +160,7 @@ async function abrirPainel(){
     if(!r.ok) throw new Error(data.error||'Não foi possível entrar.');
     $('loginView').classList.add('hidden'); $('appView').classList.remove('hidden');
     render(data.pedidos||[]);
+    renderAguardando(data.aguardando||[]);
     $('status').textContent='Painel conectado';
     clearInterval(timer); timer=setInterval(carregar,30000);
   }catch(e){ $('loginMsg').innerHTML=notice(e.message||'Não foi possível entrar.','err'); }

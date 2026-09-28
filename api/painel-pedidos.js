@@ -3,6 +3,7 @@ const { readJson, listBlobs } = require('../lib/postgres-storage');
 
 const TIME_ZONE = 'America/Sao_Paulo';
 const FILA_DIR = 'pedidos/fila';
+const AGUARDANDO_DIR = 'pedidos/aguardando';
 const AUTH_WINDOW_MS = 15 * 60 * 1000;
 const AUTH_MAX_FAILURES = 5;
 const failedLogins = globalThis.__ferraciniPainelPedidosFailures || new Map();
@@ -150,14 +151,28 @@ async function listarPedidos(data, limite){
   return pedidos;
 }
 
+async function listarAguardando(data){
+  const resultado = await listBlobs({ prefix: `${AGUARDANDO_DIR}/${data}/`, limit: 1000 });
+  const pedidos = [];
+  for(const blob of resultado.blobs || []){
+    try{
+      const pedido = await lerJson(blob.pathname);
+      // Uma tentativa não enviada não gera alerta, fila nem número. Some após uma hora.
+      if(pedido?.status === 'aguardando_whatsapp' &&
+        Date.now() - new Date(pedido.criadoEm).getTime() < 60 * 60 * 1000) pedidos.push(pedido);
+    }catch(err){ console.warn('[painel-pedidos] tentativa_leitura_falhou', String(err)); }
+  }
+  return pedidos.sort((a,b) => String(b.criadoEm).localeCompare(String(a.criadoEm)));
+}
+
 module.exports = async function handler(req, res){
   res.setHeader('Cache-Control', 'no-store, max-age=0');
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Robots-Tag', 'noindex, nofollow');
   res.setHeader('Vary', 'X-Admin-Password');
 
-  if(req.method !== 'GET'){
-    res.setHeader('Allow', 'GET');
+  if(req.method !== 'GET' && req.method !== 'POST'){
+    res.setHeader('Allow', 'GET, POST');
     return res.status(405).json({ error: 'Método não permitido.' });
   }
 
@@ -186,12 +201,19 @@ module.exports = async function handler(req, res){
   failedLogins.delete(clientKey(req));
 
   try{
+    if(req.method === 'POST'){
+      if(!String(req.headers['content-type'] || '').includes('application/json')) return res.status(415).json({error:'Conteúdo deve ser JSON.'});
+      const id = String(req.body?.id || '');
+      const pedido = await require('./pedidos').confirmarPedido(id);
+      return res.status(200).json({ pedido });
+    }
     const params = queryParams(req);
     const dataParam = String(params.get('data') || '');
     const limitParam = Number(params.get('limit'));
     const data = /^\d{4}-\d{2}-\d{2}$/.test(dataParam) ? dataParam : dataOperacao();
     const pedidos = await listarPedidos(data, Number.isFinite(limitParam) ? limitParam : 50);
-    return res.status(200).json({ data, pedidos, atualizadoEm: new Date().toISOString() });
+    const aguardando = await listarAguardando(data);
+    return res.status(200).json({ data, pedidos, aguardando, atualizadoEm: new Date().toISOString() });
   }catch(err){
     console.error('[painel-pedidos] listagem_falhou', { error: String(err) });
     return res.status(503).json({ error: 'Não foi possível carregar os pedidos agora.' });

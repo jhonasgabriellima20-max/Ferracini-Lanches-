@@ -8,7 +8,7 @@ const TIME_ZONE = 'America/Sao_Paulo';
 const COUNTER_PATH = 'config/pedidos-sequencia.json';
 const RESERVA_DIR = 'pedidos/reservas';
 const FILA_DIR = 'pedidos/fila';
-const IDEMPOTENCIA_DIR = 'pedidos/idempotencia';
+const AGUARDANDO_DIR = 'pedidos/aguardando';
 const MAX_BODY_BYTES = 64 * 1024;
 const MAX_ROUTE_KM = 35;
 const MAX_DISTANCE_DELTA_KM = 0.35;
@@ -426,32 +426,53 @@ function hashId(value){
 
 async function criarPedido(payload){
   const data = dataOperacao();
-  const idemPath = `${IDEMPOTENCIA_DIR}/${data}/${hashId(payload.clientRequestId)}.json`;
-  const existente = await lerJson(idemPath);
-  if(existente?.pathname){
-    const pedidoExistente = await lerJson(existente.pathname);
-    if(pedidoExistente) return { pedido: pedidoExistente, duplicado: true };
-  }
-
-  const sequencia = await proximoNumero(data);
-  const id = crypto.randomUUID();
+  const id = hashId(payload.clientRequestId);
+  const pathname = `${AGUARDANDO_DIR}/${data}/${id}.json`;
+  const existente = await lerJson(pathname);
+  if(existente) return { pedido: existente, duplicado: true };
   const agora = new Date().toISOString();
-  const pathname = `${FILA_DIR}/${data}/${String(sequencia.numero).padStart(8, '0')}-${id}.json`;
   const pedido = {
     id,
-    numero: sequencia.codigo,
-    numeroSequencial: sequencia.numero,
+    referencia: payload.clientRequestId.replace(/[^a-zA-Z0-9]/g, '').slice(-10).toUpperCase(),
     data,
     criadoEm: agora,
     atualizadoEm: agora,
-    status: 'pendente',
+    status: 'aguardando_whatsapp',
     tentativasImpressao: 0,
     ...payload,
   };
-
-  await gravarJson(pathname, pedido, false);
-  await gravarJson(idemPath, { pathname, numero: sequencia.codigo, criadoEm: agora }, true);
+  try{ await gravarJson(pathname, pedido, false); }
+  catch(err){
+    if(!isConflict(err)) throw err;
+    return { pedido: await lerJson(pathname), duplicado: true };
+  }
   return { pedido, pathname, duplicado: false };
+}
+
+async function confirmarPedido(id){
+  if(!/^[a-f0-9]{64}$/.test(id)) throw new Error('Referência inválida.');
+  let data = dataOperacao();
+  let pathname = `${AGUARDANDO_DIR}/${data}/${id}.json`;
+  let pedido = await lerJson(pathname);
+  if(!pedido){
+    const anterior = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    data = new Intl.DateTimeFormat('en-CA', {timeZone: TIME_ZONE, year:'numeric', month:'2-digit', day:'2-digit'}).format(anterior);
+    pathname = `${AGUARDANDO_DIR}/${data}/${id}.json`;
+    pedido = await lerJson(pathname);
+  }
+  if(!pedido) throw new Error('Tentativa não encontrada hoje.');
+  if(pedido.confirmadoPath){
+    const confirmado = await lerJson(pedido.confirmadoPath);
+    if(confirmado) return confirmado;
+  }
+  const sequencia = await proximoNumero(data);
+  const agora = new Date().toISOString();
+  const confirmadoPath = `${FILA_DIR}/${data}/${String(sequencia.numero).padStart(8, '0')}-${id}.json`;
+  const confirmado = { ...pedido, numero: sequencia.codigo, numeroSequencial: sequencia.numero,
+    status: 'pendente', confirmadoEm: agora, atualizadoEm: agora };
+  await gravarJson(confirmadoPath, confirmado, false);
+  await gravarJson(pathname, { ...pedido, status: 'confirmado', confirmadoPath, atualizadoEm: agora }, true);
+  return confirmado;
 }
 
 async function listarPedidos(req){
@@ -558,7 +579,7 @@ module.exports = async function handler(req, res){
       return res.status(registro.duplicado ? 200 : 201).json({
         pedido: {
           id: registro.pedido.id,
-          numero: registro.pedido.numero,
+          referencia: registro.pedido.referencia,
           data: registro.pedido.data,
           criadoEm: registro.pedido.criadoEm,
           status: registro.pedido.status,
@@ -600,7 +621,7 @@ module.exports = async function handler(req, res){
             return '';
           }
         })();
-        const fallbackNumero = `W${hashId(rawId || crypto.randomUUID()).slice(0, 6).toUpperCase()}`;
+        const fallbackNumero = rawId.replace(/[^a-zA-Z0-9]/g, '').slice(-10).toUpperCase() || crypto.randomUUID().slice(0,10).toUpperCase();
         console.warn('[pedidos] storage_indisponivel_fallback_whatsapp', {
           numero: fallbackNumero,
           error: String(err),
@@ -609,7 +630,7 @@ module.exports = async function handler(req, res){
         return res.status(202).json({
           pedido: {
             id: null,
-            numero: fallbackNumero,
+            referencia: fallbackNumero,
             data: dataOperacao(),
             criadoEm: new Date().toISOString(),
             status: 'whatsapp',
@@ -628,3 +649,4 @@ module.exports = async function handler(req, res){
   res.setHeader('Allow', 'GET, POST, PATCH');
   return res.status(405).json({ error: 'Método não permitido.' });
 };
+module.exports.confirmarPedido = confirmarPedido;
