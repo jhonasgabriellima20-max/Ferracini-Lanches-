@@ -228,6 +228,7 @@ function validarPayload(raw, catalogo = CATALOGO){
 
   const tipo = texto(raw.atendimento?.tipo, 20);
   if(!['retirada', 'entrega', 'mesa'].includes(tipo)) throw new Error('Tipo de atendimento inválido.');
+  if(tipo === 'retirada') throw new Error('No momento, os pedidos são apenas para entrega.');
 
   const nome = texto(raw.cliente?.nome, 80);
   const telefone = texto(raw.cliente?.telefone, 30);
@@ -598,6 +599,7 @@ module.exports = async function handler(req, res){
         'O pedido precisa ter entre 1 e 40 itens.',
         'Há um item inválido no pedido.',
         'Tipo de atendimento inválido.',
+        'No momento, os pedidos são apenas para entrega.',
         'Número da mesa inválido.',
         'Endereço de entrega incompleto.',
         'A entrega automática atende somente Londrina.',
