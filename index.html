@@ -607,6 +607,14 @@
     </div>
 
     <div class="checkout-block">
+      <div class="checkout-block-title">Como você quer receber?</div>
+      <div class="method-toggle">
+        <button type="button" class="method-btn" id="btnRetirada" data-method="retirada">🏪 Retirar no local</button>
+        <button type="button" class="method-btn active" id="btnEntrega" data-method="entrega">🚚 Entrega</button>
+      </div>
+    </div>
+
+    <div class="checkout-block">
       <div class="checkout-block-title">Seus dados</div>
       <div class="field">
         <label for="clienteNome">Nome</label>
@@ -1158,7 +1166,7 @@ const checkoutErrorBoxEl = document.getElementById('checkoutErrorBox');
 const checkoutConfirmEl = document.getElementById('checkoutConfirm');
 const btnEnviarPedidoEl = document.getElementById('btnEnviarPedido');
 
-const deliveryMethod = 'entrega';
+let deliveryMethod = 'entrega'; // 'retirada' | 'entrega'
 let paymentMethod = 'pix';
 let precisaTroco = false;
 let trocoPara = '';
@@ -1485,6 +1493,23 @@ document.getElementById('btnCalcularFrete').addEventListener('click', calcularFr
   document.getElementById(id).addEventListener('input', resetFrete);
 });
 
+document.querySelectorAll('.method-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    deliveryMethod = btn.dataset.method;
+    document.querySelectorAll('.method-btn').forEach(b => b.classList.toggle('active', b === btn));
+    enderecoBlockEl.style.display = deliveryMethod === 'entrega' ? 'block' : 'none';
+    resetFrete();
+    const opcoesPagamento = paymentOptionsForMethod();
+    if(!opcoesPagamento.includes(paymentMethod)){
+      paymentMethod = opcoesPagamento[0];
+      precisaTroco = false;
+      trocoPara = '';
+    }
+    renderPaymentOptions();
+    renderCheckout();
+  });
+});
+
 function cartLinesHTML(items){
   return items.map(([nome, v]) => {
     const addons = (v.adicionais || []).map(a => a.nome).join(', ');
@@ -1631,6 +1656,9 @@ async function abrirCheckout(){
     atualizarStatusHorarioPedidos();
     return;
   }
+  deliveryMethod = 'entrega';
+  document.querySelectorAll('.method-btn').forEach(b => b.classList.toggle('active', b.dataset.method === 'entrega'));
+  enderecoBlockEl.style.display = 'block';
   resetFrete();
   paymentMethod = 'pix';
   precisaTroco = false;
