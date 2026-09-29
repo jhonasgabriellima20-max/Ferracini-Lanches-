@@ -245,7 +245,7 @@ function defaults(){
   return {
     ingredientes: Object.fromEntries(INGREDIENTES.map(([id]) => [id, true])),
     produtos: Object.fromEntries(PRODUTOS.map(([nome]) => [nome, true])),
-    operacao: { demanda: 'normal', modoLoja: 'automatico', horarios: normalizarHorarios(HORARIO_PADRAO), temposPreparo: normalizarTemposPreparo(null, []), atrasoExtraMinutos: 0, comandaEmPreparo: 0, dataComandaEmPreparo: '' },
+    operacao: { demanda: 'normal', modoLoja: 'automatico', canaisAtendimento: { entrega: true, retirada: true }, horarios: normalizarHorarios(HORARIO_PADRAO), temposPreparo: normalizarTemposPreparo(null, []), atrasoExtraMinutos: 0, comandaEmPreparo: 0, dataComandaEmPreparo: '' },
     updatedAt: null,
     itensNovos: [],
   };
@@ -273,6 +273,11 @@ function mergeState(raw){
     if(['baixa','normal','alta'].includes(demanda)) base.operacao.demanda = demanda;
     const modoLoja = raw.operacao?.modoLoja;
     if(['automatico','aberto','fechado'].includes(modoLoja)) base.operacao.modoLoja = modoLoja;
+    const canaisAtendimento = raw.operacao?.canaisAtendimento;
+    if(canaisAtendimento && typeof canaisAtendimento === 'object'){
+      if(typeof canaisAtendimento.entrega === 'boolean') base.operacao.canaisAtendimento.entrega = canaisAtendimento.entrega;
+      if(typeof canaisAtendimento.retirada === 'boolean') base.operacao.canaisAtendimento.retirada = canaisAtendimento.retirada;
+    }
     base.operacao.horarios = normalizarHorarios(raw.operacao?.horarios);
     base.operacao.temposPreparo = normalizarTemposPreparo(raw.operacao?.temposPreparo, base.itensNovos);
     const atrasoExtraMinutos = Number(raw.operacao?.atrasoExtraMinutos);
@@ -579,6 +584,13 @@ module.exports = async function handler(req, res){
 
 module.exports.readOrderCatalog = async function(){ const {state} = await readState({force:true}); return orderCatalog(state.itensNovos); };
 module.exports.readStoreStatus = async function(){ const {state} = await readState({force:true}); return statusHorarioPedidos(state); };
+module.exports.readServiceAvailability = async function(){
+  const {state} = await readState({force:true});
+  return {
+    entrega: state.operacao?.canaisAtendimento?.entrega !== false,
+    retirada: state.operacao?.canaisAtendimento?.retirada !== false,
+  };
+};
 module.exports.readPrepConfig = async function(){
   const {state} = await readState({force:true});
   return {

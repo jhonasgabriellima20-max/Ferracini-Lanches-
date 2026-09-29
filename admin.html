@@ -52,6 +52,21 @@
       <div class="row-note" style="margin-top:12px">Você pode alterar os horários de qualquer dia. Se o fechamento for após a meia-noite, use por exemplo 18:00 → 01:00. “Abrir agora” e “Fechar agora” ignoram temporariamente a programação até você voltar ao automático.</div>
     </div>
 
+    <div class="section-title"><div><h2>Entrega e retirada</h2><p>ON = aparece no site · OFF = fica indisponível</p></div></div>
+    <div class="card">
+      <div class="grid ingredients">
+        <div class="row">
+          <div class="row-main"><div class="row-name">🚚 Entrega</div><div class="row-note">Liga ou desliga a opção de entrega no checkout.</div></div>
+          <label class="toggle"><input type="checkbox" id="canalEntrega" data-canal="entrega" checked><span class="slider"></span></label>
+        </div>
+        <div class="row">
+          <div class="row-main"><div class="row-name">🏪 Retirada</div><div class="row-note">Liga ou desliga a opção de retirada no local.</div></div>
+          <label class="toggle"><input type="checkbox" id="canalRetirada" data-canal="retirada" checked><span class="slider"></span></label>
+        </div>
+      </div>
+      <div class="row-note" style="margin-top:12px">As duas opções são independentes. Pedidos de mesa não são alterados por estes controles.</div>
+    </div>
+
     <div class="section-title"><div><h2>Fila / tempo de entrega</h2><p>A previsão agora acompanha as comandas e o peso de cada lanche</p></div></div>
     <div class="card">
       <div class="field">
@@ -94,7 +109,7 @@
 </div>
 <script>
 let senhaAdmin = sessionStorage.getItem('ferracini_admin_password') || '';
-let estado = { ingredientes:{}, produtos:{}, operacao:{demanda:'normal',modoLoja:'automatico',horarios:{},temposPreparo:{},atrasoExtraMinutos:0}, updatedAt:null };
+let estado = { ingredientes:{}, produtos:{}, operacao:{demanda:'normal',modoLoja:'automatico',canaisAtendimento:{entrega:true,retirada:true},horarios:{},temposPreparo:{},atrasoExtraMinutos:0}, updatedAt:null };
 let salvando = false;
 let catalogo = { ingredientes:[], produtos:[] };
 let storageReady = true;
@@ -143,6 +158,9 @@ function garantirOperacao(){
   estado.operacao ||= {};
   estado.operacao.demanda = ['baixa','normal','alta'].includes(estado.operacao.demanda) ? estado.operacao.demanda : 'normal';
   estado.operacao.modoLoja = ['automatico','aberto','fechado'].includes(estado.operacao.modoLoja) ? estado.operacao.modoLoja : 'automatico';
+  estado.operacao.canaisAtendimento ||= {};
+  estado.operacao.canaisAtendimento.entrega = estado.operacao.canaisAtendimento.entrega !== false;
+  estado.operacao.canaisAtendimento.retirada = estado.operacao.canaisAtendimento.retirada !== false;
   estado.operacao.horarios ||= {};
   estado.operacao.temposPreparo ||= {};
   estado.operacao.atrasoExtraMinutos = Number.isFinite(Number(estado.operacao.atrasoExtraMinutos)) ? Number(estado.operacao.atrasoExtraMinutos) : 0;
@@ -152,6 +170,12 @@ function garantirOperacao(){
       fechamento: estado.operacao.horarios[id]?.fechamento || HORARIO_PADRAO[id].fechamento,
     };
   });
+}
+
+function renderCanaisAtendimento(){
+  garantirOperacao();
+  $('canalEntrega').checked = estado.operacao.canaisAtendimento.entrega !== false;
+  $('canalRetirada').checked = estado.operacao.canaisAtendimento.retirada !== false;
 }
 
 function renderHorarios(){
@@ -186,7 +210,7 @@ function renderTemposPreparo(){
 }
 
 function render(){
-  renderIngredientes(); renderProdutos(); renderHorarios(); renderTemposPreparo();
+  renderIngredientes(); renderProdutos(); renderHorarios(); renderCanaisAtendimento(); renderTemposPreparo();
   $('demanda').value = estado.operacao?.demanda || 'normal';
   $('demanda').onchange = () => {
     estado.operacao = { ...(estado.operacao||{}), demanda: $('demanda').value };
@@ -236,6 +260,12 @@ $('senha').addEventListener('keydown',e=>{if(e.key==='Enter')$('entrar').click()
 $('sair').addEventListener('click',()=>{sessionStorage.removeItem('ferracini_admin_password');senhaAdmin='';location.reload();});
 $('appView').addEventListener('change', e => {
   const el = e.target;
+  if(el.matches('input[data-canal]')){
+    garantirOperacao();
+    estado.operacao.canaisAtendimento[el.dataset.canal] = el.checked;
+    $('status').textContent = 'Entrega/retirada ainda não salvas';
+    return;
+  }
   if(el.matches('input[data-preparo]')){
     garantirOperacao();
     const nome = el.dataset.preparo;

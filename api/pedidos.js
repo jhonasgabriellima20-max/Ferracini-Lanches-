@@ -555,7 +555,16 @@ module.exports = async function handler(req, res){
       if(typeof body === 'string') body = JSON.parse(body || '{}');
       const hasCustom = Array.isArray(body?.itens) && body.itens.some(item => !Object.hasOwn(CATALOGO.produtos, item?.nome || '') || (Array.isArray(item?.adicionais) && item.adicionais.some(a => !Object.hasOwn(CATALOGO.adicionais, a?.nome || ''))));
       const catalogo = hasCustom ? await require('./disponibilidade').readOrderCatalog() : CATALOGO;
-      const payloadValidado = await validarEntregaNoServidor(validarPayload(body, catalogo));
+      const payloadBase = validarPayload(body, catalogo);
+      if(payloadBase.atendimento.tipo === 'entrega' || payloadBase.atendimento.tipo === 'retirada'){
+        const canais = await require('./disponibilidade').readServiceAvailability();
+        if(canais[payloadBase.atendimento.tipo] === false){
+          throw new Error(payloadBase.atendimento.tipo === 'entrega'
+            ? 'Entrega indisponível no momento.'
+            : 'Retirada indisponível no momento.');
+        }
+      }
+      const payloadValidado = await validarEntregaNoServidor(payloadBase);
       const payload = await aplicarEstimativaInteligente(payloadValidado);
       const registro = await criarPedido(payload);
       return res.status(registro.duplicado ? 200 : 201).json({
@@ -580,6 +589,8 @@ module.exports = async function handler(req, res){
         'O pedido precisa ter entre 1 e 40 itens.',
         'Há um item inválido no pedido.',
         'Tipo de atendimento inválido.',
+        'Entrega indisponível no momento.',
+        'Retirada indisponível no momento.',
         'Número da mesa inválido.',
         'Endereço de entrega incompleto.',
         'A entrega automática atende somente Londrina.',

@@ -833,6 +833,7 @@ const HORARIOS_PADRAO = {
   sabado:{abertura:'18:00',fechamento:'01:00'}
 };
 let operacaoLoja = { modoLoja:'automatico', horarios: HORARIOS_PADRAO };
+let canaisAtendimento = { entrega:true, retirada:true };
 let armazenamentoDegradado = false;
 const DISPONIBILIDADE_REFRESH_MS = 5 * 60 * 1000;
 let disponibilidadeUltimaTentativa = 0;
@@ -895,6 +896,11 @@ async function carregarDisponibilidade({ silencioso = true, force = false } = {}
         modoLoja: ['automatico','aberto','fechado'].includes(data.operacao?.modoLoja) ? data.operacao.modoLoja : 'automatico',
         horarios: normalizarHorariosLoja(data.operacao?.horarios),
       };
+      canaisAtendimento = {
+        entrega: data.operacao?.canaisAtendimento?.entrega !== false,
+        retirada: data.operacao?.canaisAtendimento?.retirada !== false,
+      };
+      aplicarDisponibilidadeAtendimento();
       armazenamentoDegradado = data.storageDegraded === true;
       atualizarTabelaHorarios();
       atualizarStatusHorarioPedidos();
@@ -1172,6 +1178,38 @@ let precisaTroco = false;
 let trocoPara = '';
 let frete = { status: 'idle', distanciaKm: null, valor: 0, estimativa: null }; // idle | loading | ok | error
 let freteRequestId = 0;
+
+function canalAtendimentoDisponivel(metodo){
+  return metodo === 'entrega'
+    ? canaisAtendimento.entrega !== false
+    : metodo === 'retirada'
+      ? canaisAtendimento.retirada !== false
+      : false;
+}
+
+function aplicarDisponibilidadeAtendimento(){
+  const btnEntrega = document.getElementById('btnEntrega');
+  const btnRetirada = document.getElementById('btnRetirada');
+  if(btnEntrega){
+    btnEntrega.hidden = !canalAtendimentoDisponivel('entrega');
+    btnEntrega.style.display = canalAtendimentoDisponivel('entrega') ? '' : 'none';
+    btnEntrega.disabled = !canalAtendimentoDisponivel('entrega');
+  }
+  if(btnRetirada){
+    btnRetirada.hidden = !canalAtendimentoDisponivel('retirada');
+    btnRetirada.style.display = canalAtendimentoDisponivel('retirada') ? '' : 'none';
+    btnRetirada.disabled = !canalAtendimentoDisponivel('retirada');
+  }
+
+  if(!canalAtendimentoDisponivel(deliveryMethod)){
+    deliveryMethod = canalAtendimentoDisponivel('entrega')
+      ? 'entrega'
+      : (canalAtendimentoDisponivel('retirada') ? 'retirada' : '');
+  }
+
+  document.querySelectorAll('.method-btn').forEach(b => b.classList.toggle('active', b.dataset.method === deliveryMethod));
+  if(enderecoBlockEl) enderecoBlockEl.style.display = deliveryMethod === 'entrega' ? 'block' : 'none';
+}
 
 const PAYMENT_LABELS = { pix: 'Pix', dinheiro: 'Dinheiro', debito: 'Débito', credito: 'Crédito' };
 function paymentOptionsForMethod(){
@@ -1495,6 +1533,7 @@ document.getElementById('btnCalcularFrete').addEventListener('click', calcularFr
 
 document.querySelectorAll('.method-btn').forEach(btn => {
   btn.addEventListener('click', () => {
+    if(!canalAtendimentoDisponivel(btn.dataset.method)) return;
     deliveryMethod = btn.dataset.method;
     document.querySelectorAll('.method-btn').forEach(b => b.classList.toggle('active', b === btn));
     enderecoBlockEl.style.display = deliveryMethod === 'entrega' ? 'block' : 'none';
@@ -1656,9 +1695,15 @@ async function abrirCheckout(){
     atualizarStatusHorarioPedidos();
     return;
   }
-  deliveryMethod = 'entrega';
-  document.querySelectorAll('.method-btn').forEach(b => b.classList.toggle('active', b.dataset.method === 'entrega'));
-  enderecoBlockEl.style.display = 'block';
+  const metodoInicial = canalAtendimentoDisponivel('entrega')
+    ? 'entrega'
+    : (canalAtendimentoDisponivel('retirada') ? 'retirada' : '');
+  if(!metodoInicial){
+    alert('Entrega e retirada estão indisponíveis no momento.');
+    return;
+  }
+  deliveryMethod = metodoInicial;
+  aplicarDisponibilidadeAtendimento();
   resetFrete();
   paymentMethod = 'pix';
   precisaTroco = false;
@@ -1883,6 +1928,7 @@ function validarCheckout(){
 
   if(!nome) erros.push('Informe seu nome.');
   if(!telefone) erros.push('Informe seu telefone.');
+  if(!canalAtendimentoDisponivel(deliveryMethod)) erros.push('A modalidade de atendimento selecionada está indisponível no momento.');
 
   if(deliveryMethod === 'entrega'){
     const rua = document.getElementById('endRua').value.trim();
