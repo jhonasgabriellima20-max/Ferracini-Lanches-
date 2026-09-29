@@ -228,7 +228,6 @@ function validarPayload(raw, catalogo = CATALOGO){
 
   const tipo = texto(raw.atendimento?.tipo, 20);
   if(!['retirada', 'entrega', 'mesa'].includes(tipo)) throw new Error('Tipo de atendimento inválido.');
-  if(tipo === 'retirada') throw new Error('No momento, os pedidos são apenas para entrega.');
 
   const nome = texto(raw.cliente?.nome, 80);
   const telefone = texto(raw.cliente?.telefone, 30);
@@ -379,25 +378,7 @@ async function aplicarEstimativaInteligente(payload){
   const tempo = calcularTempoInternoLanches(payload.itens);
   payload.atendimento.tempoInternoMinutos = tempo;
 
-  if(payload.atendimento.tipo === 'retirada' && tempo > 0){
-    const agora = new Date();
-    let fila = { filaMinutos: 0, pedidosConsiderados: 0 };
-
-    try{
-      const existentes = await listarPedidosRecentes(agora);
-      fila = calcularFilaTempoInterno(existentes, agora);
-    }catch(err){
-      console.warn('[pedidos] fila_retirada_indisponivel', { error: String(err) });
-    }
-
-    const estimativa = Math.min(300, Math.max(tempo, fila.filaMinutos + tempo));
-    payload.atendimento.estimativaMinutos = { minimo: estimativa, maximo: estimativa };
-    payload.atendimento.estimativaDetalhes = {
-      filaMinutos: fila.filaMinutos,
-      pedidoMinutos: tempo,
-      pedidosConsiderados: fila.pedidosConsiderados,
-    };
-  } else if(payload.atendimento.tipo === 'entrega'){
+  if(payload.atendimento.tipo === 'entrega'){
     try{
       const config = await require('./disponibilidade').readPrepConfig();
       const previsao = await estimarPrazo({
@@ -599,7 +580,6 @@ module.exports = async function handler(req, res){
         'O pedido precisa ter entre 1 e 40 itens.',
         'Há um item inválido no pedido.',
         'Tipo de atendimento inválido.',
-        'No momento, os pedidos são apenas para entrega.',
         'Número da mesa inválido.',
         'Endereço de entrega incompleto.',
         'A entrega automática atende somente Londrina.',

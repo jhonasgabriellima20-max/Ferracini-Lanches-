@@ -30,9 +30,6 @@ async function call(handler, request){
   const body={clientRequestId:'teste-comanda-1234567890',origem:'mesa',cliente:{nome:'Cliente Teste',telefone:'43999999999'},
     itens:[{nome:'Dog Simples',quantidade:1,precoUnitarioCentavos:1200,adicionais:[]}],
     atendimento:{tipo:'mesa',mesa:1},pagamento:{metodo:'pix'}};
-  const retirada=await call(pedidosHandler,req('POST',{...body,clientRequestId:'teste-retirada-1234567890',origem:'site',atendimento:{tipo:'retirada'}}));
-  assert.equal(retirada.statusCode,400);
-  assert.equal([...storage.keys()].length,0);
   const created=await call(pedidosHandler,req('POST',body));
   assert.equal(created.statusCode,201);
   assert.equal(created.body.pedido.referencia,'1234567890');
@@ -51,5 +48,12 @@ async function call(handler, request){
   const again=await call(painelHandler,req('POST',{id:created.body.pedido.id},auth,'/api/painel-pedidos'));
   assert.equal(again.body.pedido.numero,'01');
   assert.equal([...storage.keys()].filter(k=>k.startsWith('pedidos/reservas/')).length,1);
+  const retirada=await call(pedidosHandler,req('POST',{...body,clientRequestId:'teste-retirada-1234567890',origem:'site',atendimento:{tipo:'retirada'}}));
+  assert.equal(retirada.statusCode,201);
+  assert.equal(retirada.body.pedido.estimativaMinutos,null);
+  const aguardandoRetirada=await call(painelHandler,req('GET',{},auth,'/api/painel-pedidos'));
+  assert.equal(aguardandoRetirada.body.aguardando.length,1);
+  assert.equal(aguardandoRetirada.body.aguardando[0].atendimento.tipo,'retirada');
+  assert.equal(aguardandoRetirada.body.pedidos.length,1);
   console.log('OK - tentativa sem WhatsApp não entra na fila; confirmação gera uma única comanda');
 })().catch(e=>{console.error(e);process.exitCode=1;});

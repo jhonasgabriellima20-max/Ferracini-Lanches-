@@ -607,6 +607,14 @@
     </div>
 
     <div class="checkout-block">
+      <div class="checkout-block-title">Como você quer receber?</div>
+      <div class="method-toggle">
+        <button type="button" class="method-btn" id="btnRetirada" data-method="retirada">🏪 Retirar no local</button>
+        <button type="button" class="method-btn active" id="btnEntrega" data-method="entrega">🚚 Entrega</button>
+      </div>
+    </div>
+
+    <div class="checkout-block">
       <div class="checkout-block-title">Seus dados</div>
       <div class="field">
         <label for="clienteNome">Nome</label>
@@ -1952,9 +1960,9 @@ btnEnviarPedidoEl.addEventListener('click', async () => {
   }
 
   const numeroComanda = registro?.pedido?.referencia || '';
-  const estimativaPedido = registro?.pedido?.estimativaMinutos ||
-    (deliveryMethod === 'retirada' ? { minimo: tempoRetiradaMinutos(), maximo: tempoRetiradaMinutos() } :
-      (frete.estimativa && frete.estimativa !== 'indisponivel' ? frete.estimativa : null));
+  const estimativaPedido = deliveryMethod === 'entrega'
+    ? (registro?.pedido?.estimativaMinutos || (frete.estimativa && frete.estimativa !== 'indisponivel' ? frete.estimativa : null))
+    : null;
   const destinoWhatsApp = linkWhatsApp(montarMensagemPedido(numeroComanda, registro?.pedido?.criadoEm, estimativaPedido));
 
   btnEnviarPedidoEl.textContent = 'Abrindo WhatsApp...';
