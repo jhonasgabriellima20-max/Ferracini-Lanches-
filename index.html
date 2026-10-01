@@ -683,7 +683,7 @@
     </button>
 
     <div class="checkout-confirm" id="checkoutConfirm" style="display:none;">
-      ✅ O WhatsApp será aberto direto com o pedido pronto. Toque em enviar para concluir.
+      ✅ Ao abrir o WhatsApp, toque em enviar. A loja registra a comanda quando receber sua mensagem.
     </div>
   </div>
 </div>
@@ -1805,7 +1805,7 @@ function montarMensagemPedido(comanda = '', criadoEm = '', estimativaPedido = nu
 
   return [
     '🔔 NOVO PEDIDO',
-    comanda ? `🧾 COMANDA ${comanda} — pedido já confirmado no sistema` : '',
+    comanda ? `🔎 REFERÊNCIA ${comanda} — a loja confirma a comanda ao receber esta mensagem` : '',
     `🕐 HORÁRIO DO PEDIDO: ${horarioPedidoWhatsApp(criadoEm)}`,
     '',
     `👤 CLIENTE\n${nome}\n${telefone}`,
@@ -1979,16 +1979,42 @@ btnEnviarPedidoEl.addEventListener('click', async () => {
     return;
   }
 
-  const estimativaPedido = deliveryMethod === 'entrega' && frete.estimativa && frete.estimativa !== 'indisponivel'
-    ? frete.estimativa
-    : null;
-  const destinoWhatsApp = linkWhatsApp(montarMensagemPedido('', '', estimativaPedido));
-
   btnEnviarPedidoEl.disabled = true;
-  btnEnviarPedidoEl.textContent = 'Abrindo WhatsApp...';
-  checkoutConfirmEl.innerHTML = '✅ Abrindo o WhatsApp direto com o pedido. Toque em enviar para concluir.';
-  checkoutConfirmEl.style.display = 'block';
+  btnEnviarPedidoEl.textContent = 'Preparando pedido...';
 
+  const clientRequestId = clientRequestIdAtual || criarIdPedido();
+  clientRequestIdAtual = clientRequestId;
+  const payload = montarPayloadPedido(clientRequestId);
+  let registro = null;
+  let avisoSistema = '';
+
+  try{
+    registro = await registrarPedidoNoSistema(payload);
+    avisoSistema = registro?.storageDegraded
+      ? '⚠️ O armazenamento está temporariamente indisponível, mas sua comanda seguirá normalmente pelo WhatsApp.'
+      : `✅ Pedido preparado. Envie a mensagem no WhatsApp para a loja confirmar sua comanda.`;
+  }catch(err){
+    if(err?.pedidosAbertos === false){
+      btnEnviarPedidoEl.disabled = false;
+      btnEnviarPedidoEl.textContent = 'Enviar pedido pelo WhatsApp';
+      checkoutErrorBoxEl.innerHTML = `<div class="checkout-error">⚠️ ${escapeHTML(err.message || 'A loja está fechada no momento.')}</div>`;
+      atualizarStatusHorarioPedidos();
+      return;
+    }
+    console.warn('[checkout] registro_sistema_falhou_whatsapp_preservado', { error: String(err) });
+    avisoSistema = '⚠️ Não foi possível registrar a comanda no sistema agora, mas seu pedido seguirá normalmente pelo WhatsApp.';
+  }
+
+  const numeroComanda = registro?.pedido?.referencia || '';
+  const estimativaPedido = deliveryMethod === 'entrega'
+    ? (registro?.pedido?.estimativaMinutos || (frete.estimativa && frete.estimativa !== 'indisponivel' ? frete.estimativa : null))
+    : null;
+  const destinoWhatsApp = linkWhatsApp(montarMensagemPedido(numeroComanda, registro?.pedido?.criadoEm, estimativaPedido));
+
+  btnEnviarPedidoEl.textContent = 'Abrindo WhatsApp...';
+  checkoutConfirmEl.innerHTML = avisoSistema;
+  checkoutConfirmEl.style.display = 'block';
+  clientRequestIdAtual = null;
   window.location.assign(destinoWhatsApp);
 });
 
