@@ -23,6 +23,8 @@ jobs:
           node-version: 24
       - name: Validate snapshot
         run: node scripts/validate-snapshot.js
+      - name: Test automatic comanda flow
+        run: node tests/comanda-confirmacao.test.js
       - name: Check API syntax
         run: |
           node --check api/comanda.js
