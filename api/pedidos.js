@@ -447,12 +447,35 @@ async function confirmarPedido(id){
     const confirmado = await lerJson(pedido.confirmadoPath);
     if(confirmado) return confirmado;
   }
+  // A fila usa um caminho determinístico por pedido. Isso impede duas comandas
+  // para o mesmo clientRequestId mesmo se houver retry/concorrrência.
+  const confirmadoPath = `${FILA_DIR}/${data}/${id}.json`;
+  const existenteFila = await lerJson(confirmadoPath);
+  if(existenteFila){
+    if(!pedido.confirmadoPath){
+      const agora = new Date().toISOString();
+      try{
+        await gravarJson(pathname, { ...pedido, status: 'confirmado', confirmadoPath, atualizadoEm: agora }, true);
+      }catch(err){
+        console.warn('[pedidos] marcador_confirmacao_nao_atualizado', { id, error: String(err) });
+      }
+    }
+    return existenteFila;
+  }
+
   const sequencia = await proximoNumero(data);
   const agora = new Date().toISOString();
-  const confirmadoPath = `${FILA_DIR}/${data}/${String(sequencia.numero).padStart(8, '0')}-${id}.json`;
   const confirmado = { ...pedido, numero: sequencia.codigo, numeroSequencial: sequencia.numero,
     status: 'pendente', confirmadoEm: agora, atualizadoEm: agora };
-  await gravarJson(confirmadoPath, confirmado, false);
+  try{
+    await gravarJson(confirmadoPath, confirmado, false);
+  }catch(err){
+    if(isConflict(err)){
+      const vencedor = await lerJson(confirmadoPath);
+      if(vencedor) return vencedor;
+    }
+    throw err;
+  }
   await gravarJson(pathname, { ...pedido, status: 'confirmado', confirmadoPath, atualizadoEm: agora }, true);
   return confirmado;
 }
@@ -567,14 +590,19 @@ module.exports = async function handler(req, res){
       const payloadValidado = await validarEntregaNoServidor(payloadBase);
       const payload = await aplicarEstimativaInteligente(payloadValidado);
       const registro = await criarPedido(payload);
+      // O clique em confirmar pedido já torna a comanda oficial no sistema.
+      // O WhatsApp é apenas uma cópia/apoio e não bloqueia a fila de impressão.
+      const confirmado = await confirmarPedido(registro.pedido.id);
       return res.status(registro.duplicado ? 200 : 201).json({
         pedido: {
-          id: registro.pedido.id,
-          referencia: registro.pedido.referencia,
-          data: registro.pedido.data,
-          criadoEm: registro.pedido.criadoEm,
-          status: registro.pedido.status,
-          estimativaMinutos: registro.pedido.atendimento?.estimativaMinutos || null,
+          id: confirmado.id,
+          referencia: confirmado.referencia,
+          numero: confirmado.numero,
+          numeroSequencial: confirmado.numeroSequencial,
+          data: confirmado.data,
+          criadoEm: confirmado.criadoEm,
+          status: confirmado.status,
+          estimativaMinutos: confirmado.atendimento?.estimativaMinutos || null,
         },
         duplicado: registro.duplicado,
         impressaoAtiva: Boolean(process.env.PRINT_AGENT_TOKEN),
