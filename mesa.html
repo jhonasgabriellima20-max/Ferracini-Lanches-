@@ -669,11 +669,11 @@
     <div id="checkoutErrorBox"></div>
 
     <button type="button" class="btn btn-primary btn-block btn-lg" id="btnEnviarPedido" style="margin-top:22px;">
-      Enviar comanda pelo WhatsApp
+      Confirmar comanda e abrir WhatsApp
     </button>
 
     <div class="checkout-confirm" id="checkoutConfirm" style="display:none;">
-      ✅ Ao abrir o WhatsApp, toque em enviar. A loja registra a comanda quando receber sua mensagem.
+      ✅ Ao confirmar, a comanda entra no sistema imediatamente. O WhatsApp abre em seguida como uma cópia.
     </div>
   </div>
 </div>
@@ -1358,7 +1358,7 @@ function abrirCheckout(){
   checkoutConfirmEl.style.display = 'none';
   btnEnviarPedidoEl.style.display = 'block';
   btnEnviarPedidoEl.disabled = false;
-  btnEnviarPedidoEl.textContent = 'Enviar comanda pelo WhatsApp';
+  btnEnviarPedidoEl.textContent = 'Confirmar comanda e abrir WhatsApp';
   renderPaymentOptions();
   renderCheckout();
   checkoutOverlayEl.classList.add('open');
@@ -1446,7 +1446,7 @@ function montarMensagemPedido(comanda = '', criadoEm = ''){
 
   return [
     '🔔 NOVO PEDIDO — MESA',
-    comanda ? `🔎 REFERÊNCIA ${comanda} — a loja confirma a comanda ao receber esta mensagem` : '',
+    comanda ? `🧾 COMANDA ${comanda} — pedido já confirmado no sistema` : '',
     `🕐 HORÁRIO DO PEDIDO: ${horarioPedidoWhatsApp(criadoEm)}`,
     '',
     `👤 CLIENTE\n${nome}\n${telefone}`,
@@ -1597,13 +1597,13 @@ btnEnviarPedidoEl.addEventListener('click', async () => {
     registro = await registrarPedidoNoSistema(payload);
     avisoSistema = registro?.storageDegraded
       ? '⚠️ O armazenamento está temporariamente indisponível, mas a comanda seguirá normalmente pelo WhatsApp.'
-      : `✅ Pedido preparado. Envie a mensagem no WhatsApp para a loja confirmar sua comanda.`;
+      : `✅ Comanda ${registro?.pedido?.numero || registro?.pedido?.referencia || ''} confirmada no sistema. O WhatsApp abrirá com uma cópia.`;
   }catch(err){
     console.warn('[mesa] registro_sistema_falhou_whatsapp_preservado', { error: String(err) });
     avisoSistema = '⚠️ Não foi possível registrar a comanda no sistema agora, mas ela seguirá normalmente pelo WhatsApp.';
   }
 
-  const numeroComanda = registro?.pedido?.referencia || '';
+  const numeroComanda = registro?.pedido?.numero || registro?.pedido?.referencia || '';
   const destinoWhatsApp = linkWhatsApp(montarMensagemPedido(numeroComanda, registro?.pedido?.criadoEm));
 
   btnEnviarPedidoEl.textContent = 'Abrindo WhatsApp...';
