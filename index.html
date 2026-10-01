@@ -683,7 +683,7 @@
     </button>
 
     <div class="checkout-confirm" id="checkoutConfirm" style="display:none;">
-      ✅ Ao abrir o WhatsApp, toque em enviar. A loja registra a comanda quando receber sua mensagem.
+      ✅ A comanda entra automaticamente na loja. O WhatsApp abre com uma cópia do pedido.
     </div>
   </div>
 </div>
@@ -1913,7 +1913,7 @@ async function registrarPedidoNoSistema(payload){
     }
     armazenamentoDegradado = data?.storageDegraded === true;
     if(!data?.pedido?.referencia) throw new Error('O sistema não preparou o pedido. Tente novamente.');
-    if(!data?.storageDegraded && !data?.pedido?.id) throw new Error('O sistema não confirmou o pedido. Tente novamente.');
+    if(!data?.storageDegraded && !data?.pedido?.id) throw new Error('O sistema não registrou o pedido. Tente novamente.');
     return data;
   }finally{
     clearTimeout(timeout);
@@ -1992,7 +1992,7 @@ btnEnviarPedidoEl.addEventListener('click', async () => {
     registro = await registrarPedidoNoSistema(payload);
     avisoSistema = registro?.storageDegraded
       ? '⚠️ O armazenamento está temporariamente indisponível, mas sua comanda seguirá normalmente pelo WhatsApp.'
-      : `✅ Pedido preparado. Envie a mensagem no WhatsApp para a loja confirmar sua comanda.`;
+      : `✅ Comanda ${registro?.pedido?.numero || registro?.pedido?.referencia || ''} recebida pela loja. O WhatsApp abrirá com uma cópia do pedido.`;
   }catch(err){
     if(err?.pedidosAbertos === false){
       btnEnviarPedidoEl.disabled = false;
@@ -2005,7 +2005,7 @@ btnEnviarPedidoEl.addEventListener('click', async () => {
     avisoSistema = '⚠️ Não foi possível registrar a comanda no sistema agora, mas seu pedido seguirá normalmente pelo WhatsApp.';
   }
 
-  const numeroComanda = registro?.pedido?.referencia || '';
+  const numeroComanda = registro?.pedido?.numero || registro?.pedido?.referencia || '';
   const estimativaPedido = deliveryMethod === 'entrega'
     ? (registro?.pedido?.estimativaMinutos || (frete.estimativa && frete.estimativa !== 'indisponivel' ? frete.estimativa : null))
     : null;
