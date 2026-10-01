@@ -679,11 +679,11 @@
     <div id="checkoutErrorBox"></div>
 
     <button type="button" class="btn btn-primary btn-block btn-lg" id="btnEnviarPedido" style="margin-top:22px;">
-      Confirmar pedido e abrir WhatsApp
+      Enviar pedido pelo WhatsApp
     </button>
 
     <div class="checkout-confirm" id="checkoutConfirm" style="display:none;">
-      ✅ Ao confirmar, a comanda entra no sistema imediatamente. O WhatsApp abre em seguida como uma cópia do pedido.
+      ✅ O WhatsApp será aberto direto com o pedido pronto. Toque em enviar para concluir.
     </div>
   </div>
 </div>
@@ -1968,7 +1968,7 @@ btnEnviarPedidoEl.addEventListener('click', async () => {
       btnEnviarPedidoEl.textContent = 'Calculando entrega...';
       await calcularFrete();
       btnEnviarPedidoEl.disabled = false;
-      btnEnviarPedidoEl.textContent = 'Confirmar pedido e abrir WhatsApp';
+      btnEnviarPedidoEl.textContent = 'Enviar pedido pelo WhatsApp';
     }
   }
 
@@ -1979,42 +1979,16 @@ btnEnviarPedidoEl.addEventListener('click', async () => {
     return;
   }
 
-  btnEnviarPedidoEl.disabled = true;
-  btnEnviarPedidoEl.textContent = 'Preparando pedido...';
-
-  const clientRequestId = clientRequestIdAtual || criarIdPedido();
-  clientRequestIdAtual = clientRequestId;
-  const payload = montarPayloadPedido(clientRequestId);
-  let registro = null;
-  let avisoSistema = '';
-
-  try{
-    registro = await registrarPedidoNoSistema(payload);
-    avisoSistema = registro?.storageDegraded
-      ? '⚠️ O armazenamento está temporariamente indisponível, mas sua comanda seguirá normalmente pelo WhatsApp.'
-      : `✅ Comanda ${registro?.pedido?.numero || registro?.pedido?.referencia || ''} confirmada no sistema. O WhatsApp abrirá com uma cópia do pedido.`;
-  }catch(err){
-    if(err?.pedidosAbertos === false){
-      btnEnviarPedidoEl.disabled = false;
-      btnEnviarPedidoEl.textContent = 'Confirmar pedido e abrir WhatsApp';
-      checkoutErrorBoxEl.innerHTML = `<div class="checkout-error">⚠️ ${escapeHTML(err.message || 'A loja está fechada no momento.')}</div>`;
-      atualizarStatusHorarioPedidos();
-      return;
-    }
-    console.warn('[checkout] registro_sistema_falhou_whatsapp_preservado', { error: String(err) });
-    avisoSistema = '⚠️ Não foi possível registrar a comanda no sistema agora, mas seu pedido seguirá normalmente pelo WhatsApp.';
-  }
-
-  const numeroComanda = registro?.pedido?.numero || registro?.pedido?.referencia || '';
-  const estimativaPedido = deliveryMethod === 'entrega'
-    ? (registro?.pedido?.estimativaMinutos || (frete.estimativa && frete.estimativa !== 'indisponivel' ? frete.estimativa : null))
+  const estimativaPedido = deliveryMethod === 'entrega' && frete.estimativa && frete.estimativa !== 'indisponivel'
+    ? frete.estimativa
     : null;
-  const destinoWhatsApp = linkWhatsApp(montarMensagemPedido(numeroComanda, registro?.pedido?.criadoEm, estimativaPedido));
+  const destinoWhatsApp = linkWhatsApp(montarMensagemPedido('', '', estimativaPedido));
 
+  btnEnviarPedidoEl.disabled = true;
   btnEnviarPedidoEl.textContent = 'Abrindo WhatsApp...';
-  checkoutConfirmEl.innerHTML = avisoSistema;
+  checkoutConfirmEl.innerHTML = '✅ Abrindo o WhatsApp direto com o pedido. Toque em enviar para concluir.';
   checkoutConfirmEl.style.display = 'block';
-  clientRequestIdAtual = null;
+
   window.location.assign(destinoWhatsApp);
 });
 
