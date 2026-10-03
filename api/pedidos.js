@@ -576,6 +576,7 @@ module.exports = async function handler(req, res){
     try{
       let body = req.body;
       if(typeof body === 'string') body = JSON.parse(body || '{}');
+      if(!CATALOGO.produtos || !CATALOGO.adicionais) throw new Error('Catálogo base indisponível.');
       const catalogo = await require('./disponibilidade').readOrderCatalog();
       const payloadBase = validarPayload(body, catalogo);
       if(payloadBase.atendimento.tipo === 'entrega' || payloadBase.atendimento.tipo === 'retirada'){
