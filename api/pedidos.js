@@ -576,8 +576,7 @@ module.exports = async function handler(req, res){
     try{
       let body = req.body;
       if(typeof body === 'string') body = JSON.parse(body || '{}');
-      const hasCustom = Array.isArray(body?.itens) && body.itens.some(item => !Object.hasOwn(CATALOGO.produtos, item?.nome || '') || (Array.isArray(item?.adicionais) && item.adicionais.some(a => !Object.hasOwn(CATALOGO.adicionais, a?.nome || ''))));
-      const catalogo = hasCustom ? await require('./disponibilidade').readOrderCatalog() : CATALOGO;
+      const catalogo = await require('./disponibilidade').readOrderCatalog();
       const payloadBase = validarPayload(body, catalogo);
       if(payloadBase.atendimento.tipo === 'entrega' || payloadBase.atendimento.tipo === 'retirada'){
         const canais = await require('./disponibilidade').readServiceAvailability();
