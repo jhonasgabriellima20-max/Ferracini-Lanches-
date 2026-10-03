@@ -117,7 +117,7 @@ const PRODUTOS = [
   ['Del Valle 1L Laranja', 'Bebidas'],
   ['Del Valle 1L Uva', 'Bebidas'],
   ['Coca-Cola 1L', 'Bebidas'],
-  ['Kuat 2L', 'Bebidas'],
+  ['Sprite 2L', 'Bebidas'],
   ['Coca-Cola 2L', 'Bebidas'],
 ];
 
