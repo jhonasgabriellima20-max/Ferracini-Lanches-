@@ -817,10 +817,45 @@ const cart = {}; // { "Nome do produto": { qty, preco, adicionais:[{nome,preco}]
    ===================================================================== */
 const PRODUTOS_ORIGINAIS = CONFIG.produtos.slice();
 const ADICIONAIS_ORIGINAIS = ADICIONAIS_PADRAO.slice();
-function aplicarItensNovos(items = []){
-  const extras = items.filter(i => i.categoria === 'adicional').map(i => ({nome:i.nome, ingrediente:i.id, preco:i.precoCentavos / 100}));
-  ADICIONAIS_PADRAO.splice(0, ADICIONAIS_PADRAO.length, ...ADICIONAIS_ORIGINAIS, ...extras);
-  CONFIG.produtos = [...PRODUTOS_ORIGINAIS, ...items.filter(i => i.categoria !== 'adicional').map(i => ({nome:i.nome, categoria:i.categoria, preco:i.precoCentavos / 100, descricao:i.descricao, ingredientes:i.ingredientes || [], adicionais:i.categoria === 'bebidas' ? [] : ADICIONAIS_PADRAO}))];
+function aplicarItensNovos(items = [], precosPersonalizados = {}, itensExcluidos = []){
+  const excluidos = new Set(itensExcluidos || []);
+  const precoEfetivo = (nome, fallbackCentavos) => Number.isInteger(precosPersonalizados?.[nome])
+    ? precosPersonalizados[nome]
+    : fallbackCentavos;
+
+  const adicionaisBase = ADICIONAIS_ORIGINAIS
+    .filter(item => !excluidos.has(item.nome))
+    .map(item => ({
+      ...item,
+      preco: precoEfetivo(item.nome, Math.round(item.preco * 100)) / 100,
+    }));
+  const extras = items
+    .filter(item => item.categoria === 'adicional' && !excluidos.has(item.nome))
+    .map(item => ({
+      nome:item.nome,
+      ingrediente:item.id,
+      preco:precoEfetivo(item.nome, item.precoCentavos) / 100,
+    }));
+  ADICIONAIS_PADRAO.splice(0, ADICIONAIS_PADRAO.length, ...adicionaisBase, ...extras);
+
+  const produtosBase = PRODUTOS_ORIGINAIS
+    .filter(item => !excluidos.has(item.nome))
+    .map(item => ({
+      ...item,
+      preco: precoEfetivo(item.nome, Math.round(item.preco * 100)) / 100,
+      adicionais: item.categoria === 'bebidas' ? [] : ADICIONAIS_PADRAO,
+    }));
+  const produtosNovos = items
+    .filter(item => item.categoria !== 'adicional' && !excluidos.has(item.nome))
+    .map(item => ({
+      nome:item.nome,
+      categoria:item.categoria,
+      preco:precoEfetivo(item.nome, item.precoCentavos) / 100,
+      descricao:item.descricao,
+      ingredientes:item.ingredientes || [],
+      adicionais:item.categoria === 'bebidas' ? [] : ADICIONAIS_PADRAO,
+    }));
+  CONFIG.produtos = [...produtosBase, ...produtosNovos];
 }
 let disponibilidade = { ingredientes: {}, produtos: {} };
 let disponibilidadeAtualizadaEm = null;
@@ -889,7 +924,7 @@ async function carregarDisponibilidade({ silencioso = true, force = false } = {}
         ingredientes: data.ingredientes || {},
         produtos: data.produtos || {},
       };
-      aplicarItensNovos(data.itensNovos || []);
+      aplicarItensNovos(data.itensNovos || [], data.precosPersonalizados || {}, data.itensExcluidos || []);
       disponibilidadeAtualizadaEm = data.updatedAt || null;
       demandaAtual = ['baixa','normal','alta'].includes(data.operacao?.demanda) ? data.operacao.demanda : 'normal';
       operacaoLoja = {
