@@ -1,5 +1,6 @@
 const crypto = require('crypto');
-const { addItem, orderCatalog } = require('../lib/custom-catalog');
+const { addItem, editItemPrice, excludeItem, restoreItem, orderCatalog, validPrice } = require('../lib/custom-catalog');
+const BASE_CATALOGO = require('./catalogo.json');
 const { readJson, writeJson, isStorageUnavailable } = require('../lib/postgres-storage');
 const { DEFAULT_PREP_MINUTES } = require('../lib/prep-estimator');
 
@@ -248,6 +249,8 @@ function defaults(){
     operacao: { demanda: 'normal', modoLoja: 'automatico', canaisAtendimento: { entrega: true, retirada: true }, horarios: normalizarHorarios(HORARIO_PADRAO), temposPreparo: normalizarTemposPreparo(null, []), atrasoExtraMinutos: 0, comandaEmPreparo: 0, dataComandaEmPreparo: '' },
     updatedAt: null,
     itensNovos: [],
+    precosPersonalizados: {},
+    itensExcluidos: [],
   };
 }
 
@@ -265,6 +268,13 @@ function mergeState(raw){
       }
     }
     base.itensNovos = Array.isArray(raw.itensNovos) ? raw.itensNovos : [];
+    const nomesConhecidos = new Set([...Object.keys(BASE_CATALOGO.produtos), ...Object.keys(BASE_CATALOGO.adicionais), ...base.itensNovos.map(item => item?.nome).filter(Boolean)]);
+    if(raw.precosPersonalizados && typeof raw.precosPersonalizados === 'object' && !Array.isArray(raw.precosPersonalizados)){
+      for(const [nome, precoCentavos] of Object.entries(raw.precosPersonalizados)){
+        if(nomesConhecidos.has(nome) && validPrice(precoCentavos)) base.precosPersonalizados[nome] = precoCentavos;
+      }
+    }
+    if(Array.isArray(raw.itensExcluidos)) base.itensExcluidos = [...new Set(raw.itensExcluidos.filter(nome => typeof nome === 'string' && nomesConhecidos.has(nome)))];
     for(const item of base.itensNovos){
       if(item.categoria === 'adicional') base.ingredientes[item.id] = raw.ingredientes?.[item.id] !== false;
       else base.produtos[item.nome] = raw.produtos?.[item.nome] !== false;
@@ -297,9 +307,41 @@ function mergeState(raw){
 }
 
 function catalogo(state = defaults()){
+  const excluidos = new Set(state.itensExcluidos || []);
+  const precoEfetivo = (nome, fallback) => validPrice(state.precosPersonalizados?.[nome]) ? state.precosPersonalizados[nome] : fallback;
+  const produtosBase = PRODUTOS
+    .filter(([nome]) => !excluidos.has(nome))
+    .map(([nome, categoria]) => ({
+      nome, categoria,
+      precoCentavos: precoEfetivo(nome, BASE_CATALOGO.produtos[nome]?.precoCentavos),
+      personalizado: Object.hasOwn(state.precosPersonalizados || {}, nome),
+    }));
+  const produtosNovos = state.itensNovos
+    .filter(item => item.categoria !== 'adicional' && !excluidos.has(item.nome))
+    .map(item => ({
+      ...item,
+      precoCentavos: precoEfetivo(item.nome, item.precoCentavos),
+      categoria: {'dog':'Lanches-Dog','x':'Lanches-X','bebidas':'Bebidas'}[item.categoria],
+      personalizado: Object.hasOwn(state.precosPersonalizados || {}, item.nome),
+    }));
+  const excluidosGerenciaveis = [
+    ...PRODUTOS.filter(([nome]) => excluidos.has(nome)).map(([nome, categoria]) => ({
+      nome, categoria,
+      precoCentavos: precoEfetivo(nome, BASE_CATALOGO.produtos[nome]?.precoCentavos),
+    })),
+    ...state.itensNovos.filter(item => item.categoria !== 'adicional' && excluidos.has(item.nome)).map(item => ({
+      ...item,
+      precoCentavos: precoEfetivo(item.nome, item.precoCentavos),
+      categoria: {'dog':'Lanches-Dog','x':'Lanches-X','bebidas':'Bebidas'}[item.categoria],
+    })),
+  ];
   return {
-    ingredientes: [...INGREDIENTES.map(([id, nome]) => ({ id, nome, afeta: [...(DEPENDENCIAS[id] || []), ...state.itensNovos.filter(i => i.ingredientes?.includes(id)).map(i => i.nome)] })), ...state.itensNovos.filter(i => i.categoria === 'adicional').map(i => ({id:i.id, nome:i.nome, afeta:[], precoCentavos:i.precoCentavos}))],
-    produtos: [...PRODUTOS.map(([nome, categoria]) => ({ nome, categoria })), ...state.itensNovos.filter(i => i.categoria !== 'adicional').map(i => ({...i, categoria: {'dog':'Lanches-Dog','x':'Lanches-X','bebidas':'Bebidas'}[i.categoria]}))],
+    ingredientes: [
+      ...INGREDIENTES.map(([id, nome]) => ({ id, nome, afeta: [...(DEPENDENCIAS[id] || []), ...state.itensNovos.filter(i => !excluidos.has(i.nome) && i.ingredientes?.includes(id)).map(i => i.nome)] })),
+      ...state.itensNovos.filter(i => i.categoria === 'adicional' && !excluidos.has(i.nome)).map(i => ({id:i.id, nome:i.nome, afeta:[], precoCentavos:precoEfetivo(i.nome, i.precoCentavos)})),
+    ],
+    produtos: [...produtosBase, ...produtosNovos],
+    excluidos: excluidosGerenciaveis,
   };
 }
 
@@ -559,7 +601,12 @@ module.exports = async function handler(req, res){
       if(!current.storageReady) return res.status(503).json({error:'Armazenamento indisponível. Tente novamente.'});
       if(body.updatedAt !== current.state.updatedAt) return res.status(409).json({error:'O painel foi atualizado em outro acesso. Recarregue a página antes de salvar.'});
       const itensNovos = body.novoItem ? addItem(current.state.itensNovos, body.novoItem, INGREDIENTES.map(([id]) => id)) : current.state.itensNovos;
-      const next = mergeState({...body, itensNovos});
+      let precosPersonalizados = current.state.precosPersonalizados || {};
+      let itensExcluidos = current.state.itensExcluidos || [];
+      if(body.editarItem) precosPersonalizados = editItemPrice(itensNovos, precosPersonalizados, body.editarItem);
+      if(body.excluirItem) itensExcluidos = excludeItem(itensNovos, itensExcluidos, body.excluirItem);
+      if(body.restaurarItem) itensExcluidos = restoreItem(itensNovos, itensExcluidos, body.restaurarItem);
+      const next = mergeState({...body, itensNovos, precosPersonalizados, itensExcluidos});
       next.updatedAt = new Date().toISOString();
       const saved = await writeState(next);
       return res.status(200).json({
@@ -582,7 +629,7 @@ module.exports = async function handler(req, res){
   return res.status(405).json({ error: 'Método não permitido.' });
 };
 
-module.exports.readOrderCatalog = async function(){ const {state} = await readState({force:true}); return orderCatalog(state.itensNovos); };
+module.exports.readOrderCatalog = async function(){ const {state} = await readState({force:true}); return orderCatalog(state.itensNovos, state.precosPersonalizados, state.itensExcluidos); };
 module.exports.readStoreStatus = async function(){ const {state} = await readState({force:true}); return statusHorarioPedidos(state); };
 module.exports.readServiceAvailability = async function(){
   const {state} = await readState({force:true});
