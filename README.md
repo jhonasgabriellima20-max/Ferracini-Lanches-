@@ -6,5 +6,6 @@ Este pacote foi preparado para migrar o projeto do fluxo de deploy manual para u
 - `preview`: alterações e testes.
 - Nunca publicar direto na produção durante o atendimento.
 - Sempre testar o Preview antes de promover.
+- Armazenamento de produção: Neon/Postgres. O Vercel Blob legado não faz parte do fluxo de pedidos/comandas.
 
 Leia `DEPLOYMENT-SAFETY.md` e `PRODUCTION-SYNC-NOTE.md` antes de conectar este repositório ao domínio oficial.
