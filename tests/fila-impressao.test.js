@@ -16,25 +16,29 @@ const store = Array.from({length: 305}, (_, i) => ({
 
 Module._load = function(request, parent, isMain) {
   if (request === '@neondatabase/serverless') {
-    return { neon() { return { async query(query, params) {
-      if (query.startsWith('SELECT')) {
-        const [after, limit] = params;
-        return store.filter(x => x.createdAt >= after && x.value.status === 'pendente')
-          .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
-          .slice(0, limit).map(x => ({pathname:x.pathname, value:{...x.value}}));
-      }
-      if (query.startsWith('UPDATE')) {
-        const [status, updatedAt, increment, printerError, pathname, after, from] = params;
-        const rec = store.find(x=>x.pathname===pathname && x.createdAt>=after && x.value.status===from);
-        if (!rec) return [];
-        Object.assign(rec.value, {status, atualizadoEm: updatedAt,
-          tentativasImpressao: rec.value.tentativasImpressao + increment});
-        if (status === 'impresso') rec.value.impressoEm = updatedAt;
-        if (status === 'falhou') rec.value.erroImpressao = printerError;
-        return [{pathname}];
-      }
-      throw Error('SQL inesperado');
-    }}}; } };
+    return {
+      neon: () => ({
+        query: async (query, params) => {
+          if (query.startsWith('SELECT')) {
+            const [after, limit] = params;
+            return store.filter(x => x.createdAt >= after && x.value.status === 'pendente')
+              .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+              .slice(0, limit).map(x => ({pathname:x.pathname, value:{...x.value}}));
+          }
+          if (query.startsWith('UPDATE')) {
+            const [status, updatedAt, increment, printerError, pathname, after, from] = params;
+            const rec = store.find(x=>x.pathname===pathname && x.createdAt>=after && x.value.status===from);
+            if (!rec) return [];
+            Object.assign(rec.value, {status, atualizadoEm: updatedAt,
+              tentativasImpressao: rec.value.tentativasImpressao + increment});
+            if (status === 'impresso') rec.value.impressoEm = updatedAt;
+            if (status === 'falhou') rec.value.erroImpressao = printerError;
+            return [{pathname}];
+          }
+          throw Error('SQL inesperado');
+        }
+      })
+    };
   }
   return originalLoad.call(this, request, parent, isMain);
 };
