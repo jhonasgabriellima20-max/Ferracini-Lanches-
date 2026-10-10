@@ -296,7 +296,7 @@ function Update-OrderStatus($Config, [string]$Token, $Pedido, [string]$Status, [
     $max = [Math]::Min(280, $Erro.Length)
     $body.erro = $Erro.Substring(0, $max)
   }
-  Invoke-Api 'PATCH' (([string]$Config.siteUrl).TrimEnd('/') + '/api/pedidos') $Token $body | Out-Null
+  Invoke-Api 'PATCH' (([string]$Config.siteUrl).TrimEnd('/') + '/api/fila-impressao') $Token $body | Out-Null
 }
 
 function Print-Test {
@@ -364,20 +364,34 @@ function Run-Agent {
 
     while ($true) {
       try {
-        $fila = Invoke-Api 'GET' ($baseUrl + '/api/pedidos?limit=100') $token
+        $fila = Invoke-Api 'GET' ($baseUrl + '/api/fila-impressao?limit=25') $token
         $pendentes = @($fila.pedidos | Where-Object { $_.status -eq 'pendente' } | Sort-Object criadoEm)
 
         foreach ($pedido in $pendentes) {
           try {
+            # Um UPDATE atomico confirma que esta instancia e dona da comanda.
             Update-OrderStatus $cfg $token $pedido 'imprimindo'
+          } catch {
+            Write-Log ("Comanda {0}: outra instancia a reivindicou ou nao ha conexao: {1}" -f $pedido.numero, $_.Exception.Message) 'WARN'
+            continue
+          }
+
+          try {
             $receipt = Format-Receipt $pedido $width
             Send-ToPrinter $receipt $printerName
-            Update-OrderStatus $cfg $token $pedido 'impresso'
-            Write-Log ("Comanda {0} impressa com sucesso." -f $pedido.numero)
           } catch {
             $err = $_.Exception.Message
             try { Update-OrderStatus $cfg $token $pedido 'falhou' $err } catch {}
-            Write-Log ("Falha na comanda {0}: {1}" -f $pedido.numero, $err) 'ERROR'
+            Write-Log ("Falha ao enviar comanda {0} para a impressora: {1}. Verificar antes de reenviar." -f $pedido.numero, $err) 'ERROR'
+            continue
+          }
+
+          try {
+            Update-OrderStatus $cfg $token $pedido 'impresso'
+            Write-Log ("Comanda {0} enviada ao spool do Windows." -f $pedido.numero)
+          } catch {
+            # Nunca reenvie automaticamente: a comanda pode ja estar no spool.
+            Write-Log ("Comanda {0} enviada ao spool, mas nao foi possivel confirmar no servidor: {1}. Verificar manualmente." -f $pedido.numero, $_.Exception.Message) 'ERROR'
           }
         }
       } catch {
