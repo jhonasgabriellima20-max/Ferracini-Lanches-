@@ -75,5 +75,34 @@ async function call(method, body, opts={}) {
   assert.equal(remaining.data.pedidos.length,4);
   r=await call('PATCH',{pathname:'pedidos/fila/2026-10-10/../../wrong.json',status:'imprimindo'});
   assert.equal(r.statusCode,400);
-  console.log('OK: consulta de alta demanda, autenticacao, reivindicacao atomica e ACK validado.');
+  // Simula mais 86 comandas novas, somadas as quatro ja pendentes:
+  // o agente deve esvaziar toda a fila (90 pedidos), em lotes de 25.
+  for (let i=0; i<86; i++) {
+    const n=306+i;
+    store.push({
+      pathname:'pedidos/fila/2026-10-10/'+String(n).padStart(8,'0')+'.json',
+      createdAt: new Date(Date.parse(cutoff)+n*1000).toISOString(),
+      value: {numero:n,criadoEm:new Date(Date.parse(cutoff)+n*1000).toISOString(),
+        status:'pendente',tentativasImpressao:0}
+    });
+  }
+  let printed=0;
+  const ids=new Set();
+  for (let batch=0; batch<12; batch++) {
+    const fetched=await call('GET',null,{query:{limit:'25'}});
+    if (!fetched.data.pedidos.length) break;
+    assert.ok(fetched.data.pedidos.length<=25);
+    for(const order of fetched.data.pedidos){
+      assert.ok(!ids.has(order.pathname),'Fila nao pode duplicar pedido');
+      ids.add(order.pathname);
+      let status=await call('PATCH',{pathname:order.pathname,status:'imprimindo'});
+      assert.equal(status.statusCode,200);
+      status=await call('PATCH',{pathname:order.pathname,status:'impresso'});
+      assert.equal(status.statusCode,200);
+      printed++;
+    }
+  }
+  assert.equal(printed,90,'Todos os 90 pedidos em lotes devem ser processados');
+  assert.equal((await call('GET')).data.pedidos.length,0,'Fila esvaziada sem pedidos perdidos');
+  console.log('OK: 90 comandas em lotes, filtro de pendencias, autenticacao e claim atomico.');
 })().catch(err=>{console.error(err);process.exitCode=1;});
