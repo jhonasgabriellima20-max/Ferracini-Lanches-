@@ -92,12 +92,12 @@ async function call(handler, request){
   assert.equal([...storage.keys()].filter(k => k.startsWith('pedidos/fila/')).length, 1);
   assert.equal([...storage.keys()].filter(k => k.startsWith('pedidos/reservas/')).length, 1);
 
+  // O painel da loja eh somente leitura. Nao existe botao ou rota de aceite.
   const manualAgain = await call(
     painelHandler,
     req('POST', { id: created.body.pedido.id }, auth, '/api/painel-pedidos')
   );
-  assert.equal(manualAgain.statusCode, 200);
-  assert.equal(manualAgain.body.pedido.numero, '01');
+  assert.equal(manualAgain.statusCode, 405);
   assert.equal([...storage.keys()].filter(k => k.startsWith('pedidos/fila/')).length, 1);
 
   const retirada = await call(pedidosHandler, req('POST', {
