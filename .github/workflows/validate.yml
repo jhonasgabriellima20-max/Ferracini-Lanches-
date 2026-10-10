@@ -25,9 +25,12 @@ jobs:
         run: node scripts/validate-snapshot.js
       - name: Test automatic order receipt
         run: node tests/comanda-confirmacao.test.js
+      - name: Test large print queue
+        run: node tests/fila-impressao.test.js
       - name: Check API syntax
         run: |
           node --check api/comanda.js
+          node --check api/fila-impressao.js
           node --check api/distancia.js
           node --check api/disponibilidade.js
           node --check api/painel-pedidos.js
