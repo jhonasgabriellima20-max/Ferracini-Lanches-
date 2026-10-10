@@ -1919,7 +1919,7 @@ function montarPayloadPedido(clientRequestId){
 
 async function registrarPedidoNoSistema(payload){
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 4000);
+  const timeout = setTimeout(() => controller.abort(), 20000);
   try{
     const resp = await fetch('/api/pedidos', {
       method: 'POST',
