@@ -46,7 +46,7 @@ function checkHtml(file, isMesa){
   if(!html.includes('armazenamentoDegradado')) fail(`${file}: contingência rápida do armazenamento ausente`);
   if(html.includes('registroFallbackWhatsapp') || html.includes('window.location.assign(destinoWhatsApp)')) fail(`${file}: WhatsApp nao pode confirmar pedidos automaticamente`);
   if(!html.includes('id="linkWhatsappCopia"') || !html.includes('Confirmar pedido')) fail(`${file}: confirmacao explicita e copia opcional ausentes`);
-  if(!html.includes('controller.abort(), 4000')) fail(`${file}: timeout de registro deve ser 4 segundos`);
+  if(!html.includes('controller.abort(), 20000')) fail(`${file}: timeout de confirmação deve ser 20 segundos`);
   if(html.includes('controller.abort(), 12000')) fail(`${file}: timeout antigo de 12 segundos ainda presente`);
 
   if(/fetch\(['"]\/api\/comanda/.test(html)) fail(`${file}: ainda usa endpoint legado de comanda`);
