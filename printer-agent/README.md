@@ -1,43 +1,43 @@
-# Ferracini Lanches — agente de impressão
+# Ferracini Lanches — impressão automática local (sem PrintNode)
 
-Este diretório contém o programa local que consulta a fila protegida de pedidos do site e envia as comandas para a impressora instalada no Windows.
+Programa para **Windows + Bematech MP-2500 TH**. O notebook consulta a fila exclusiva
+/api/fila-impressao e envia os pedidos confirmados ao spooler do Windows.
 
-## O que já está pronto
+## Segurança e condições antes de ativar
 
-- Busca automática dos pedidos pendentes em `https://ferracinilanches.com.br/api/pedidos`.
-- Autenticação por `PRINT_AGENT_TOKEN`.
-- Token salvo criptografado pelo Windows para o usuário que configurou o agente.
-- Impressão de número da comanda, cliente, telefone, mesa/retirada/entrega, endereço, itens, adicionais, observações, subtotal, taxa de entrega, total, pagamento e troco.
-- Atualização do status da fila para evitar impressão duplicada por duas instâncias do agente.
-- Inicialização automática junto com o Windows.
-- Log local para diagnóstico.
+**Não execute o agente em uma loja aberta enquanto os 3 itens abaixo não estiverem configurados e testados.**
 
-## Instalação no notebook da loja
+- No projeto Vercel de produção: PRINT_AGENT_TOKEN (chave forte/aleatória), PRINT_QUEUE_DATABASE_URL (conexão Neon como segredo, nunca no código/HTML) e PRINT_QUEUE_START_AT (UTC ISO 8601, ex.: 2026-10-10T21:00:00Z). Este último é o instante real de ativação e impede a impressão de pedidos antigos.
+- Instale a nova rota api/fila-impressao.js e a dependência Neon.
+- Faça teste de ponta a ponta com pedido fictício antes de servir clientes.
 
-1. Instale o driver oficial da impressora e confirme que ela aparece em **Configurações > Bluetooth e dispositivos > Impressoras e scanners**.
-2. Copie a pasta `printer-agent` para um local fixo, recomendado: `C:\FerraciniPrintAgent`.
-3. Abra `Ferracini-Impressao.cmd` com duplo clique.
-4. Escolha **1 — Configurar impressora e token**.
-5. Selecione a impressora da lista.
-6. Para uma impressora térmica de 80 mm, deixe inicialmente **42 caracteres**. Para papel mais largo, esse valor poderá ser aumentado depois do teste.
-7. Cole o valor de `PRINT_AGENT_TOKEN` quando solicitado. Ele não será exibido na tela e será armazenado criptografado pelo Windows.
-8. Volte ao menu e escolha **2 — Imprimir teste**.
-9. No driver da impressora, ajuste largura do papel, margens e corte automático conforme o modelo comprado.
-10. Quando o teste estiver correto, escolha **3 — Instalar início automático com Windows**.
-11. Escolha **4 — Iniciar agente agora** somente para testar imediatamente. Depois de instalado no início automático, o agente inicia sozinho quando o usuário entrar no Windows.
+## Instalação no notebook
 
-## Arquivos locais que não devem ser enviados ao GitHub
+1. Confira que a Bematech imprime a página de teste pelo Windows.
+2. Copie a pasta printer-agent para C:\FerraciniPrintAgent e **não mova depois**.
+3. Dê dois cliques em Ferracini-Impressao.cmd.
+4. Escolha 1 - Configurar impressora e token; selecione MP-2500 TH.
+5. Aceite intervalo **5 segundos** e largura **42 caracteres** para bobina de 80 mm.
+6. Cole PRINT_AGENT_TOKEN no prompt; será cifrado para o usuário atual do Windows e não aparecerá na tela. Nunca compartilhe a chave no chat.
+7. Escolha 2 - Imprimir teste e confira o papel.
+8. Após a rota e as variáveis funcionarem e o teste real de pedido passar, escolha 3 - Instalar início automático com Windows.
+9. Escolha 4 - Iniciar agente agora para operar. Quando o Windows iniciar a sessão novamente, o agente inicia no login (requer notebook ligado e sessão iniciada).
 
-O programa cria no próprio notebook:
+## Comportamento da fila
 
-- `config.json` — nome da impressora e preferências.
-- `token.dat` — token criptografado pelo Windows.
-- `ferracini-print.log` — histórico de funcionamento/erros.
+- A consulta retorna **somente pedidos pendentes**, até 25 a cada chamada; itens já impressos não ocupam espaço na busca.
+- Cada pedido passa por uma reivindicação **atômica** (pendente -> imprimindo) para que agentes concorrentes não imprimam o mesmo pedido.
+- Depois de enviar ao spooler do Windows, o status muda para impresso.
+- Se a impressora/driver rejeitar o trabalho, o pedido fica falhou, com erro salvo; **não** é reenviado automaticamente para evitar duplicação.
+- Se o notebook desligar depois da reivindicação ou o servidor não confirmar o estado, uma comanda pode permanecer imprimindo. Um operador deve conferir o papel e o log antes de reprocessá-la.
+- Impressão física exatamente uma vez **não pode ser garantida** apenas pelo retorno do spooler; é indispensável supervisão e procedimento de recuperação.
+- O agente grava config.json, token.dat, ferracini-print.log no próprio notebook; **não** subir arquivos locais nem tokens ao GitHub.
+- Custos: sem mensalidade de aplicativo de impressão. Internet, energia, papel e hospedagem/banco ainda podem gerar despesas.
 
-Nunca envie `token.dat` a terceiros e nunca coloque o `PRINT_AGENT_TOKEN` dentro do código-fonte.
+## Capacidade pretendida
 
-## No dia da instalação
+Meta de dimensionamento: **90 pedidos por hora**. O código evita o teto anterior de 100 registros lidos por consulta, mas a capacidade real só estará validada depois do teste de carga do servidor e da impressora física.
 
-Será necessário ter fisicamente o notebook e a impressora para concluir três pontos que não podem ser definidos antes de saber o modelo/driver instalado: selecionar o nome exato da impressora no Windows, acertar a largura/corte do papel e fazer a primeira impressão real.
+## Manutenção
 
-O Pix não faz parte deste agente e pode ser integrado ao site separadamente depois.
+No menu use 5 - Abrir arquivo de log para diagnosticar. Em caso de mensagem de falha ou comanda imprimindo travada, confira impressora/spooler e histórico antes de qualquer reimpressão. Sem confirmação manual da cozinha: o recebimento ocorre na fila quando o sistema registra o pedido.
