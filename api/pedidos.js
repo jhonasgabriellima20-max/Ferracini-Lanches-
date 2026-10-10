@@ -634,32 +634,16 @@ module.exports = async function handler(req, res){
       ].includes(message);
       if(erroDoCliente) return res.status(400).json({ error: message });
       if(isStorageUnavailable(err)){
-        const rawId = (() => {
-          try{
-            const raw = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
-            return texto(raw?.clientRequestId, 128);
-          }catch{
-            return '';
-          }
-        })();
-        const fallbackNumero = rawId.replace(/[^a-zA-Z0-9]/g, '').slice(-10).toUpperCase() || crypto.randomUUID().slice(0,10).toUpperCase();
-        console.warn('[pedidos] storage_indisponivel_fallback_whatsapp', {
-          numero: fallbackNumero,
-          error: String(err),
+        // Nunca fabricar comanda ou referencia quando nao foi possivel
+        // comprovar que o pedido entrou no banco.
+        console.error('[pedidos] armazenamento_indisponivel_pedido_nao_confirmado', {
+          error: String(err)
         });
         res.setHeader('X-Ferracini-Storage-Degraded', '1');
-        return res.status(202).json({
-          pedido: {
-            id: null,
-            referencia: fallbackNumero,
-            data: dataOperacao(),
-            criadoEm: new Date().toISOString(),
-            status: 'whatsapp',
-          },
-          duplicado: false,
-          impressaoAtiva: false,
+        return res.status(503).json({
+          error: 'Não foi possível confirmar este pedido agora. Tente novamente com o mesmo carrinho.',
+          pedidoConfirmado: false,
           storageDegraded: true,
-          warning: 'Armazenamento temporariamente indisponível. Finalize o envio pelo WhatsApp.',
         });
       }
       console.error('[pedidos] criacao_falhou', { error: String(err), code: err?.code });

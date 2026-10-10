@@ -669,12 +669,11 @@
     <div id="checkoutErrorBox"></div>
 
     <button type="button" class="btn btn-primary btn-block btn-lg" id="btnEnviarPedido" style="margin-top:22px;">
-      Enviar comanda pelo WhatsApp
+      Confirmar pedido
     </button>
 
-    <div class="checkout-confirm" id="checkoutConfirm" style="display:none;">
-      ✅ Ao abrir o WhatsApp, toque em enviar. A loja registra a comanda quando receber sua mensagem.
-    </div>
+    <div class="checkout-confirm" id="checkoutConfirm" style="display:none;" role="status" aria-live="polite"></div>
+    <a id="linkWhatsappCopia" class="btn btn-primary btn-block" style="display:none;margin-top:12px;text-align:center;text-decoration:none;" target="_blank" rel="noopener noreferrer">Enviar cópia no WhatsApp (opcional)</a>
   </div>
 </div>
 
@@ -1392,9 +1391,10 @@ function abrirCheckout(){
   trocoPara = '';
   checkoutErrorBoxEl.innerHTML = '';
   checkoutConfirmEl.style.display = 'none';
+  document.getElementById('linkWhatsappCopia').style.display = 'none';
   btnEnviarPedidoEl.style.display = 'block';
   btnEnviarPedidoEl.disabled = false;
-  btnEnviarPedidoEl.textContent = 'Enviar comanda pelo WhatsApp';
+  btnEnviarPedidoEl.textContent = 'Confirmar pedido';
   renderPaymentOptions();
   renderCheckout();
   checkoutOverlayEl.classList.add('open');
@@ -1481,8 +1481,9 @@ function montarMensagemPedido(comanda = '', criadoEm = ''){
     : `💰 TOTAL\n${fmtPreco(total)}`;
 
   return [
-    '🔔 NOVO PEDIDO — MESA',
-    comanda ? `🔎 REFERÊNCIA ${comanda} — a loja confirma a comanda ao receber esta mensagem` : '',
+    '📋 CÓPIA DA COMANDA — MESA',
+    comanda ? `✅ COMANDA ${comanda} — já registrada no site` : '',
+    '⚠️ CÓPIA INFORMATIVA. NÃO GERAR OUTRA COMANDA.',
     `🕐 HORÁRIO DO PEDIDO: ${horarioPedidoWhatsApp(criadoEm)}`,
     '',
     `👤 CLIENTE\n${nome}\n${telefone}`,
@@ -1553,23 +1554,9 @@ function montarPayloadPedido(clientRequestId){
   };
 }
 
-function registroFallbackWhatsapp(payload){
-  const base = String(payload?.clientRequestId || '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
-  const numero = base.slice(-10) || Math.random().toString(36).slice(2, 12).toUpperCase();
-  return {
-    pedido: { id: null, referencia: numero, status: 'whatsapp' },
-    duplicado: false,
-    impressaoAtiva: false,
-    storageDegraded: true,
-    warning: 'Armazenamento temporariamente indisponível. Finalize o envio pelo WhatsApp.',
-  };
-}
-
 async function registrarPedidoNoSistema(payload){
-  if(armazenamentoDegradado) return registroFallbackWhatsapp(payload);
-
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 4000);
+  const timeout = setTimeout(() => controller.abort(), 20000);
   try{
     const resp = await fetch('/api/pedidos', {
       method: 'POST',
@@ -1580,8 +1567,11 @@ async function registrarPedidoNoSistema(payload){
     const data = await resp.json().catch(() => ({}));
     if(!resp.ok) throw new Error(data?.error || 'Não foi possível registrar o pedido.');
     armazenamentoDegradado = data?.storageDegraded === true;
-    if(!data?.pedido?.referencia) throw new Error('O sistema não preparou o pedido. Tente novamente.');
-    if(!data?.storageDegraded && !data?.pedido?.id) throw new Error('O sistema não registrou o pedido. Tente novamente.');
+    if(data?.storageDegraded || !data?.pedido?.id ||
+       !['pendente','imprimindo','impresso','falhou'].includes(data.pedido.status)) {
+      throw new Error('O pedido ainda não foi confirmado pelo sistema. Tente novamente sem refazer o carrinho.');
+    }
+    if(!data?.pedido?.referencia) throw new Error('O sistema não retornou a referência do pedido. Tente novamente.');
     return data;
   }finally{
     clearTimeout(timeout);
@@ -1623,30 +1613,43 @@ btnEnviarPedidoEl.addEventListener('click', async () => {
   btnEnviarPedidoEl.disabled = true;
   btnEnviarPedidoEl.textContent = 'Preparando pedido...';
 
+  // O clique do cliente em Confirmar pedido registra a compra no sistema.
+  // Abrir WhatsApp ou abandonar o checkout nunca insere pedido na fila.
   const clientRequestId = clientRequestIdAtual || criarIdPedido();
   clientRequestIdAtual = clientRequestId;
   const payload = montarPayloadPedido(clientRequestId);
-  let registro = null;
-  let avisoSistema = '';
-
-  try{
+  let registro;
+  try {
     registro = await registrarPedidoNoSistema(payload);
-    avisoSistema = registro?.storageDegraded
-      ? '⚠️ O armazenamento está temporariamente indisponível, mas a comanda seguirá normalmente pelo WhatsApp.'
-      : `✅ Comanda ${registro?.pedido?.numero || registro?.pedido?.referencia || ''} recebida pela loja. O WhatsApp abrirá com uma cópia do pedido.`;
-  }catch(err){
-    console.warn('[mesa] registro_sistema_falhou_whatsapp_preservado', { error: String(err) });
-    avisoSistema = '⚠️ Não foi possível registrar a comanda no sistema agora, mas ela seguirá normalmente pelo WhatsApp.';
+  } catch (err) {
+    console.warn('[checkout] confirmacao_pedido_indisponivel', { erro: String(err) });
+    btnEnviarPedidoEl.disabled = false;
+    btnEnviarPedidoEl.textContent = 'Confirmar pedido';
+    checkoutErrorBoxEl.innerHTML =
+      '<div class="checkout-error">⚠️ ' +
+      escapeHTML(err?.message || 'Não conseguimos confirmar agora. Tente novamente.') +
+      ' Não refaça o carrinho: ao tentar de novo, a mesma referência será utilizada para evitar duplicidade.</div>';
+    checkoutErrorBoxEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    return;
   }
 
-  const numeroComanda = registro?.pedido?.numero || registro?.pedido?.referencia || '';
-  const destinoWhatsApp = linkWhatsApp(montarMensagemPedido(numeroComanda, registro?.pedido?.criadoEm));
-
-  btnEnviarPedidoEl.textContent = 'Abrindo WhatsApp...';
-  checkoutConfirmEl.innerHTML = avisoSistema;
+  // Uma mensagem de sucesso exige resposta confirmada pelo servidor.
+  const numeroComanda = registro.pedido.numero || registro.pedido.referencia;
+  const linkCopia = document.getElementById('linkWhatsappCopia');
+  linkCopia.href = linkWhatsApp(montarMensagemPedido(numeroComanda, registro.pedido.criadoEm));
+  linkCopia.style.display = 'block';
+  checkoutConfirmEl.innerHTML =
+    '✅ <strong>Comanda ' + escapeHTML(numeroComanda) + ' confirmada no sistema!</strong>' +
+    '<div style="margin-top:8px">Seu pedido foi registrado para atendimento pela loja. ' +
+    'Não é preciso mandar mensagem nem esperar alguém aceitar. ' +
+    'Se desejar, envie uma cópia pelo WhatsApp no botão abaixo.</div>';
   checkoutConfirmEl.style.display = 'block';
+  checkoutErrorBoxEl.innerHTML = '';
+  btnEnviarPedidoEl.disabled = true;
+  btnEnviarPedidoEl.style.display = 'none';
   clientRequestIdAtual = null;
-  window.location.assign(destinoWhatsApp);
+  Object.keys(cart).forEach(nome => delete cart[nome]);
+  updateCartBar();
 });
 
 updateCartBar();

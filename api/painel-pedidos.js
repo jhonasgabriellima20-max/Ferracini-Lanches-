@@ -171,8 +171,8 @@ module.exports = async function handler(req, res){
   res.setHeader('X-Robots-Tag', 'noindex, nofollow');
   res.setHeader('Vary', 'X-Admin-Password');
 
-  if(req.method !== 'GET' && req.method !== 'POST'){
-    res.setHeader('Allow', 'GET, POST');
+  if(req.method !== 'GET'){
+    res.setHeader('Allow', 'GET');
     return res.status(405).json({ error: 'Método não permitido.' });
   }
 
@@ -201,12 +201,6 @@ module.exports = async function handler(req, res){
   failedLogins.delete(clientKey(req));
 
   try{
-    if(req.method === 'POST'){
-      if(!String(req.headers['content-type'] || '').includes('application/json')) return res.status(415).json({error:'Conteúdo deve ser JSON.'});
-      const id = String(req.body?.id || '');
-      const pedido = await require('./pedidos').confirmarPedido(id);
-      return res.status(200).json({ pedido });
-    }
     const params = queryParams(req);
     const dataParam = String(params.get('data') || '');
     const limitParam = Number(params.get('limit'));

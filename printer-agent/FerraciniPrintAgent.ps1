@@ -263,9 +263,115 @@ function Format-Receipt($Pedido, [int]$Width) {
   return ($lines -join [Environment]::NewLine)
 }
 
+# A impressora termica precisa de um trabalho com papel de 80 mm.
+# Out-Printer usa a diagramacao de paginas comuns (A4) e estreita o
+# conteudo, quebrando palavras e desperdicando bobina.
 function Send-ToPrinter([string]$Text, [string]$PrinterName) {
   Get-Printer -Name $PrinterName -ErrorAction Stop | Out-Null
-  $Text | Out-Printer -Name $PrinterName
+
+  if (-not ('FerraciniReceiptPrinter' -as [type])) {
+    Add-Type -ReferencedAssemblies 'System.Drawing.dll' -TypeDefinition @'
+using System;
+using System.Drawing;
+using System.Drawing.Printing;
+using System.Drawing.Text;
+
+public static class FerraciniReceiptPrinter
+{
+    public static void Print(string printerName, string receipt)
+    {
+        if (String.IsNullOrWhiteSpace(receipt)) throw new ArgumentException("Comanda vazia.");
+        string[] lines = receipt.Replace("\r", "").TrimEnd('\n').Split('\n');
+        using (PrintDocument doc = new PrintDocument())
+        using (Font font = ChooseFont())
+        {
+            doc.PrinterSettings.PrinterName = printerName;
+            if (!doc.PrinterSettings.IsValid)
+                throw new InvalidOperationException("Impressora nao disponivel: " + printerName);
+            doc.PrintController = new StandardPrintController();
+            doc.DocumentName = "Ferracini - Comanda";
+            doc.OriginAtMargins = false;
+            doc.DefaultPageSettings.Landscape = false;
+            doc.DefaultPageSettings.Margins = new Margins(0, 0, 0, 0);
+            // Largura e altura em centesimos de polegada: 315 = 80 mm.
+            // Ajuste de altura ao tamanho da comanda evita paginas A4
+            // e grandes trechos de papel em branco.
+            int approxHeight = Math.Max(230, Math.Min(3000, lines.Length * 17 + 50));
+            doc.DefaultPageSettings.PaperSize =
+                new PaperSize("Ferracini 80 mm", 315, approxHeight);
+
+            int nextLine = 0;
+            doc.PrintPage += delegate(object sender, PrintPageEventArgs e)
+            {
+                Graphics g = e.Graphics;
+                g.TextRenderingHint = TextRenderingHint.SingleBitPerPixelGridFit;
+                float x = Math.Max(14f, e.PageSettings.HardMarginX + 6f);
+                float y = Math.Max(12f, e.PageSettings.HardMarginY + 4f);
+                float limitX = Math.Min(305f, e.PageBounds.Width - 8f);
+                float availableWidth = limitX - x;
+                // Ajusta o tamanho da fonte ao texto real na bobina.
+                // A largura de 42 caracteres e preservada, sem cortes.
+                float size = 9.5f;
+                Font textFont = null;
+                Font headingFont = null;
+                try
+                {
+                    for (; size >= 7.0f; size -= 0.25f)
+                    {
+                        if (textFont != null) textFont.Dispose();
+                        textFont = new Font(font.FontFamily, size, FontStyle.Regular, GraphicsUnit.Point);
+                        float widest = 0f;
+                        for (int i=0; i<lines.Length; i++)
+                            widest = Math.Max(widest,
+                                g.MeasureString(lines[i], textFont, 10000, StringFormat.GenericTypographic).Width);
+                        if (widest <= availableWidth) break;
+                    }
+                    if (size < 7.0f)
+                        throw new InvalidOperationException(
+                            "Texto longo demais para bobina de 80 mm. Diminua a largura configurada.");
+
+                    headingFont = new Font(font.FontFamily, size, FontStyle.Bold, GraphicsUnit.Point);
+                    float lineHeight = textFont.GetHeight(g) * 1.13f;
+                    float bottom = e.PageBounds.Height - 20f;
+                    using (StringFormat sf = new StringFormat(StringFormat.GenericTypographic))
+                    {
+                        sf.FormatFlags |= StringFormatFlags.NoWrap;
+                        while (nextLine < lines.Length && y + lineHeight <= bottom)
+                        {
+                            string line = lines[nextLine];
+                            bool important = line.StartsWith("FERRACINI") ||
+                                             line.StartsWith("COMANDA ") ||
+                                             line.StartsWith("TESTE DE") ||
+                                             line.StartsWith("TOTAL:");
+                            // A propria linha nunca sera quebrada em uma coluna estreita.
+                            g.DrawString(line, important ? headingFont : textFont,
+                                Brushes.Black, new PointF(x, y), sf);
+                            y += lineHeight;
+                            nextLine++;
+                        }
+                    }
+                    e.HasMorePages = nextLine < lines.Length;
+                }
+                finally
+                {
+                    if (textFont != null) textFont.Dispose();
+                    if (headingFont != null) headingFont.Dispose();
+                }
+            };
+            doc.Print();
+        }
+    }
+
+    private static Font ChooseFont()
+    {
+        try { return new Font("Consolas", 8.0f, FontStyle.Regular); }
+        catch { return new Font(FontFamily.GenericMonospace, 8.0f); }
+    }
+}
+'@ -ErrorAction Stop
+  }
+
+  [FerraciniReceiptPrinter]::Print($PrinterName, $Text)
 }
 
 function Invoke-Api([string]$Method, [string]$Url, [string]$Token, [object]$Body = $null) {
@@ -296,7 +402,7 @@ function Update-OrderStatus($Config, [string]$Token, $Pedido, [string]$Status, [
     $max = [Math]::Min(280, $Erro.Length)
     $body.erro = $Erro.Substring(0, $max)
   }
-  Invoke-Api 'PATCH' (([string]$Config.siteUrl).TrimEnd('/') + '/api/pedidos') $Token $body | Out-Null
+  Invoke-Api 'PATCH' (([string]$Config.siteUrl).TrimEnd('/') + '/api/fila-impressao') $Token $body | Out-Null
 }
 
 function Print-Test {
@@ -364,20 +470,34 @@ function Run-Agent {
 
     while ($true) {
       try {
-        $fila = Invoke-Api 'GET' ($baseUrl + '/api/pedidos?limit=100') $token
+        $fila = Invoke-Api 'GET' ($baseUrl + '/api/fila-impressao?limit=25') $token
         $pendentes = @($fila.pedidos | Where-Object { $_.status -eq 'pendente' } | Sort-Object criadoEm)
 
         foreach ($pedido in $pendentes) {
           try {
+            # Um UPDATE atomico confirma que esta instancia e dona da comanda.
             Update-OrderStatus $cfg $token $pedido 'imprimindo'
+          } catch {
+            Write-Log ("Comanda {0}: outra instancia a reivindicou ou nao ha conexao: {1}" -f $pedido.numero, $_.Exception.Message) 'WARN'
+            continue
+          }
+
+          try {
             $receipt = Format-Receipt $pedido $width
             Send-ToPrinter $receipt $printerName
-            Update-OrderStatus $cfg $token $pedido 'impresso'
-            Write-Log ("Comanda {0} impressa com sucesso." -f $pedido.numero)
           } catch {
             $err = $_.Exception.Message
             try { Update-OrderStatus $cfg $token $pedido 'falhou' $err } catch {}
-            Write-Log ("Falha na comanda {0}: {1}" -f $pedido.numero, $err) 'ERROR'
+            Write-Log ("Falha ao enviar comanda {0} para a impressora: {1}. Verificar antes de reenviar." -f $pedido.numero, $err) 'ERROR'
+            continue
+          }
+
+          try {
+            Update-OrderStatus $cfg $token $pedido 'impresso'
+            Write-Log ("Comanda {0} enviada ao spool do Windows." -f $pedido.numero)
+          } catch {
+            # Nunca reenvie automaticamente: a comanda pode ja estar no spool.
+            Write-Log ("Comanda {0} enviada ao spool, mas nao foi possivel confirmar no servidor: {1}. Verificar manualmente." -f $pedido.numero, $_.Exception.Message) 'ERROR'
           }
         }
       } catch {
