@@ -27,6 +27,8 @@ jobs:
         run: node tests/comanda-confirmacao.test.js
       - name: Test large print queue
         run: node tests/fila-impressao.test.js
+      - name: Test ghost-free checkout
+        run: node tests/checkout-sem-fantasma.test.js
       - name: Check API syntax
         run: |
           node --check api/comanda.js
