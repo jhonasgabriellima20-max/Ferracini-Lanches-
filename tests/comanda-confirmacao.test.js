@@ -2,10 +2,20 @@ const assert = require('node:assert/strict');
 const Module = require('node:module');
 
 const storage = new Map();
+let storageOffline = false;
+const storageOutage = () => {
+  const err = new Error('Armazenamento fora do ar');
+  err.code = 'STORAGE_UNAVAILABLE';
+  return err;
+};
 const fakeStorage = {
-  isStorageUnavailable: () => false,
-  readJson: async path => ({ value: storage.get(path) || null }),
+  isStorageUnavailable: error => error?.code === 'STORAGE_UNAVAILABLE',
+  readJson: async path => {
+    if(storageOffline) throw storageOutage();
+    return { value: storage.get(path) || null };
+  },
   writeJson: async (path, value, options) => {
+    if(storageOffline) throw storageOutage();
     if(storage.has(path) && !options.allowOverwrite){
       const e = new Error('conflict');
       e.status = 409;
@@ -114,7 +124,33 @@ async function call(handler, request){
   assert.equal(finalPanel.body.pedidos.length, 2);
   assert.equal(finalPanel.body.aguardando.length, 0);
 
-  console.log('OK - pedido confirmado automaticamente; retry não duplica a comanda');
+  // Se o banco estiver indisponivel, nunca devolver numero inventado ou status 202.
+  storageOffline = true;
+  const whileOffline = await call(pedidosHandler, req('POST', {
+    ...body,
+    clientRequestId: 'offline-comanda-20261010',
+  }));
+  assert.equal(whileOffline.statusCode, 503);
+  assert.equal(whileOffline.body.pedidoConfirmado, false);
+  assert.equal(whileOffline.body.pedido, undefined);
+  assert.equal([...storage.keys()].filter(k => k.startsWith('pedidos/fila/')).length, 2);
+
+  storageOffline = false;
+  const recovered = await call(pedidosHandler, req('POST', {
+    ...body,
+    clientRequestId: 'offline-comanda-20261010',
+  }));
+  assert.equal(recovered.statusCode, 201);
+  assert.equal([...storage.keys()].filter(k => k.startsWith('pedidos/fila/')).length, 3);
+  const retryRecovery = await call(pedidosHandler, req('POST', {
+    ...body,
+    clientRequestId: 'offline-comanda-20261010',
+  }));
+  assert.equal(retryRecovery.statusCode, 200);
+  assert.equal(retryRecovery.body.pedido.numero, recovered.body.pedido.numero);
+  assert.equal([...storage.keys()].filter(k => k.startsWith('pedidos/fila/')).length, 3);
+
+  console.log('OK - pedidos automaticos, falha segura do banco, idempotencia e painel sem aceite');
 })().catch(e => {
   console.error(e);
   process.exitCode = 1;
