@@ -81,7 +81,7 @@ async function call(handler, request){
     cliente: { nome: 'Cliente Teste', telefone: '43999999999' },
     itens: [{ nome: 'Dog Simples', quantidade: 1, precoUnitarioCentavos: 1200, adicionais: [] }],
     atendimento: { tipo: 'mesa', mesa: 1 },
-    pagamento: { metodo: 'pix' },
+
   };
 
   const created = await call(pedidosHandler, req('POST', body));
@@ -93,6 +93,7 @@ async function call(handler, request){
 
   const auth = { 'x-admin-password': 'senha-teste' };
   const afterCreate = await call(painelHandler, req('GET', {}, auth, '/api/painel-pedidos'));
+  assert.equal(afterCreate.body.pedidos[0].pagamento.metodo, 'no_local');
   assert.equal(afterCreate.body.pedidos.length, 1);
   assert.equal(afterCreate.body.aguardando.length, 0);
 
@@ -115,6 +116,7 @@ async function call(handler, request){
     clientRequestId: 'teste-retirada-1234567890',
     origem: 'site',
     atendimento: { tipo: 'retirada' },
+    pagamento: { metodo: 'pix' },
   }));
   assert.equal(retirada.statusCode, 201);
   assert.equal(retirada.body.pedido.numero, '02');

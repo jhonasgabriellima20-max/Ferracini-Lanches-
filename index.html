@@ -1276,6 +1276,7 @@ function valorTrocoCentavos(){
   return Number.isSafeInteger(centavos) ? centavos : NaN;
 }
 function erroTroco(){
+  if(deliveryMethod === 'mesa') return "";
   if(paymentMethod !== 'dinheiro' || !precisaTroco) return '';
   const valor = valorTrocoCentavos();
   if(!Number.isFinite(valor) || valor <= 0) return 'Informe um valor válido em “Troco para quanto?”.';
@@ -1283,6 +1284,7 @@ function erroTroco(){
   return '';
 }
 function descricaoPagamento(){
+  if(deliveryMethod === 'mesa') return 'Pagamento a combinar no local';
   if(paymentMethod === 'pix') return `Pix manual — chave ${CONFIG.pix.tipo}: ${CONFIG.pix.chave}\nEnviar o comprovante pelo WhatsApp`;
   const localPagamento = deliveryMethod === 'entrega' ? 'na entrega' : (deliveryMethod === 'mesa' ? 'no local' : 'na retirada');
   if(paymentMethod === 'credito') return `Crédito — pagamento ${localPagamento}`;
@@ -1296,6 +1298,12 @@ function atualizarResumoTroco(){
   el.textContent = erroTroco() || (precisaTroco ? (deliveryMethod === 'entrega' && frete.status !== 'ok' ? 'Calcule a entrega para confirmar o troco.' : `Troco a devolver: ${fmtPreco((valorTrocoCentavos()-totalPedidoCentavos())/100)}`) : 'Pagamento com o valor exato.');
 }
 function renderPaymentOptions(){
+  const bloco = document.getElementById('paymentOptions').closest('.checkout-block');
+  bloco.hidden = deliveryMethod === 'mesa';
+  if(deliveryMethod === 'mesa'){
+    document.getElementById('paymentOptions').innerHTML = '';
+    return;
+  }
   const avisoPix = paymentMethod === 'pix' ? `
     <div style="margin-top:14px;padding:14px;border:1px solid rgba(255,255,255,.12);border-radius:10px;background:rgba(255,255,255,.04)">
       <div style="font-weight:800;margin-bottom:6px">Chave Pix (${CONFIG.pix.tipo})</div>
@@ -1917,7 +1925,7 @@ function montarPayloadPedido(clientRequestId){
       observacao: item.observacao || '',
     })),
     atendimento,
-    pagamento: {
+    pagamento: deliveryMethod === 'mesa' ? undefined : {
       metodo: paymentMethod,
       precisaTroco: paymentMethod === 'dinheiro' && precisaTroco,
       trocoParaCentavos: paymentMethod === 'dinheiro' && precisaTroco ? valorTrocoCentavos() : undefined,
@@ -1976,7 +1984,7 @@ function validarCheckout(){
     else if(frete.status !== 'ok') erros.push('Calcule a taxa de entrega antes de enviar o pedido.');
   }
 
-  if(!paymentOptionsForMethod().includes(paymentMethod)) erros.push('Escolha a forma de pagamento.');
+  if(deliveryMethod !== 'mesa' && !paymentOptionsForMethod().includes(paymentMethod)) erros.push('Escolha a forma de pagamento.');
   if(erroTroco()) erros.push(erroTroco());
   return erros;
 }

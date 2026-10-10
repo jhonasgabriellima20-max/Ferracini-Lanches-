@@ -68,6 +68,7 @@ function tipoAtendimento(p){
 }
 
 function pagamento(p){
+  if(p.pagamento?.metodo === 'no_local') return 'Pagamento a combinar no local';
   if(p.pagamento?.metodo === 'dinheiro'){
     if(p.pagamento?.precisaTroco) return `Dinheiro · troco para ${dinheiro(p.pagamento.trocoParaCentavos)}`;
     return 'Dinheiro';
