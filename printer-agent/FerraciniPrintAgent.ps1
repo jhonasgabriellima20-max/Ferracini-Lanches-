@@ -1,4 +1,4 @@
-param(
+﻿param(
   [ValidateSet('Run','Setup','Test','InstallStartup')]
   [string]$Mode = 'Run'
 )
@@ -173,7 +173,7 @@ function Format-Receipt($Pedido, [int]$Width) {
 
   $tipo = [string]$Pedido.atendimento.tipo
   if ($tipo -eq 'mesa') {
-    $lines.Add('ATENDIMENTO: MESA ' + [string]$Pedido.atendimento.mesa)
+    $lines.Add('COMER NO LOCAL - MESA ' + [string]$Pedido.atendimento.mesa)
   } elseif ($tipo -eq 'entrega') {
     $lines.Add('ATENDIMENTO: ENTREGA')
   } else {
@@ -227,6 +227,9 @@ function Format-Receipt($Pedido, [int]$Width) {
   if ($tipo -eq 'entrega' -and $Pedido.atendimento.taxaEntregaCentavos) {
     $lines.Add('Entrega:  ' + (Money $Pedido.atendimento.taxaEntregaCentavos))
   }
+  if ($Pedido.atendimento.taxaServicoCentavos) {
+    $lines.Add('Taxa de servico: ' + (Money $Pedido.atendimento.taxaServicoCentavos))
+  }
   $lines.Add('TOTAL:    ' + (Money $Pedido.totalCentavos))
   $lines.Add($doubleSep)
 
@@ -245,13 +248,13 @@ function Format-Receipt($Pedido, [int]$Width) {
     $lines.Add('Conferir comprovante no WhatsApp')
   } elseif ($pag -eq 'credito') {
     $lines.Add('PAGAMENTO: CREDITO')
-    if ([string]$Pedido.atendimento.tipo -eq 'entrega') { $lines.Add('Maquina na entrega') } else { $lines.Add('Pagamento na retirada') }
+    if ([string]$Pedido.atendimento.tipo -eq 'entrega') { $lines.Add('Maquina na entrega') } elseif ([string]$Pedido.atendimento.tipo -eq 'mesa') { $lines.Add('Pagamento no local') } else { $lines.Add('Pagamento na retirada') }
   } elseif ($pag -eq 'debito') {
     $lines.Add('PAGAMENTO: DEBITO')
-    if ([string]$Pedido.atendimento.tipo -eq 'entrega') { $lines.Add('Maquina na entrega') } else { $lines.Add('Pagamento na retirada') }
+    if ([string]$Pedido.atendimento.tipo -eq 'entrega') { $lines.Add('Maquina na entrega') } elseif ([string]$Pedido.atendimento.tipo -eq 'mesa') { $lines.Add('Pagamento no local') } else { $lines.Add('Pagamento na retirada') }
   } elseif ($pag -eq 'cartao') {
     $lines.Add('PAGAMENTO: CARTAO')
-    if ([string]$Pedido.atendimento.tipo -eq 'entrega') { $lines.Add('Maquina na entrega') } else { $lines.Add('Pagamento na retirada') }
+    if ([string]$Pedido.atendimento.tipo -eq 'entrega') { $lines.Add('Maquina na entrega') } elseif ([string]$Pedido.atendimento.tipo -eq 'mesa') { $lines.Add('Pagamento no local') } else { $lines.Add('Pagamento na retirada') }
   } else {
     $lines.Add('PAGAMENTO: NAO INFORMADO')
   }

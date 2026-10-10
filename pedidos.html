@@ -63,7 +63,7 @@ function telefoneWa(tel){
 
 function tipoAtendimento(p){
   if(p.atendimento?.tipo === 'entrega') return '🚚 Entrega';
-  if(p.atendimento?.tipo === 'mesa') return `🍽️ Mesa ${esc(p.atendimento?.mesa || '')}`;
+  if(p.atendimento?.tipo === 'mesa') return `🍽️ Comer no local · Mesa ${esc(p.atendimento?.mesa || '')}`;
   return '🏪 Retirada';
 }
 
@@ -73,7 +73,7 @@ function pagamento(p){
     return 'Dinheiro';
   }
   if(p.pagamento?.metodo === 'pix') return 'Pix · conferir comprovante no WhatsApp';
-  const local = p.atendimento?.tipo === 'entrega' ? 'na entrega' : 'na retirada';
+  const local = p.atendimento?.tipo === 'entrega' ? 'na entrega' : (p.atendimento?.tipo === 'mesa' ? 'no local' : 'na retirada');
   if(p.pagamento?.metodo === 'credito') return `Crédito · máquina ${local}`;
   if(p.pagamento?.metodo === 'debito') return `Débito · máquina ${local}`;
   if(p.pagamento?.metodo === 'cartao') return `Cartão · máquina ${local}`;
@@ -103,7 +103,7 @@ function render(pedidos){
       <div class="order-head"><div><div class="num">Comanda ${esc(p.numero||'—')}</div><div class="tag">${tipoAtendimento(p)}</div></div><div class="time">Horário do pedido: ${hora(p.criadoEm)}</div></div>
       <div class="customer">${esc(p.cliente?.nome||'Cliente')}</div><div class="phone">${esc(p.cliente?.telefone||'')}</div>
       <div class="items">${itens}</div>
-      <div class="details">${end?`<div>📍 ${end}</div>`:''}${p.atendimento?.taxaEntregaCentavos?`<div>🚚 Taxa: ${dinheiro(p.atendimento.taxaEntregaCentavos)}</div>`:''}${previsaoRetirada?`<div>⏱️ Previsão de retirada: ${esc(previsaoRetirada.minimo)} min</div>`:''}<div>💳 ${esc(pagamento(p))}</div></div>
+      <div class="details">${end?`<div>📍 ${end}</div>`:''}${p.atendimento?.taxaEntregaCentavos?`<div>🚚 Taxa: ${dinheiro(p.atendimento.taxaEntregaCentavos)}</div>`:''}${p.atendimento?.taxaServicoCentavos?`<div>🧾 Taxa de serviço: ${dinheiro(p.atendimento.taxaServicoCentavos)}</div>`:''}${previsaoRetirada?`<div>⏱️ Previsão de retirada: ${esc(previsaoRetirada.minimo)} min</div>`:''}<div>💳 ${esc(pagamento(p))}</div></div>
       <div class="total"><span>Total</span><span>${dinheiro(p.totalCentavos)}</span></div>
       ${wa?`<div class="actions"><a class="wa" href="https://wa.me/${wa}" target="_blank" rel="noopener">Abrir WhatsApp do cliente</a></div>`:''}
     </article>`;

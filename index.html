@@ -609,6 +609,7 @@
     <div class="checkout-block">
       <div class="checkout-block-title">Como você quer receber?</div>
       <div class="method-toggle">
+        <button type="button" class="method-btn" id="btnMesa" data-method="mesa">🍽️ Comer no local</button>
         <button type="button" class="method-btn" id="btnRetirada" data-method="retirada">🏪 Retirar no local</button>
         <button type="button" class="method-btn active" id="btnEntrega" data-method="entrega">🚚 Entrega</button>
       </div>
@@ -624,6 +625,10 @@
         <label for="clienteTelefone">Telefone</label>
         <input type="tel" id="clienteTelefone" placeholder="(43) 9xxxx-xxxx">
       </div>
+    </div>
+
+    <div class="checkout-block" id="mesaBlock" style="display:none">
+      <div class="field"><label for="numeroMesa">Número da mesa</label><input type="number" id="numeroMesa" min="1" max="999" step="1" inputmode="numeric" placeholder="Ex.: 3"></div>
     </div>
 
     <div class="checkout-block" id="enderecoBlock">
@@ -1218,7 +1223,7 @@ function canalAtendimentoDisponivel(metodo){
     ? canaisAtendimento.entrega !== false
     : metodo === 'retirada'
       ? canaisAtendimento.retirada !== false
-      : false;
+      : metodo === 'mesa';
 }
 
 function aplicarDisponibilidadeAtendimento(){
@@ -1238,10 +1243,11 @@ function aplicarDisponibilidadeAtendimento(){
   if(!canalAtendimentoDisponivel(deliveryMethod)){
     deliveryMethod = canalAtendimentoDisponivel('entrega')
       ? 'entrega'
-      : (canalAtendimentoDisponivel('retirada') ? 'retirada' : '');
+      : (canalAtendimentoDisponivel('retirada') ? 'retirada' : 'mesa');
   }
 
   document.querySelectorAll('.method-btn').forEach(b => b.classList.toggle('active', b.dataset.method === deliveryMethod));
+  document.getElementById('mesaBlock').style.display = deliveryMethod === 'mesa' ? 'block' : 'none';
   if(enderecoBlockEl) enderecoBlockEl.style.display = deliveryMethod === 'entrega' ? 'block' : 'none';
 }
 
@@ -1278,7 +1284,7 @@ function erroTroco(){
 }
 function descricaoPagamento(){
   if(paymentMethod === 'pix') return `Pix manual — chave ${CONFIG.pix.tipo}: ${CONFIG.pix.chave}\nEnviar o comprovante pelo WhatsApp`;
-  const localPagamento = deliveryMethod === 'entrega' ? 'na entrega' : 'na retirada';
+  const localPagamento = deliveryMethod === 'entrega' ? 'na entrega' : (deliveryMethod === 'mesa' ? 'no local' : 'na retirada');
   if(paymentMethod === 'credito') return `Crédito — pagamento ${localPagamento}`;
   if(paymentMethod === 'debito') return `Débito — pagamento ${localPagamento}`;
   if(!precisaTroco) return 'Dinheiro — sem troco';
@@ -1570,6 +1576,7 @@ document.querySelectorAll('.method-btn').forEach(btn => {
     if(!canalAtendimentoDisponivel(btn.dataset.method)) return;
     deliveryMethod = btn.dataset.method;
     document.querySelectorAll('.method-btn').forEach(b => b.classList.toggle('active', b === btn));
+    document.getElementById('mesaBlock').style.display = deliveryMethod === 'mesa' ? 'block' : 'none';
     enderecoBlockEl.style.display = deliveryMethod === 'entrega' ? 'block' : 'none';
     resetFrete();
     const opcoesPagamento = paymentOptionsForMethod();
@@ -1731,7 +1738,7 @@ async function abrirCheckout(){
   }
   const metodoInicial = canalAtendimentoDisponivel('entrega')
     ? 'entrega'
-    : (canalAtendimentoDisponivel('retirada') ? 'retirada' : '');
+    : (canalAtendimentoDisponivel('retirada') ? 'retirada' : 'mesa');
   if(!metodoInicial){
     alert('Entrega e retirada estão indisponíveis no momento.');
     return;
@@ -1829,7 +1836,7 @@ function montarMensagemPedido(comanda = '', criadoEm = '', estimativaPedido = nu
     const cepLinha = cep.length === 8 ? `\nCEP: ${formatarCep(cep)}` : '';
     blocoEntrega = `🚚 ENTREGA\n${rua}, ${numero}${complemento ? ' - ' + complemento : ''}\n${bairro} — ${cidade}${cepLinha}\n\n📍 Distância: ${frete.distanciaKm.toFixed(1)} km\n🚚 Taxa de entrega: ${fmtPreco(frete.valor)}\n🧾 Taxa de serviço: ${fmtPreco(taxaServico)}`;
   } else {
-    blocoEntrega = '🏪 RETIRADA NO LOCAL';
+    blocoEntrega = deliveryMethod === 'mesa' ? `🍽️ COMER NO LOCAL — MESA ${document.getElementById('numeroMesa').value}` : '🏪 RETIRADA NO LOCAL';
   }
 
   const blocoPagamento = `💳 PAGAMENTO\n${descricaoPagamento()}`;
@@ -1866,6 +1873,7 @@ let clientRequestIdAtual = null;
 function montarPayloadPedido(clientRequestId){
   const { items } = cartTotals();
   let atendimento = { tipo: deliveryMethod };
+  if(deliveryMethod === 'mesa') atendimento.mesa = Number(document.getElementById('numeroMesa').value);
 
   if(deliveryMethod === 'entrega'){
     atendimento = {
@@ -1952,7 +1960,11 @@ function validarCheckout(){
   const telefone = document.getElementById('clienteTelefone').value.trim();
 
   if(!nome) erros.push('Informe seu nome.');
-  if(!telefone) erros.push('Informe seu telefone.');
+  if(!telefone && deliveryMethod !== 'mesa') erros.push('Informe seu telefone.');
+  if(deliveryMethod === 'mesa'){
+    const mesa = Number(document.getElementById('numeroMesa').value);
+    if(!Number.isInteger(mesa) || mesa < 1 || mesa > 999) erros.push('Informe o número da mesa (1 a 999).');
+  }
   if(!canalAtendimentoDisponivel(deliveryMethod)) erros.push('A modalidade de atendimento selecionada está indisponível no momento.');
 
   if(deliveryMethod === 'entrega'){
