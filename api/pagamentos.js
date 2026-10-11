@@ -5,8 +5,22 @@ const {readJson,writeJson}=require('../lib/postgres-storage');
 const {ready,requestId,mercadoPago,procurarPedido,conferirPagamento,respostaPublica}=require('../lib/mercadopago');
 const orders=require('./pedidos');
 const disponibilidade=require('./disponibilidade');
-const {calcularTempoInternoLanches}=require('../lib/prep-estimator');
 
+
+const buckets=globalThis.__ferraciniMpRateBuckets ||= new Map();
+function rateLimited(req){
+  const ip=String(req.headers?.['x-vercel-forwarded-for']||
+    req.headers?.['x-forwarded-for']||req.headers?.['x-real-ip']||'unknown').split(',')[0].slice(0,120);
+  const now=Date.now();
+  const item=buckets.get(ip);
+  if(!item || now-item.start>60000){
+    buckets.set(ip,{start:now,count:1});
+    if(buckets.size>2500)for(const [key,value] of buckets)if(now-value.start>60000)buckets.delete(key);
+    return false;
+  }
+  item.count++;
+  return item.count>8;
+}
 function error(res,status,message){return res.status(status).json({error:message});}
 function method(req){return String(req.headers?.['content-type']||'').toLowerCase().includes('application/json');}
 function validEmail(v){return typeof v==='string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v) && v.length<=160;}
@@ -79,6 +93,7 @@ module.exports=async function handler(req,res){
     return error(res,405,'Método não permitido.');
   }
   if(!ready()) return error(res,503,'Pagamento online ainda não configurado.');
+  if(rateLimited(req))return error(res,429,'Muitas tentativas. Tente novamente em um minuto.');
   if(!orders.origemPermitida(req)) return error(res,403,'Origem não permitida.');
   if(!method(req)) return error(res,415,'Envie JSON.');
   if(Number(req.headers?.['content-length']||0)>65536)return error(res,413,'Solicitação muito grande.');
@@ -94,6 +109,7 @@ module.exports=async function handler(req,res){
     const canais=await disponibilidade.readServiceAvailability();
     if(canais[payload.atendimento.tipo]===false) return error(res,403,'Atendimento indisponível.');
     await orders.validarEntregaNoServidor(payload);
+    await orders.aplicarEstimativaInteligente(payload);
     // Verify the items, address and server-recomputed totals on every attempt.
     const registro=await orders.criarPedido(payload);
     const saved=registro.pedido;
