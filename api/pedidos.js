@@ -443,6 +443,14 @@ async function confirmarPedido(id){
     pedido = await lerJson(pathname);
   }
   if(!pedido) throw new Error('Tentativa não encontrada hoje.');
+  // Mesa permanece sem pagamento antecipado. Entrega e retirada só podem
+  // entrar na fila depois da aprovação verificada no backend do Mercado Pago.
+  if(pedido.atendimento?.tipo !== 'mesa' &&
+     !(pedido.pagamento?.status === 'approved' &&
+       pedido.pagamento?.provedor === 'mercadopago' &&
+       pedido.pagamento?.pagamentoId)){
+    throw new Error('Pagamento ainda não aprovado.');
+  }
   if(pedido.confirmadoPath){
     const confirmado = await lerJson(pedido.confirmadoPath);
     if(confirmado) return confirmado;
@@ -579,6 +587,12 @@ module.exports = async function handler(req, res){
       if(!CATALOGO.produtos || !CATALOGO.adicionais) throw new Error('Catálogo base indisponível.');
       const catalogo = await require('./disponibilidade').readOrderCatalog();
       const payloadBase = validarPayload(body, catalogo);
+      if(payloadBase.atendimento.tipo !== 'mesa'){
+        return res.status(402).json({
+          error:'Pagamento online obrigatório. Finalize pelo checkout seguro.',
+          pagamentoObrigatorio:true,
+        });
+      }
       if(payloadBase.atendimento.tipo === 'entrega' || payloadBase.atendimento.tipo === 'retirada'){
         const canais = await require('./disponibilidade').readServiceAvailability();
         if(canais[payloadBase.atendimento.tipo] === false){
@@ -655,3 +669,7 @@ module.exports = async function handler(req, res){
   return res.status(405).json({ error: 'Método não permitido.' });
 };
 module.exports.confirmarPedido = confirmarPedido;
+module.exports.validarPayload = validarPayload;
+module.exports.validarEntregaNoServidor = validarEntregaNoServidor;
+module.exports.criarPedido = criarPedido;
+module.exports.origemPermitida = origemPermitida;
