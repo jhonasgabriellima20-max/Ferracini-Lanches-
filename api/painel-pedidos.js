@@ -126,29 +126,38 @@ async function lerPedidoComCache(blob){
   return value;
 }
 
-async function listarPedidos(data, limite){
-  const resultado = await listBlobs({ prefix: `${FILA_DIR}/${data}/`, limit: Math.min(100, Math.max(1, limite || 50)) });
+// IDs dos pedidos são SHA-256. Particionar o prefixo evita truncar dias
+// com mais de 1.000 comandas, mesmo no storage legado sem cursor.
+async function listarDia(data, sufixo = ''){
+  const resultado = await listBlobs({ prefix: `${FILA_DIR}/${data}/${sufixo}`, limit: 1000 });
+  const blobs = resultado.blobs || [];
+  if(blobs.length < 1000) return blobs;
+  if(sufixo.length >= 64) throw new Error('Limite inesperado no histórico.');
+  const todos = [];
+  for(const c of '0123456789abcdef') todos.push(...await listarDia(data, sufixo + c));
+  return todos;
+}
+
+async function listarPedidos(data){
+  const blobs = await listarDia(data);
   const pedidos = [];
-  const atuais = new Set();
-
-  for(const blob of resultado.blobs || []){
-    atuais.add(blob.pathname);
-    try{
-      const pedido = await lerPedidoComCache(blob);
-      if(pedido) pedidos.push(pedido);
-    }catch(err){
-      console.warn('[painel-pedidos] leitura_falhou', { pathname: blob.pathname, error: String(err) });
-    }
+  // Falhas de leitura são reportadas: não apresentar histórico parcial como completo.
+  for(let i = 0; i < blobs.length; i += 10){
+    const lote = await Promise.all(blobs.slice(i, i + 10).map(lerPedidoComCache));
+    pedidos.push(...lote.filter(Boolean));
   }
+  if(pedidoReadCache.size > 5000) pedidoReadCache.clear();
+  return pedidos.sort((a,b) => String(b.criadoEm || '').localeCompare(String(a.criadoEm || '')));
+}
 
-  for(const pathname of pedidoReadCache.keys()){
-    if(pathname.startsWith(`${FILA_DIR}/${data}/`) && !atuais.has(pathname)){
-      pedidoReadCache.delete(pathname);
-    }
+async function resumoMes(mes){
+  const quantidadeDias = new Date(Number(mes.slice(0,4)), Number(mes.slice(5,7)), 0).getDate();
+  const dias = [];
+  for(let inicio = 1; inicio <= quantidadeDias; inicio += 5){
+    const lote = Array.from({ length: Math.min(5, quantidadeDias - inicio + 1) }, (_, i) => `${mes}-${String(inicio + i).padStart(2,'0')}`);
+    dias.push(...await Promise.all(lote.map(async data => ({ data, quantidade: (await listarDia(data)).length }))));
   }
-
-  pedidos.sort((a,b) => String(b.criadoEm || '').localeCompare(String(a.criadoEm || '')));
-  return pedidos;
+  return dias;
 }
 
 async function listarAguardando(data){
@@ -203,9 +212,14 @@ module.exports = async function handler(req, res){
   try{
     const params = queryParams(req);
     const dataParam = String(params.get('data') || '');
-    const limitParam = Number(params.get('limit'));
+    const mes = String(params.get('mes') || '');
+    if(mes && !/^\d{4}-(0[1-9]|1[0-2])$/.test(mes)) return res.status(400).json({ error: 'Mês inválido.' });
+    if(mes && params.get('resumo') === '1'){
+      const dias = await resumoMes(mes);
+      return res.status(200).json({ mes, dias, total: dias.reduce((n,d) => n + d.quantidade, 0) });
+    }
     const data = /^\d{4}-\d{2}-\d{2}$/.test(dataParam) ? dataParam : dataOperacao();
-    const pedidos = await listarPedidos(data, Number.isFinite(limitParam) ? limitParam : 50);
+    const pedidos = await listarPedidos(data);
     const aguardando = await listarAguardando(data);
     return res.status(200).json({ data, pedidos, aguardando, atualizadoEm: new Date().toISOString() });
   }catch(err){

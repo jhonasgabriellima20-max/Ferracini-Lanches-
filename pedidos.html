@@ -22,10 +22,11 @@
   </section>
 
   <main id="appView" class="hidden">
-    <div class="top"><div><div class="brand">FERRACINI<span>.</span></div><h1>Pedidos de hoje</h1><p class="sub">Os pedidos recebidos entram automaticamente na fila e recebem número de comanda. Não é necessário confirmar ou aceitar.</p></div><button class="btn btn-ghost" id="sair">Sair</button></div>
+    <div class="top"><div><div class="brand">FERRACINI<span>.</span></div><h1>Histórico de pedidos</h1><p class="sub">Os pedidos recebidos entram automaticamente na fila e recebem número de comanda. Comandas guardadas por dia. A numeração recomeça somente a cada mês; o histórico permanece salvo.</p></div><button class="btn btn-ghost" id="sair">Sair</button></div>
+    <div class="card"><div class="field"><label for="mes">Mês do histórico</label><input id="mes" type="month"></div><p class="sub" id="resumoMes" aria-live="polite"></p><div id="dias" style="display:flex;gap:8px;flex-wrap:wrap" aria-label="Dias do mês"></div><button class="btn btn-ghost" id="hoje" style="margin-top:12px">Ir para hoje</button></div>
     <div class="toolbar"><div class="status" id="status">Carregando…</div><div class="count" id="count">0 pedidos</div></div>
     <div id="systemMsg"></div>
-    <h2>Pedidos recebidos</h2>
+    <h2 id="tituloDia">Pedidos recebidos</h2>
     <div id="orders" class="orders"></div>
   </main>
 </div>
@@ -34,6 +35,10 @@ let senhaAdmin = sessionStorage.getItem('ferracini_admin_password') || '';
 let idsConhecidos = new Set();
 let primeiraCarga = true;
 let timer = null;
+const diaHoje = () => new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+let diaSelecionado = diaHoje();
+let versaoConsulta = 0;
+let ultimoResumo = 0;
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -90,7 +95,7 @@ function endereco(p){
 
 function render(pedidos){
   $('count').textContent = `${pedidos.length} ${pedidos.length===1?'pedido':'pedidos'}`;
-  if(!pedidos.length){ $('orders').innerHTML='<div class="card empty">Nenhum pedido registrado hoje.</div>'; return; }
+  if(!pedidos.length){ $('orders').innerHTML='<div class="card empty">Nenhum pedido registrado neste dia.</div>'; idsConhecidos=new Set(); primeiraCarga=false; return; }
   $('orders').innerHTML = pedidos.map(p=>{
     const novo = !idsConhecidos.has(p.id) && !primeiraCarga;
     const itens=(p.itens||[]).map(i=>{
@@ -111,21 +116,26 @@ function render(pedidos){
   }).join('');
 
   const novos = pedidos.filter(p=>!idsConhecidos.has(p.id));
-  if(!primeiraCarga && novos.length) tocarAviso();
+  if(!primeiraCarga && novos.length && diaSelecionado === diaHoje()) tocarAviso();
   idsConhecidos = new Set(pedidos.map(p=>p.id));
   primeiraCarga=false;
 }
 
 async function carregar(){
+  const versao = ++versaoConsulta;
   try{
-    const r=await fetch('/api/painel-pedidos?t='+Date.now(),{cache:'no-store',headers:{'X-Admin-Password':senhaAdmin}});
+    const r=await fetch('/api/painel-pedidos?data='+encodeURIComponent(diaSelecionado)+'&t='+Date.now(),{cache:'no-store',headers:{'X-Admin-Password':senhaAdmin}});
     const data=await r.json().catch(()=>({}));
     if(r.status===401){ sessionStorage.removeItem('ferracini_admin_password'); senhaAdmin=''; throw new Error('Senha administrativa incorreta.'); }
     if(!r.ok) throw new Error(data.error||'Não foi possível carregar os pedidos.');
+    if(versao !== versaoConsulta) return;
     $('systemMsg').innerHTML='';
+    $('tituloDia').textContent='Comandas de '+diaSelecionado.split('-').reverse().join('/');
     render(data.pedidos||[]);
     $('status').textContent=`Atualizado às ${new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',second:'2-digit'})}`;
+    if(Date.now() - ultimoResumo > 60000) await carregarResumo();
   }catch(e){
+    if(versao !== versaoConsulta) return;
     $('systemMsg').innerHTML=notice(e.message||'Falha ao atualizar pedidos.','err');
     $('status').textContent='Sem atualização';
   }
@@ -134,16 +144,48 @@ async function carregar(){
 async function abrirPainel(){
   $('loginMsg').innerHTML='';
   try{
-    const r=await fetch('/api/painel-pedidos?t='+Date.now(),{cache:'no-store',headers:{'X-Admin-Password':senhaAdmin}});
+    const r=await fetch('/api/painel-pedidos?data='+encodeURIComponent(diaSelecionado)+'&t='+Date.now(),{cache:'no-store',headers:{'X-Admin-Password':senhaAdmin}});
     const data=await r.json().catch(()=>({}));
     if(!r.ok) throw new Error(data.error||'Não foi possível entrar.');
     $('loginView').classList.add('hidden'); $('appView').classList.remove('hidden');
     render(data.pedidos||[]);
+    $('tituloDia').textContent='Comandas de '+diaSelecionado.split('-').reverse().join('/');
     $('status').textContent='Painel conectado';
+    await carregarResumo();
     clearInterval(timer); timer=setInterval(carregar,30000);
   }catch(e){ $('loginMsg').innerHTML=notice(e.message||'Não foi possível entrar.','err'); }
 }
 
+async function carregarResumo(){
+  const mes = $('mes').value;
+  const r = await fetch('/api/painel-pedidos?resumo=1&mes='+encodeURIComponent(mes),{cache:'no-store',headers:{'X-Admin-Password':senhaAdmin}});
+  const data = await r.json();
+  if(mes !== $('mes').value) return;
+  if(!r.ok) throw new Error(data.error || 'Não foi possível carregar o histórico.');
+  ultimoResumo = Date.now();
+  $('resumoMes').textContent = `${data.total} comandas salvas neste mês. Selecione um dia para consultar.`;
+  $('dias').innerHTML = data.dias.map(d => `<button class="btn btn-ghost" data-dia="${esc(d.data)}" aria-pressed="${d.data === diaSelecionado}" style="${d.data === diaSelecionado ? 'border-color:var(--orange)' : ''}">${d.data.slice(8)} · ${d.quantidade}</button>`).join('');
+}
+function selecionarDia(dia){
+  diaSelecionado = dia;
+  primeiraCarga = true;
+  idsConhecidos = new Set();
+  $('orders').innerHTML = '<div class="card empty">Carregando comandas…</div>';
+  $('tituloDia').textContent = 'Comandas de '+dia.split('-').reverse().join('/');
+  document.querySelectorAll('[data-dia]').forEach(b => { b.setAttribute('aria-pressed',String(b.dataset.dia === dia)); b.style.borderColor=b.dataset.dia === dia ? 'var(--orange)' : ''; });
+  carregar();
+}
+$('mes').value = diaSelecionado.slice(0,7);
+$('mes').addEventListener('change',()=>{
+  if(!/^\d{4}-(0[1-9]|1[0-2])$/.test($('mes').value)) return;
+  ultimoResumo=0;
+  $('dias').innerHTML='';
+  $('resumoMes').textContent='Carregando histórico…';
+  selecionarDia($('mes').value === diaHoje().slice(0,7) ? diaHoje() : $('mes').value+'-01');
+});
+$('dias').addEventListener('click', e=>{ const b=e.target.closest('[data-dia]'); if(b) selecionarDia(b.dataset.dia); });
+$('hoje').addEventListener('click',()=>{ $('mes').value=diaHoje().slice(0,7); ultimoResumo=0; selecionarDia(diaHoje()); });
+// A seleção permanece aberta à meia-noite: nenhuma comanda desaparece da tela.
 $('entrar').addEventListener('click',()=>{ const s=$('senha').value.trim(); if(!s){$('loginMsg').innerHTML=notice('Digite a senha.','err');return;} senhaAdmin=s; sessionStorage.setItem('ferracini_admin_password',s); abrirPainel(); });
 $('senha').addEventListener('keydown',e=>{if(e.key==='Enter')$('entrar').click();});
 $('sair').addEventListener('click',()=>{ clearInterval(timer); sessionStorage.removeItem('ferracini_admin_password'); location.reload(); });

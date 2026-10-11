@@ -25,6 +25,8 @@ jobs:
         run: node scripts/validate-snapshot.js
       - name: Test automatic order receipt
         run: node tests/comanda-confirmacao.test.js
+      - name: Test monthly order history
+        run: node tests/historico-mensal.test.js
       - name: Test large print queue
         run: node tests/fila-impressao.test.js
       - name: Test ghost-free checkout
