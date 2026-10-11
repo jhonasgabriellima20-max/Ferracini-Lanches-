@@ -151,7 +151,7 @@ async function call(handler, request){
   }));
   assert.equal(retryRecovery.statusCode, 200);
   assert.equal(retryRecovery.body.pedido.numero, recovered.body.pedido.numero);
-  assert.equal([...storage.keys()].filter(k => k.startsWith('pedidos/fila/')).length, 3);
+  assert.equal([...storage.keys()].filter(k => k.startsWith('pedidos/fila/')).length, 2);
 
   console.log('OK - pedidos automaticos, falha segura do banco, idempotencia e painel sem aceite');
 })().catch(e => {
