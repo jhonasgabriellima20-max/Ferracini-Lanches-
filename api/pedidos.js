@@ -671,5 +671,6 @@ module.exports = async function handler(req, res){
 module.exports.confirmarPedido = confirmarPedido;
 module.exports.validarPayload = validarPayload;
 module.exports.validarEntregaNoServidor = validarEntregaNoServidor;
+module.exports.aplicarEstimativaInteligente = aplicarEstimativaInteligente;
 module.exports.criarPedido = criarPedido;
 module.exports.origemPermitida = origemPermitida;
