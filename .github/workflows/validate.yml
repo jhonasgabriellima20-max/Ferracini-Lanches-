@@ -29,6 +29,8 @@ jobs:
         run: node tests/fila-impressao.test.js
       - name: Test ghost-free checkout
         run: node tests/checkout-sem-fantasma.test.js
+      - name: Test secure paid checkout
+        run: node tests/pagamento-seguro.test.js
       - name: Check thermal receipt layout
         run: node tests/print-layout.test.js
       - name: Check API syntax
@@ -39,4 +41,7 @@ jobs:
           node --check api/disponibilidade.js
           node --check api/painel-pedidos.js
           node --check api/pedidos.js
+          node --check api/pagamentos.js
+          node --check api/mercadopago-webhook.js
+          node --check lib/mercadopago.js
           node --check lib/delivery-distance.js
