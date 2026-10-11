@@ -1253,7 +1253,8 @@ function aplicarDisponibilidadeAtendimento(){
 
 const PAYMENT_LABELS = { pix: 'Pix', dinheiro: 'Dinheiro', debito: 'Débito', credito: 'Crédito' };
 function paymentOptionsForMethod(){
-  return ['pix', 'dinheiro', 'debito', 'credito'];
+  // Entrega e retirada agora exigem pagamento no checkout seguro.
+  return ['pix'];
 }
 function taxaServicoPorDistancia(distanciaKm){
   if(!Number.isFinite(distanciaKm) || distanciaKm <= 0) return 0;
@@ -1304,6 +1305,9 @@ function renderPaymentOptions(){
     document.getElementById('paymentOptions').innerHTML = '';
     return;
   }
+  document.getElementById('paymentOptions').innerHTML =
+    '<p style="font-size:14px;color:var(--ink-dim)">Pagamento antecipado obrigatório. Você escolherá Pix, cartão de crédito ou débito na próxima etapa, com confirmação automática pelo Mercado Pago.</p>';
+  return;
   const avisoPix = paymentMethod === 'pix' ? `
     <div style="margin-top:14px;padding:14px;border:1px solid rgba(255,255,255,.12);border-radius:10px;background:rgba(255,255,255,.04)">
       <div style="font-weight:800;margin-bottom:6px">Chave Pix (${CONFIG.pix.tipo})</div>
@@ -1593,6 +1597,7 @@ document.querySelectorAll('.method-btn').forEach(btn => {
       precisaTroco = false;
       trocoPara = '';
     }
+    btnEnviarPedidoEl.textContent = deliveryMethod === 'mesa' ? 'Confirmar pedido' : 'Ir para pagamento';
     renderPaymentOptions();
     renderCheckout();
   });
@@ -1762,7 +1767,7 @@ async function abrirCheckout(){
   document.getElementById('linkWhatsappCopia').style.display = 'none';
   btnEnviarPedidoEl.style.display = 'block';
   btnEnviarPedidoEl.disabled = false;
-  btnEnviarPedidoEl.textContent = 'Confirmar pedido';
+  btnEnviarPedidoEl.textContent = deliveryMethod === 'mesa' ? 'Confirmar pedido' : 'Ir para pagamento';
   renderPaymentOptions();
   renderCheckout();
   checkoutOverlayEl.classList.add('open');
@@ -2032,6 +2037,21 @@ btnEnviarPedidoEl.addEventListener('click', async () => {
   const clientRequestId = clientRequestIdAtual || criarIdPedido();
   clientRequestIdAtual = clientRequestId;
   const payload = montarPayloadPedido(clientRequestId);
+  if(deliveryMethod !== 'mesa'){
+    try{
+      // Nenhuma comanda de entrega/retirada é enviada ao sistema nesta etapa.
+      // Ela só será liberada por confirmação autenticada do Mercado Pago.
+      sessionStorage.setItem('ferracini-pagamento-pendente', JSON.stringify(payload));
+      sessionStorage.removeItem('ferracini-pagamento-id');
+      window.location.assign('/pagamento.html');
+      return;
+    }catch(err){
+      btnEnviarPedidoEl.disabled = false;
+      btnEnviarPedidoEl.textContent = 'Ir para pagamento';
+      checkoutErrorBoxEl.textContent = 'Não foi possível abrir o pagamento seguro. Tente novamente.';
+      return;
+    }
+  }
   let registro;
   try {
     registro = await registrarPedidoNoSistema(payload);
