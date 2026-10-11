@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="robots" content="noindex,nofollow">
+  <title>Pagamento seguro | Ferracini Lanches</title>
+  <script src="https://sdk.mercadopago.com/js/v2" defer></script>
+  <style>
+    :root{color-scheme:dark;--bg:#14100c;--card:#21180f;--line:#453528;--txt:#f5eee3;--muted:#b8a991;--accent:#e63a1e}
+    *{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at top,#302014,#14100c 55%);color:var(--txt);font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+    main{max-width:660px;margin:auto;padding:28px 16px 64px}.brand{font-size:23px;font-weight:900;letter-spacing:.03em}.brand span{color:var(--accent)}
+    a{color:#ffb26c}.muted{color:var(--muted)}.card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:22px;margin-top:20px;box-shadow:0 15px 40px #0004}
+    h1{font-size:28px;line-height:1.16;margin:14px 0 5px}h2{font-size:20px;margin:0 0 12px}.price{font-size:32px;font-weight:900;color:#ffc06d;margin:5px 0}
+    .row{display:flex;justify-content:space-between;gap:14px;padding:8px 0;border-bottom:1px solid var(--line)}.row:last-child{border:0}
+    .btn{background:var(--accent);color:white;font-weight:800;border:0;border-radius:10px;padding:14px 18px;cursor:pointer;width:100%;margin-top:12px;font-size:15px}
+    .btn.secondary{background:#382b21;border:1px solid var(--line)}.btn:disabled{opacity:.5;cursor:not-allowed}
+    #feedback{padding:12px;border-radius:10px;line-height:1.5;background:#342518;margin-top:12px;white-space:pre-wrap}
+    #feedback:empty{display:none}#qrImage{display:block;width:min(280px,100%);background:white;margin:18px auto;border-radius:8px;padding:8px}
+    #pixCopy{font:13px/1.5 monospace;overflow-wrap:anywhere;background:#140f0a;padding:12px;border-radius:10px;margin-top:14px}
+    .hide{display:none!important}#brick{min-height:70px}small{color:var(--muted)}
+    @media(max-width:500px){.card{padding:16px}h1{font-size:25px}}
+  </style>
+</head>
+<body>
+<main>
+  <div class="brand">FERRACINI <span>LANCHES</span></div>
+  <h1>Pagamento seguro</h1>
+  <p class="muted">Entrega e retirada: a comanda só é enviada para a cozinha depois da aprovação do pagamento.</p>
+  <section class="card">
+    <h2>Resumo do pedido</h2>
+    <div id="resumo">Carregando...</div>
+    <div class="price" id="total"></div>
+    <small>O valor final é conferido novamente pelo servidor.</small>
+  </section>
+  <section class="card" id="payPanel">
+    <h2>Escolha como pagar</h2>
+    <p class="muted">Pix, crédito ou débito. O pagamento é processado pelo Mercado Pago.</p>
+    <div id="feedback" role="status" aria-live="polite">Preparando pagamento seguro...</div>
+    <div id="brick"></div>
+    <div id="pixPanel" class="hide">
+      <h2>Pix gerado — aguardando pagamento</h2>
+      <img id="qrImage" class="hide" alt="QR Code Pix deste pedido">
+      <div id="pixCopy"></div>
+      <button id="copy" type="button" class="btn secondary">Copiar código Pix</button>
+      <p class="muted">A comanda será liberada automaticamente após o Mercado Pago confirmar o pagamento. Não envie comprovante.</p>
+    </div>
+    <button id="retry" type="button" class="btn hide">Tentar outro pagamento</button>
+  </section>
+  <section class="card hide" id="approved">
+    <h2>✅ Pagamento aprovado!</h2>
+    <p id="approvedText"></p>
+    <a href="/" class="btn" style="display:block;text-decoration:none;text-align:center">Voltar ao cardápio</a>
+  </section>
+  <p><a href="/">← Voltar ao Ferracini</a></p>
+</main>
+<script>
+(() => {
+  const el=id=>document.getElementById(id);
+  const fmt=n=>new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(n);
+  const key='ferracini-pagamento-pendente';
+  let order=null,paymentId=sessionStorage.getItem('ferracini-pagamento-id')||'', qr='', polling=null, brick=null;
+  try{order=JSON.parse(sessionStorage.getItem(key)||'null');}catch{}
+  const setStatus=(s)=>{el('feedback').textContent=s;};
+  function safeName(v){return String(v||'').slice(0,120);}
+  function initSummary(){
+    if(!order?.clientRequestId || !Array.isArray(order.itens) || !order.itens.length ||
+       !['entrega','retirada'].includes(order.atendimento?.tipo)){
+      setStatus('Pedido não encontrado. Volte ao cardápio para começar.');
+      return false;
+    }
+    el('resumo').replaceChildren();
+    for(const item of order.itens){
+      const line=document.createElement('div');line.className='row';
+      const name=document.createElement('span');name.textContent=String(item.quantidade)+'x '+safeName(item.nome);
+      const price=document.createElement('span');
+      price.textContent=fmt((item.precoUnitarioCentavos+ (item.adicionais||[]).reduce((x,a)=>x+(a.precoCentavos||0),0))*item.quantidade/100);
+      line.append(name,price);el('resumo').appendChild(line);
+    }
+    const items=order.itens.reduce((x,i)=>x+(i.precoUnitarioCentavos+(i.adicionais||[]).reduce((y,a)=>y+a.precoCentavos,0))*i.quantidade,0);
+    const delivery=order.atendimento?.taxaEntregaCentavos||0;
+    const service=order.atendimento?.taxaServicoCentavos||0;
+    el('total').textContent=fmt((items+delivery+service)/100);
+    return true;
+  }
+  function complete(data){
+    clearInterval(polling);polling=null;
+    el('payPanel').classList.add('hide');
+    el('approved').classList.remove('hide');
+    el('approvedText').textContent='Comanda '+data.numero+' confirmada e liberada para impressão. Você não precisa enviar comprovante.';
+    sessionStorage.removeItem(key);sessionStorage.removeItem('ferracini-pagamento-id');
+  }
+  async function poll(){
+    if(!paymentId)return;
+    try{
+      const response=await fetch('/api/pagamentos?id='+encodeURIComponent(paymentId),{cache:'no-store'});
+      const data=await response.json();
+      if(response.ok && data.pago && data.numero){complete(data);return;}
+      if(response.ok && ['rejected','cancelled','refunded','charged_back'].includes(data.status)){
+        clearInterval(polling);polling=null;
+        setStatus('Pagamento não aprovado. Você pode tentar um novo pagamento.');
+        el('retry').classList.remove('hide');
+      }else if(response.ok){
+        setStatus('Aguardando confirmação do Mercado Pago. Não feche o Pix antes de pagar.');
+      }
+    }catch{} // Webhook continua funcionando mesmo quando o celular perde a conexão.
+  }
+  function startPoll(id){
+    if(!id)return;
+    paymentId=id;sessionStorage.setItem('ferracini-pagamento-id',id);
+    clearInterval(polling);poll();
+    polling=setInterval(poll,5000);
+  }
+  function pixResult(data){
+    el('pixPanel').classList.remove('hide');
+    el('brick').classList.add('hide');
+    qr=data.qrCode||'';
+    el('pixCopy').textContent=qr||'Abra o aplicativo do banco e acompanhe o pagamento.';
+    if(/^[a-zA-Z0-9+/=]+$/.test(String(data.qrCodeBase64||''))){
+      el('qrImage').src='data:image/png;base64,'+data.qrCodeBase64;
+      el('qrImage').classList.remove('hide');
+    }
+    el('copy').disabled=!qr;
+  }
+  el('copy').addEventListener('click',async()=>{
+    try{await navigator.clipboard.writeText(qr);el('copy').textContent='Código copiado!';}
+    catch{setStatus('Selecione e copie o código Pix acima.');}
+  });
+  el('retry').addEventListener('click',()=>{
+    // Novo ID somente depois de rejeição verificada; não duplica pagamentos pendentes.
+    order.clientRequestId='retry-'+crypto.randomUUID();
+    sessionStorage.setItem(key,JSON.stringify(order));
+    sessionStorage.removeItem('ferracini-pagamento-id');
+    location.reload();
+  });
+  async function init(){
+    if(!initSummary())return;
+    if(paymentId){
+      setStatus('Consultando o pagamento anterior...');
+      el('brick').classList.add('hide');
+      startPoll(paymentId);
+      return;
+    }
+    try{
+      const response=await fetch('/api/pagamentos?config=1',{cache:'no-store'});
+      const cfg=await response.json();
+      if(!cfg.ativo||!cfg.chavePublica){
+        setStatus('Pagamento online ainda não está habilitado pela loja. Nenhuma comanda foi enviada.');
+        return;
+      }
+      if(typeof MercadoPago!=='function'){
+        setStatus('O sistema de pagamento não carregou. Recarregue esta página.');
+        return;
+      }
+      setStatus('');
+      const mp=new MercadoPago(cfg.chavePublica,{locale:'pt-BR'});
+      const items=order.itens.reduce((x,i)=>x+(i.precoUnitarioCentavos+(i.adicionais||[]).reduce((y,a)=>y+a.precoCentavos,0))*i.quantidade,0);
+      const total=(items+(order.atendimento?.taxaEntregaCentavos||0)+(order.atendimento?.taxaServicoCentavos||0))/100;
+      brick=await mp.bricks().create('payment','brick',{
+        initialization:{amount:total},
+        customization:{paymentMethods:{creditCard:'all',debitCard:'all',bankTransfer:['pix']}},
+        callbacks:{
+          onReady:()=>setStatus(''),
+          onError:(err)=>{console.warn('[brick] indisponivel',err?.type);setStatus('Não foi possível carregar o pagamento. Tente recarregar a página.');},
+          onSubmit:async ({formData})=>{
+            setStatus('Processando com segurança. Não toque novamente...');
+            try{
+              const resp=await fetch('/api/pagamentos',{method:'POST',headers:{'Content-Type':'application/json'},
+                body:JSON.stringify({pedido:order,pagamento:formData})});
+              const data=await resp.json().catch(()=>({}));
+              if(!resp.ok)throw Error(data.error||'Não conseguimos processar o pagamento agora.');
+              if(data.pago&&data.numero){complete(data);return;}
+              if(data.status==='approved'){
+                setStatus('Pagamento aprovado. Liberando comanda...');
+                startPoll(data.id);
+                return;
+              }
+              if(data.status==='pending'||data.status==='in_process'){
+                setStatus('Pagamento iniciado. Aguardando aprovação...');
+                if(data.qrCode)pixResult(data);
+                else el('brick').classList.add('hide');
+                startPoll(data.id);
+                return;
+              }
+              if(data.status==='rejected'||data.status==='cancelled'){
+                setStatus('Pagamento recusado. Use o botão abaixo para tentar novamente.');
+                el('retry').classList.remove('hide');
+                return;
+              }
+              setStatus('O pagamento ainda não foi aprovado. Confira o status antes de tentar novamente.');
+              if(data.id)startPoll(data.id);
+            }catch(e){
+              setStatus(e?.message||'Falha de comunicação. Confira o pagamento antes de tentar novamente.');
+              throw e;
+            }
+          }
+        }
+      });
+    }catch(e){setStatus('Não foi possível abrir o pagamento agora: '+(e?.message||'erro de conexão'));}
+  }
+  init();
+})();
+</script>
+</body>
+</html>
