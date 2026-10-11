@@ -118,12 +118,13 @@ async function call(handler, request){
     atendimento: { tipo: 'retirada' },
     pagamento: { metodo: 'pix' },
   }));
-  assert.equal(retirada.statusCode, 201);
-  assert.equal(retirada.body.pedido.numero, '02');
-  assert.equal(retirada.body.pedido.estimativaMinutos, null);
+  // Entrega e retirada não podem chegar à impressora sem pagar.
+  assert.equal(retirada.statusCode, 402);
+  assert.equal(retirada.body.pagamentoObrigatorio, true);
+  assert.equal([...storage.keys()].filter(k => k.startsWith('pedidos/fila/')).length, 1);
 
   const finalPanel = await call(painelHandler, req('GET', {}, auth, '/api/painel-pedidos'));
-  assert.equal(finalPanel.body.pedidos.length, 2);
+  assert.equal(finalPanel.body.pedidos.length, 1);
   assert.equal(finalPanel.body.aguardando.length, 0);
 
   // Se o banco estiver indisponivel, nunca devolver numero inventado ou status 202.
@@ -135,7 +136,7 @@ async function call(handler, request){
   assert.equal(whileOffline.statusCode, 503);
   assert.equal(whileOffline.body.pedidoConfirmado, false);
   assert.equal(whileOffline.body.pedido, undefined);
-  assert.equal([...storage.keys()].filter(k => k.startsWith('pedidos/fila/')).length, 2);
+  assert.equal([...storage.keys()].filter(k => k.startsWith('pedidos/fila/')).length, 1);
 
   storageOffline = false;
   const recovered = await call(pedidosHandler, req('POST', {
@@ -143,14 +144,14 @@ async function call(handler, request){
     clientRequestId: 'offline-comanda-20261010',
   }));
   assert.equal(recovered.statusCode, 201);
-  assert.equal([...storage.keys()].filter(k => k.startsWith('pedidos/fila/')).length, 3);
+  assert.equal([...storage.keys()].filter(k => k.startsWith('pedidos/fila/')).length, 2);
   const retryRecovery = await call(pedidosHandler, req('POST', {
     ...body,
     clientRequestId: 'offline-comanda-20261010',
   }));
   assert.equal(retryRecovery.statusCode, 200);
   assert.equal(retryRecovery.body.pedido.numero, recovered.body.pedido.numero);
-  assert.equal([...storage.keys()].filter(k => k.startsWith('pedidos/fila/')).length, 3);
+  assert.equal([...storage.keys()].filter(k => k.startsWith('pedidos/fila/')).length, 2);
 
   console.log('OK - pedidos automaticos, falha segura do banco, idempotencia e painel sem aceite');
 })().catch(e => {

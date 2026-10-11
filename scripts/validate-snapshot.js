@@ -4,7 +4,8 @@ const path = require('path');
 const required = [
   'index.html', 'admin.html', 'mesa.html', 'pedidos.html', 'vercel.json', 'package.json',
   'api/catalogo.json', 'api/comanda.js', 'api/distancia.js', 'api/disponibilidade.js',
-  'api/painel-pedidos.js', 'api/pedidos.js', 'lib/delivery-distance.js', 'lib/postgres-storage.js'
+  'api/painel-pedidos.js', 'api/pedidos.js', 'lib/delivery-distance.js', 'lib/postgres-storage.js',
+  'pagamento.html', 'api/pagamentos.js', 'api/mercadopago-webhook.js', 'lib/mercadopago.js'
 ];
 
 let failed = false;
@@ -76,6 +77,17 @@ function checkHtml(file, isMesa){
 
 checkHtml('index.html', false);
 checkHtml('mesa.html', true);
+if(fs.existsSync('pagamento.html')){
+  const pay=fs.readFileSync('pagamento.html','utf8');
+  if(!pay.includes("mp.bricks().create('payment'"))fail('pagamento.html: Brick ausente');
+  if(!pay.includes('/api/pagamentos'))fail('pagamento.html: confirmação no servidor ausente');
+}
+if(fs.existsSync('api/pedidos.js')){
+  const orders=fs.readFileSync('api/pedidos.js','utf8');
+  if(!orders.includes('pagamentoObrigatorio:true') || !orders.includes('Pagamento ainda não aprovado.')){
+    fail('api/pedidos.js: bloqueio de comandas não pagas ausente');
+  }
+}
 
 if(fs.existsSync('pedidos.html')){
   const html = fs.readFileSync('pedidos.html', 'utf8');
@@ -225,8 +237,9 @@ if(fs.existsSync('index.html')){
   if(!html.includes("const PAYMENT_LABELS = { pix: 'Pix', dinheiro: 'Dinheiro', debito: 'Débito', credito: 'Crédito' };")){
     fail('index.html: Pix, dinheiro, débito e crédito precisam existir nas opções de pagamento');
   }
-  if(!html.includes("return ['pix', 'dinheiro', 'debito', 'credito'];")){
-    fail('index.html: retirada e entrega devem oferecer Pix, dinheiro, débito e crédito');
+  if(!html.includes("window.location.assign('/pagamento.html')") ||
+      !html.includes('ferracini-pagamento-pendente')){
+    fail('index.html: entrega e retirada devem ir ao pagamento seguro');
   }
 }
 
