@@ -1140,9 +1140,12 @@ let frete = { status: 'idle', distanciaKm: null, valor: 0, estimativa: null }; /
 let freteRequestId = 0;
 
 const PAYMENT_LABELS = { pix: 'Pix', dinheiro: 'Dinheiro' };
+const TAXA_SERVICO_MESA = 3.00;
 function paymentOptionsForMethod(){ return ['pix', 'dinheiro']; }
 function totalPedidoCentavos(){
-  return Math.round(cartTotals().subtotal * 100) + (deliveryMethod === 'entrega' && frete.status === 'ok' ? Math.round(frete.valor * 100) : 0);
+  return Math.round(cartTotals().subtotal * 100)
+    + (deliveryMethod === 'entrega' && frete.status === 'ok' ? Math.round(frete.valor * 100) : 0)
+    + (deliveryMethod !== 'entrega' ? Math.round(TAXA_SERVICO_MESA * 100) : 0);
 }
 function valorTrocoCentavos(){
   const valor = trocoPara.trim();
@@ -1362,7 +1365,8 @@ function renderCheckout(){
     : '<p style="color:var(--ink-faint);font-size:13.5px;">Seu carrinho está vazio.</p>';
 
   const taxaEntrega = (deliveryMethod === 'entrega' && frete.status === 'ok') ? frete.valor : 0;
-  const total = subtotal + taxaEntrega;
+  const taxaServico = deliveryMethod !== 'entrega' ? TAXA_SERVICO_MESA : 0;
+  const total = subtotal + taxaEntrega + taxaServico;
 
   let entregaLinha = '';
   if(deliveryMethod === 'entrega'){
@@ -1370,6 +1374,8 @@ function renderCheckout(){
     if(frete.status === 'ok' && frete.estimativa){
       entregaLinha += `<div class="summary-row"><span>Previsão de entrega</span><span>${textoEstimativa(frete.estimativa)}</span></div>`;
     }
+  } else {
+    entregaLinha = `<div class="summary-row"><span>Taxa de serviço</span><span>${fmtPreco(taxaServico)}</span></div>`;
   }
 
   document.getElementById('summaryBox').innerHTML = `
@@ -1454,7 +1460,8 @@ function montarMensagemPedido(comanda = '', criadoEm = ''){
   const nome = document.getElementById('clienteNome').value.trim();
   const telefone = document.getElementById('clienteTelefone').value.trim();
   const taxaEntrega = (deliveryMethod === 'entrega' && frete.status === 'ok') ? frete.valor : 0;
-  const total = subtotal + taxaEntrega;
+  const taxaServico = deliveryMethod !== 'entrega' ? TAXA_SERVICO_MESA : 0;
+  const total = subtotal + taxaEntrega + taxaServico;
 
   const linhasProdutos = items.map(([produto, v]) => {
     const addons = (v.adicionais || []).map(a => `  + ${a.nome}`).join('\n');
@@ -1478,7 +1485,7 @@ function montarMensagemPedido(comanda = '', criadoEm = ''){
 
   const blocoValores = deliveryMethod === 'entrega'
     ? `💰 TOTAL\nProdutos: ${fmtPreco(subtotal)}\nEntrega: ${fmtPreco(taxaEntrega)}\nTOTAL: ${fmtPreco(total)}`
-    : `💰 TOTAL\n${fmtPreco(total)}`;
+    : `💰 TOTAL\nProdutos: ${fmtPreco(subtotal)}\nTaxa de serviço: ${fmtPreco(taxaServico)}\nTOTAL: ${fmtPreco(total)}`;
 
   return [
     '📋 CÓPIA DA COMANDA — MESA',
@@ -1507,7 +1514,11 @@ let clientRequestIdAtual = null;
 
 function montarPayloadPedido(clientRequestId){
   const { items } = cartTotals();
-  let atendimento = { tipo: 'mesa', mesa: Number(document.getElementById('numeroMesa').value.trim()) };
+  let atendimento = {
+    tipo: 'mesa',
+    mesa: Number(document.getElementById('numeroMesa').value.trim()),
+    taxaServicoCentavos: Math.round(TAXA_SERVICO_MESA * 100),
+  };
 
   if(deliveryMethod === 'entrega'){
     atendimento = {
