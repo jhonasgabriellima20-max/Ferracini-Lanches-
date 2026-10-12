@@ -248,8 +248,8 @@ function validarPayload(raw, catalogo = CATALOGO){
   if(itens.some(item => !item)) throw new Error('Há um item inválido no pedido.');
 
   const atendimento = { tipo };
-  if(tipo === 'retirada'){
-    // Taxa fixa de serviço para retirada no local.
+  if(tipo === 'retirada' || tipo === 'mesa'){
+    // Taxa fixa de serviço para retirada e consumo no local.
     atendimento.taxaServicoCentavos = 300;
   }
   if(tipo === 'mesa'){
