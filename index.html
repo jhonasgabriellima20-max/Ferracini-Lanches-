@@ -733,7 +733,7 @@ const CONFIG = {
   },
 
   retirada: {
-    // Taxa de serviço fixa para pedidos retirados no local.
+    // Taxa de serviço fixa para retirada e consumo no local.
     taxaServico: 3.00,
   },
 
@@ -1263,7 +1263,7 @@ function taxaServicoPorDistancia(distanciaKm){
 }
 function totalPedidoCentavos(){
   const subtotalCentavos = Math.round(cartTotals().subtotal * 100);
-  if(deliveryMethod === 'retirada'){
+  if(deliveryMethod === 'retirada' || deliveryMethod === 'mesa'){
     return subtotalCentavos + Math.round(CONFIG.retirada.taxaServico * 100);
   }
   if(deliveryMethod !== 'entrega' || frete.status !== 'ok') return subtotalCentavos;
@@ -1624,7 +1624,7 @@ function renderCheckout(){
     : '<p style="color:var(--ink-faint);font-size:13.5px;">Seu carrinho está vazio.</p>';
 
   const taxaEntrega = (deliveryMethod === 'entrega' && frete.status === 'ok') ? frete.valor : 0;
-  const taxaServico = deliveryMethod === 'retirada'
+  const taxaServico = (deliveryMethod === 'retirada' || deliveryMethod === 'mesa')
   ? CONFIG.retirada.taxaServico
   : ((deliveryMethod === 'entrega' && frete.status === 'ok') ? taxaServicoPorDistancia(frete.distanciaKm) : 0);
   const total = subtotal + taxaEntrega + taxaServico;
@@ -1633,7 +1633,7 @@ function renderCheckout(){
   if(deliveryMethod === 'entrega'){
     entregaLinha = `<div class="summary-row"><span>Taxa de entrega</span><span>${frete.status==='ok' ? fmtPreco(taxaEntrega) : 'a calcular'}</span></div>`;
     entregaLinha += `<div class="summary-row"><span>Taxa de serviço</span><span>${frete.status==='ok' ? fmtPreco(taxaServico) : 'a calcular'}</span></div>`;
-  } else if(deliveryMethod === 'retirada'){
+  } else if(deliveryMethod === 'retirada' || deliveryMethod === 'mesa'){
     entregaLinha = `<div class="summary-row"><span>Taxa de serviço</span><span>${fmtPreco(taxaServico)}</span></div>`;
   }
 
@@ -1822,7 +1822,7 @@ function montarMensagemPedido(comanda = '', criadoEm = '', estimativaPedido = nu
   const nome = document.getElementById('clienteNome').value.trim();
   const telefone = document.getElementById('clienteTelefone').value.trim();
   const taxaEntrega = (deliveryMethod === 'entrega' && frete.status === 'ok') ? frete.valor : 0;
-  const taxaServico = deliveryMethod === 'retirada'
+  const taxaServico = (deliveryMethod === 'retirada' || deliveryMethod === 'mesa')
   ? CONFIG.retirada.taxaServico
   : ((deliveryMethod === 'entrega' && frete.status === 'ok') ? taxaServicoPorDistancia(frete.distanciaKm) : 0);
   const total = subtotal + taxaEntrega + taxaServico;
@@ -1881,7 +1881,10 @@ let clientRequestIdAtual = null;
 function montarPayloadPedido(clientRequestId){
   const { items } = cartTotals();
   let atendimento = { tipo: deliveryMethod };
-  if(deliveryMethod === 'mesa') atendimento.mesa = Number(document.getElementById('numeroMesa').value);
+  if(deliveryMethod === 'mesa'){
+    atendimento.mesa = Number(document.getElementById('numeroMesa').value);
+    atendimento.taxaServicoCentavos = Math.round(CONFIG.retirada.taxaServico * 100);
+  }
 
   if(deliveryMethod === 'entrega'){
     atendimento = {

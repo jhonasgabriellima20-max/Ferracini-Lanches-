@@ -94,6 +94,9 @@ async function call(handler, request){
   const auth = { 'x-admin-password': 'senha-teste' };
   const afterCreate = await call(painelHandler, req('GET', {}, auth, '/api/painel-pedidos'));
   assert.equal(afterCreate.body.pedidos[0].pagamento.metodo, 'no_local');
+  assert.equal(afterCreate.body.pedidos[0].subtotalCentavos, 1200);
+  assert.equal(afterCreate.body.pedidos[0].atendimento.taxaServicoCentavos, 300);
+  assert.equal(afterCreate.body.pedidos[0].totalCentavos, 1500);
   assert.equal(afterCreate.body.pedidos.length, 1);
   assert.equal(afterCreate.body.aguardando.length, 0);
 
@@ -124,6 +127,9 @@ async function call(handler, request){
 
   const finalPanel = await call(painelHandler, req('GET', {}, auth, '/api/painel-pedidos'));
   assert.equal(finalPanel.body.pedidos.length, 2);
+  const pedidoRetirada = finalPanel.body.pedidos.find(p => p.atendimento.tipo === 'retirada');
+  assert.equal(pedidoRetirada.atendimento.taxaServicoCentavos, 300);
+  assert.equal(pedidoRetirada.totalCentavos, 1500);
   assert.equal(finalPanel.body.aguardando.length, 0);
 
   // Se o banco estiver indisponivel, nunca devolver numero inventado ou status 202.
