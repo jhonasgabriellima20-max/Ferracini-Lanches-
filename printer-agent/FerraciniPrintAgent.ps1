@@ -108,6 +108,7 @@ function Setup-Agent {
     printerName = $printerName
     pollSeconds = $pollValue
     paperWidthChars = $widthValue
+    useEmojis = $true
   }
   $config | ConvertTo-Json | Set-Content -Path $ConfigPath -Encoding UTF8
   Save-AgentToken
@@ -139,6 +140,11 @@ function Money([object]$Cents) {
   return $value.ToString('C2', [Globalization.CultureInfo]::GetCultureInfo('pt-BR'))
 }
 
+function Receipt-Label([string]$Icon, [string]$Text, [bool]$UseEmojis) {
+  if ($UseEmojis -and $Icon) { return ($Icon + ' ' + $Text) }
+  return $Text
+}
+
 function Add-WrappedLine($Lines, [string]$Text, [int]$Width, [string]$Prefix = '') {
   $usable = [Math]::Max(10, $Width - $Prefix.Length)
   $wrapped = @(Wrap-Text $Text $usable)
@@ -149,35 +155,35 @@ function Add-WrappedLine($Lines, [string]$Text, [int]$Width, [string]$Prefix = '
   }
 }
 
-function Format-Receipt($Pedido, [int]$Width) {
+function Format-Receipt($Pedido, [int]$Width, [bool]$UseEmojis = $true) {
   $lines = New-Object 'System.Collections.Generic.List[string]'
   $sep = '-' * $Width
   $doubleSep = '=' * $Width
 
   $lines.Add($doubleSep)
   $lines.Add('FERRACINI LANCHES')
-  $lines.Add('COMANDA ' + [string]$Pedido.numero)
+  $lines.Add((Receipt-Label '🧾' ('COMANDA ' + [string]$Pedido.numero) $UseEmojis))
   $lines.Add($doubleSep)
 
   try {
     $dto = [DateTimeOffset]::Parse([string]$Pedido.criadoEm)
     $tz = [TimeZoneInfo]::FindSystemTimeZoneById('E. South America Standard Time')
     $local = [TimeZoneInfo]::ConvertTime($dto, $tz)
-    $lines.Add('DATA: ' + $local.ToString('dd/MM/yyyy'))
-    $lines.Add('HORARIO DO PEDIDO: ' + $local.ToString('HH:mm'))
+    $lines.Add((Receipt-Label '📅' ('DATA: ' + $local.ToString('dd/MM/yyyy')) $UseEmojis))
+    $lines.Add((Receipt-Label '🕒' ('HORARIO DO PEDIDO: ' + $local.ToString('HH:mm')) $UseEmojis))
   } catch {
     $agoraLocal = Get-Date
-    $lines.Add('DATA: ' + $agoraLocal.ToString('dd/MM/yyyy'))
-    $lines.Add('HORARIO DO PEDIDO: ' + $agoraLocal.ToString('HH:mm'))
+    $lines.Add((Receipt-Label '📅' ('DATA: ' + $agoraLocal.ToString('dd/MM/yyyy')) $UseEmojis))
+    $lines.Add((Receipt-Label '🕒' ('HORARIO DO PEDIDO: ' + $agoraLocal.ToString('HH:mm')) $UseEmojis))
   }
 
   $tipo = [string]$Pedido.atendimento.tipo
   if ($tipo -eq 'mesa') {
-    $lines.Add('COMER NO LOCAL - MESA ' + [string]$Pedido.atendimento.mesa)
+    $lines.Add((Receipt-Label '🍽️' ('COMER NO LOCAL - MESA ' + [string]$Pedido.atendimento.mesa) $UseEmojis))
   } elseif ($tipo -eq 'entrega') {
-    $lines.Add('ATENDIMENTO: ENTREGA')
+    $lines.Add((Receipt-Label '🛵' 'ATENDIMENTO: ENTREGA' $UseEmojis))
   } else {
-    $lines.Add('ATENDIMENTO: RETIRADA')
+    $lines.Add((Receipt-Label '🏪' 'ATENDIMENTO: RETIRADA' $UseEmojis))
     if ($Pedido.atendimento.estimativaMinutos) {
       $lines.Add(('PREVISAO RETIRADA: {0} MIN' -f $Pedido.atendimento.estimativaMinutos.minimo))
     }
@@ -185,12 +191,12 @@ function Format-Receipt($Pedido, [int]$Width) {
 
   $lines.Add($sep)
   $lines.Add('CLIENTE')
-  Add-WrappedLine $lines ([string]$Pedido.cliente.nome) $Width
-  if ($Pedido.cliente.telefone) { Add-WrappedLine $lines ([string]$Pedido.cliente.telefone) $Width }
+  Add-WrappedLine $lines (Receipt-Label '👤' ('NOME: ' + [string]$Pedido.cliente.nome) $UseEmojis) $Width
+  if ($Pedido.cliente.telefone) { Add-WrappedLine $lines (Receipt-Label '📞' ([string]$Pedido.cliente.telefone) $UseEmojis) $Width }
 
   if ($tipo -eq 'entrega') {
     $lines.Add($sep)
-    $lines.Add('ENDERECO')
+    $lines.Add((Receipt-Label '📍' 'ENDERECO' $UseEmojis))
     $end = $Pedido.atendimento.endereco
     Add-WrappedLine $lines (([string]$end.rua) + ', ' + ([string]$end.numero)) $Width
     if ($end.complemento) { Add-WrappedLine $lines ([string]$end.complemento) $Width }
@@ -202,10 +208,10 @@ function Format-Receipt($Pedido, [int]$Width) {
   }
 
   $lines.Add($doubleSep)
-  $lines.Add('PEDIDO')
+  $lines.Add((Receipt-Label '🍔' 'PEDIDO' $UseEmojis))
   $lines.Add($doubleSep)
   foreach ($item in @($Pedido.itens)) {
-    Add-WrappedLine $lines (([string]$item.quantidade) + 'x ' + ([string]$item.nome)) $Width
+    Add-WrappedLine $lines (Receipt-Label '🍔' (([string]$item.quantidade) + 'x ' + ([string]$item.nome)) $UseEmojis) $Width
     foreach ($adicional in @($item.adicionais)) {
       Add-WrappedLine $lines (([string]$adicional.nome) + '  +' + (Money $adicional.precoCentavos)) $Width '  + '
     }
@@ -223,19 +229,20 @@ function Format-Receipt($Pedido, [int]$Width) {
     $lines.Add($sep)
   }
 
-  $lines.Add('Subtotal: ' + (Money $Pedido.subtotalCentavos))
+  $lines.Add((Receipt-Label '💵' ('Subtotal: ' + (Money $Pedido.subtotalCentavos)) $UseEmojis))
   if ($tipo -eq 'entrega' -and $Pedido.atendimento.taxaEntregaCentavos) {
     $lines.Add('Entrega:  ' + (Money $Pedido.atendimento.taxaEntregaCentavos))
   }
   if ($Pedido.atendimento.taxaServicoCentavos) {
-    $lines.Add('Taxa de servico: ' + (Money $Pedido.atendimento.taxaServicoCentavos))
+    $lines.Add((Receipt-Label '➕' ('Taxa de servico: ' + (Money $Pedido.atendimento.taxaServicoCentavos)) $UseEmojis))
   }
-  $lines.Add('TOTAL:    ' + (Money $Pedido.totalCentavos))
+  $lines.Add((Receipt-Label '💰' ('TOTAL: ' + (Money $Pedido.totalCentavos)) $UseEmojis))
   $lines.Add($doubleSep)
 
+  if ($tipo -ne 'mesa') {
   $pag = [string]$Pedido.pagamento.metodo
   if ($pag -eq 'dinheiro') {
-    $lines.Add('PAGAMENTO: DINHEIRO')
+    $lines.Add((Receipt-Label '💳' 'PAGAMENTO: DINHEIRO' $UseEmojis))
     if ($Pedido.pagamento.precisaTroco -and $Pedido.pagamento.trocoParaCentavos) {
       $lines.Add('Troco para: ' + (Money $Pedido.pagamento.trocoParaCentavos))
       $troco = [int64]$Pedido.pagamento.trocoParaCentavos - [int64]$Pedido.totalCentavos
@@ -244,21 +251,22 @@ function Format-Receipt($Pedido, [int]$Width) {
       $lines.Add('Sem troco')
     }
   } elseif ($pag -eq 'pix') {
-    $lines.Add('PAGAMENTO: PIX')
+    $lines.Add((Receipt-Label '💳' 'PAGAMENTO: PIX' $UseEmojis))
     $lines.Add('Conferir comprovante no WhatsApp')
   } elseif ($pag -eq 'credito') {
-    $lines.Add('PAGAMENTO: CREDITO')
+    $lines.Add((Receipt-Label '💳' 'PAGAMENTO: CREDITO' $UseEmojis))
     if ([string]$Pedido.atendimento.tipo -eq 'entrega') { $lines.Add('Maquina na entrega') } elseif ([string]$Pedido.atendimento.tipo -eq 'mesa') { $lines.Add('Pagamento no local') } else { $lines.Add('Pagamento na retirada') }
   } elseif ($pag -eq 'debito') {
-    $lines.Add('PAGAMENTO: DEBITO')
+    $lines.Add((Receipt-Label '💳' 'PAGAMENTO: DEBITO' $UseEmojis))
     if ([string]$Pedido.atendimento.tipo -eq 'entrega') { $lines.Add('Maquina na entrega') } elseif ([string]$Pedido.atendimento.tipo -eq 'mesa') { $lines.Add('Pagamento no local') } else { $lines.Add('Pagamento na retirada') }
   } elseif ($pag -eq 'cartao') {
-    $lines.Add('PAGAMENTO: CARTAO')
+    $lines.Add((Receipt-Label '💳' 'PAGAMENTO: CARTAO' $UseEmojis))
     if ([string]$Pedido.atendimento.tipo -eq 'entrega') { $lines.Add('Maquina na entrega') } elseif ([string]$Pedido.atendimento.tipo -eq 'mesa') { $lines.Add('Pagamento no local') } else { $lines.Add('Pagamento na retirada') }
   } else {
-    $lines.Add('PAGAMENTO: NAO INFORMADO')
+    $lines.Add((Receipt-Label '💳' 'PAGAMENTO: NAO INFORMADO' $UseEmojis))
   }
 
+  }
   $lines.Add($doubleSep)
   $lines.Add('Pedido recebido pelo sistema Ferracini')
   $lines.Add('')
@@ -299,7 +307,7 @@ public static class FerraciniReceiptPrinter
             // Largura e altura em centesimos de polegada: 315 = 80 mm.
             // Ajuste de altura ao tamanho da comanda evita paginas A4
             // e grandes trechos de papel em branco.
-            int approxHeight = Math.Max(230, Math.Min(3000, lines.Length * 17 + 50));
+            int approxHeight = Math.Max(230, Math.Min(3000, lines.Length * 19 + 55));
             doc.DefaultPageSettings.PaperSize =
                 new PaperSize("Ferracini 80 mm", 315, approxHeight);
 
@@ -317,24 +325,33 @@ public static class FerraciniReceiptPrinter
                 float size = 9.5f;
                 Font textFont = null;
                 Font headingFont = null;
+                Font totalFont = null;
                 try
                 {
                     for (; size >= 7.0f; size -= 0.25f)
                     {
                         if (textFont != null) textFont.Dispose();
+                        if (headingFont != null) headingFont.Dispose();
+                        if (totalFont != null) totalFont.Dispose();
                         textFont = new Font(font.FontFamily, size, FontStyle.Regular, GraphicsUnit.Point);
+                        headingFont = new Font(font.FontFamily, size, FontStyle.Bold, GraphicsUnit.Point);
+                        totalFont = new Font(font.FontFamily, size + 1.5f, FontStyle.Bold, GraphicsUnit.Point);
                         float widest = 0f;
                         for (int i=0; i<lines.Length; i++)
+                        {
+                            Font current = IsTotal(lines[i]) ? totalFont :
+                                (IsImportant(lines[i]) ? headingFont : textFont);
                             widest = Math.Max(widest,
-                                g.MeasureString(lines[i], textFont, 10000, StringFormat.GenericTypographic).Width);
+                                g.MeasureString(lines[i], current, 10000, StringFormat.GenericTypographic).Width);
+                        }
                         if (widest <= availableWidth) break;
                     }
                     if (size < 7.0f)
                         throw new InvalidOperationException(
                             "Texto longo demais para bobina de 80 mm. Diminua a largura configurada.");
 
-                    headingFont = new Font(font.FontFamily, size, FontStyle.Bold, GraphicsUnit.Point);
-                    float lineHeight = textFont.GetHeight(g) * 1.13f;
+                    float lineHeight = Math.Max(textFont.GetHeight(g),
+                        Math.Max(headingFont.GetHeight(g), totalFont.GetHeight(g))) * 1.08f;
                     float bottom = e.PageBounds.Height - 20f;
                     using (StringFormat sf = new StringFormat(StringFormat.GenericTypographic))
                     {
@@ -342,12 +359,11 @@ public static class FerraciniReceiptPrinter
                         while (nextLine < lines.Length && y + lineHeight <= bottom)
                         {
                             string line = lines[nextLine];
-                            bool important = line.StartsWith("FERRACINI") ||
-                                             line.StartsWith("COMANDA ") ||
-                                             line.StartsWith("TESTE DE") ||
-                                             line.StartsWith("TOTAL:");
-                            // A propria linha nunca sera quebrada em uma coluna estreita.
-                            g.DrawString(line, important ? headingFont : textFont,
+                            bool important = IsImportant(line);
+                            bool isTotal = IsTotal(line);
+                            // Preserva a largura da bobina mesmo com letras em negrito.
+                            // Emojis usam a substituicao de fonte disponivel no Windows.
+                            g.DrawString(line, isTotal ? totalFont : (important ? headingFont : textFont),
                                 Brushes.Black, new PointF(x, y), sf);
                             y += lineHeight;
                             nextLine++;
@@ -359,10 +375,30 @@ public static class FerraciniReceiptPrinter
                 {
                     if (textFont != null) textFont.Dispose();
                     if (headingFont != null) headingFont.Dispose();
+                    if (totalFont != null) totalFont.Dispose();
                 }
             };
             doc.Print();
         }
+    }
+
+    private static bool IsTotal(string line)
+    {
+        string text = line.TrimStart();
+        return text.StartsWith("TOTAL:", StringComparison.OrdinalIgnoreCase) ||
+            text.IndexOf(" TOTAL:", StringComparison.OrdinalIgnoreCase) >= 0;
+    }
+
+    private static bool IsImportant(string line)
+    {
+        string text = line.TrimStart();
+        string[] highlights = { "FERRACINI LANCHES", "COMANDA ", "TESTE DE",
+            "DATA:", "HORARIO DO PEDIDO:", "ATENDIMENTO:", "COMER NO LOCAL",
+            "CLIENTE", "NOME:", "ENDERECO", "PEDIDO", "Subtotal:",
+            "Taxa de servico:", "PAGAMENTO:" };
+        foreach (string h in highlights)
+            if (text.IndexOf(h, StringComparison.OrdinalIgnoreCase) >= 0) return true;
+        return System.Text.RegularExpressions.Regex.IsMatch(text, @"\b\d+x\s+");
     }
 
     private static Font ChooseFont()
@@ -411,26 +447,26 @@ function Update-OrderStatus($Config, [string]$Token, $Pedido, [string]$Status, [
 function Print-Test {
   $cfg = Read-Config
   $width = [int]$cfg.paperWidthChars
-  $sep = '=' * $width
-  $text = @(
-    $sep,
-    'FERRACINI LANCHES',
-    'TESTE DE IMPRESSAO',
-    $sep,
-    ('Impressora: ' + [string]$cfg.printerName),
-    ('Data: ' + (Get-Date -Format 'dd/MM/yyyy HH:mm:ss')),
-    '',
-    'Se este texto saiu corretamente,',
-    'o notebook esta pronto para receber',
-    'as comandas automaticas.',
-    '',
-    $sep,
-    '',
-    ''
-  ) -join [Environment]::NewLine
+  $useEmojis = $null -eq $cfg.useEmojis -or [bool]$cfg.useEmojis
+  # Pedido ficticio apenas para validar o formato no papel. Nao acessa a API.
+  $pedidoTeste = [pscustomobject]@{
+    numero = 'TESTE'
+    criadoEm = (Get-Date).ToString('o')
+    cliente = [pscustomobject]@{ nome = 'CLIENTE TESTE'; telefone = '(43) 00000-0000' }
+    atendimento = [pscustomobject]@{ tipo = 'mesa'; mesa = '01'; taxaServicoCentavos = 300 }
+    itens = @([pscustomobject]@{
+      nome = 'X-SALADA'; quantidade = 2; precoUnitarioCentavos = 2500
+      adicionais = @(); observacao = 'SEM CEBOLA'
+    })
+    subtotalCentavos = 5000
+    totalCentavos = 5300
+    pagamento = [pscustomobject]@{ metodo = 'no_local' }
+  }
+  $text = 'TESTE DE IMPRESSAO - NAO E PEDIDO REAL' + [Environment]::NewLine +
+          (Format-Receipt $pedidoTeste $width $useEmojis)
   Send-ToPrinter $text ([string]$cfg.printerName)
-  Write-Host 'Teste enviado para a impressora.' -ForegroundColor Green
-  Write-Log 'Comanda de teste enviada para a impressora.'
+  Write-Host 'Teste de comanda enviado para a impressora (nao cria pedido no sistema).' -ForegroundColor Green
+  Write-Log 'Comanda ficticia de teste enviada para a impressora.'
 }
 
 function Install-Startup {
@@ -467,6 +503,7 @@ function Run-Agent {
     $width = [Math]::Max(30, [Math]::Min(64, [int]$cfg.paperWidthChars))
     $baseUrl = ([string]$cfg.siteUrl).TrimEnd('/')
     $printerName = [string]$cfg.printerName
+    $useEmojis = $null -eq $cfg.useEmojis -or [bool]$cfg.useEmojis
 
     Get-Printer -Name $printerName -ErrorAction Stop | Out-Null
     Write-Log "Agente iniciado. Impressora: $printerName; consulta: ${pollSeconds}s"
@@ -486,7 +523,7 @@ function Run-Agent {
           }
 
           try {
-            $receipt = Format-Receipt $pedido $width
+            $receipt = Format-Receipt $pedido $width $useEmojis
             Send-ToPrinter $receipt $printerName
           } catch {
             $err = $_.Exception.Message
