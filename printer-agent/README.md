@@ -41,3 +41,20 @@ Meta de dimensionamento: **90 pedidos por hora**. O código evita o teto anterio
 ## Manutenção
 
 No menu use 5 - Abrir arquivo de log para diagnosticar. Em caso de mensagem de falha ou comanda imprimindo travada, confira impressora/spooler e histórico antes de qualquer reimpressão. Sem confirmação manual da cozinha: o recebimento ocorre na fila quando o sistema registra o pedido.
+
+## Novo modelo visual: negrito, ícones e taxa de serviço
+
+- Comanda, data e hora, cliente, itens e quantidades, taxa de serviço e total recebem destaque em **negrito**. O total fica com fonte maior.
+- Ícones/emojis são incluídos na impressão Windows por padrão. A Bematech MP-2500 TH e seu driver podem não reproduzir todos os símbolos; confirme com a **comanda fictícia de teste**, sem criar pedido ou alterar a fila.
+- Para imprimir sem emojis, no `config.json` existente defina `"useEmojis": false` e reinicie o agente. Os títulos e valores continuam em negrito.
+- Em **comer no local**, a comanda mostra mesa e taxa de serviço de R$ 3,00 quando o pedido contém `taxaServicoCentavos: 300`, mas não imprime o bloco de forma de pagamento.
+- Não existe alteração na API, fila, token ou ordem dos pedidos: é somente o formato local do recibo.
+
+### Atualizar o notebook já instalado
+
+1. Mantenha uma cópia de segurança do arquivo `FerraciniPrintAgent.ps1` atual.
+2. Baixe a nova versão de `printer-agent/FerraciniPrintAgent.ps1` deste repositório e substitua **somente** esse arquivo na pasta instalada, normalmente `C:\FerraciniPrintAgent`.
+3. **Não** apague nem substitua `config.json`, `token.dat`, os arquivos `.cmd` nem o log. Não é preciso gerar outro token.
+4. Reinicie o notebook com a Bematech ligada e conectada; a inicialização automática existente passa a usar o novo script.
+5. No menu existente, escolha **2 — Imprimir teste** e confira os destaques e símbolos no papel. Essa comanda é marcada como TESTE e não vai para o servidor.
+6. Antes de atender clientes, confira se a impressão de um pedido legítimo funciona. Se as figuras saírem como quadradinhos, desative somente `useEmojis` no `config.json`, mantendo o negrito.
