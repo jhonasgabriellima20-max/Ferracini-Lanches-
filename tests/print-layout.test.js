@@ -15,4 +15,23 @@ assert.match(script, /e\.HasMorePages = nextLine < lines\.Length/);
 assert.doesNotMatch(script, /\|\s*Out-Printer/);
 assert.match(script, /Send-ToPrinter \$text \(\[string\]\$cfg\.printerName\)/);
 assert.match(script, /Send-ToPrinter \$receipt \$printerName/);
-console.log('OK: impressão a 80 mm, sem formatacao A4, com paginacao e reuso no teste e pedidos.');
+
+assert.match(script, /function Receipt-Label/);
+assert.match(script, /useEmojis = \$true/);
+assert.match(script, /Format-Receipt \$pedido \$width \$useEmojis/);
+assert.match(script, /FontStyle\.Bold/);
+assert.match(script, /private static bool IsTotal/);
+assert.match(script, /private static bool IsImportant/);
+assert.match(script, /Taxa de servico:/);
+assert.match(script, /if \(\$tipo -ne 'mesa'\)/);
+assert.match(script, /NAO E PEDIDO REAL/);
+assert.match(script, /numero = 'TESTE'/);
+assert.match(script, /taxaServicoCentavos = 300/);
+assert.match(script, /'🧾'/);
+assert.match(script, /'💰'/);
+assert.match(script, /'🍔'/);
+assert.match(script, /'👤'/);
+assert.match(script, /'➕'/);
+assert.match(script, /\$null -eq \$cfg\.useEmojis/);
+
+console.log('OK: bobina 80 mm, negrito, icones, taxa de servico, sem pagamento na mesa e teste ficticio.');
