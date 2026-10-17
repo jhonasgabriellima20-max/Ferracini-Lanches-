@@ -88,5 +88,13 @@ async function call(body){
   assert.equal(again.pedido.numero,'01');
   assert.equal([...storage.keys()].filter(x=>x.startsWith('pedidos/fila/')).length,0);
   assert.equal([...storage.keys()].filter(x=>x.startsWith('mp-preview/pedidos/fila/')).length,1);
+  // The Brick must not filter out the card family not yet known by BIN,
+  // which caused missing_payment_information in mobile checkout.
+  const fs=require('node:fs');
+  const html=fs.readFileSync(require('node:path').join(__dirname,'../index.html'),'utf8');
+  assert.match(html,/excluded:\['prepaid_card'\]/);
+  assert.doesNotMatch(html,/excluded:paymentMethod===/);
+  assert.match(html,/formData\?\.payment_type_id/);
+  assert.match(html,/return \['credito','debito'\]/);
   console.log('OK: comanda liberada somente após cartão aprovado e sem duplicidade');
 })().catch(e=>{console.error(e);process.exitCode=1;});
