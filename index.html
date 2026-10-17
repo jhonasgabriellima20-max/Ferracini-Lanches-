@@ -2110,6 +2110,70 @@ function finalizarCheckoutConfirmado(registro){
   updateCartBar();
 }
 
+
+async function carregarSdkMP(){
+  if(window.MercadoPago) return;
+  if(!mpScriptPromise){
+    mpScriptPromise=new Promise((resolve,reject)=>{
+      const script=document.createElement('script');
+      script.src='https://sdk.mercadopago.com/js/v2';
+      script.onload=resolve;
+      script.onerror=()=>reject(new Error('Não foi possível carregar o Mercado Pago.'));
+      document.head.appendChild(script);
+    });
+  }
+  return mpScriptPromise;
+}
+async function consultarPagamentoAteConfirmar(id){
+  for(let i=0;i<15;i++){
+    await new Promise(resolve=>setTimeout(resolve,3000));
+    const resp=await fetch('/api/mp-status?id='+encodeURIComponent(id),{cache:'no-store'});
+    if(!resp.ok) continue;
+    const data=await resp.json();
+    if(data.status==='approved' && data.pedido){finalizarCheckoutConfirmado({pedido:data.pedido});return;}
+    if(data.status==='rejected') throw new Error('O cartão foi recusado. Não foi criada comanda.');
+  }
+  throw new Error('Pagamento em análise. A comanda será liberada automaticamente se for aprovado. Não faça outra cobrança.');
+}
+async function montarPagamentoCartao(order){
+  if(!mpCardEnabled || !mpPublicKey || !Number.isInteger(order.totalCentavos))
+    throw new Error('Cartão online ainda não foi configurado.');
+  await carregarSdkMP();
+  if(mpBrickController){mpBrickController.unmount();mpBrickController=null;}
+  const section=document.getElementById('mpBrickSection');
+  const status=document.getElementById('mpPaymentStatus');
+  status.textContent='Informe os dados do cartão para pagar '+fmtPreco(order.totalCentavos/100)+'.';
+  section.hidden=false;
+  mpOrderPending=order.id;
+  const mp=new window.MercadoPago(mpPublicKey,{locale:'pt-BR'});
+  mpBrickController=await mp.bricks().create('cardPayment','cardPaymentBrick_container',{
+    initialization:{amount:order.totalCentavos/100},
+    customization:{paymentMethods:{types:{excluded:paymentMethod==='debito'?['credit_card','prepaid_card']:['debit_card','prepaid_card']}}},
+    callbacks:{
+      onReady:()=>{status.textContent='Preencha o cartão e toque em Pagar.';},
+      onSubmit:async formData=>{
+        status.textContent='Verificando pagamento...';
+        try{
+          const resp=await fetch('/api/mp-pagamento',{
+            method:'POST',headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({id:order.id,form:formData})
+          });
+          const result=await resp.json().catch(()=>({}));
+          if(!resp.ok) throw new Error(result.error||'Não conseguimos verificar o pagamento.');
+          if(result.status==='approved' && result.pedido){finalizarCheckoutConfirmado({pedido:result.pedido});return;}
+          if(result.status==='rejected') throw new Error('Pagamento recusado. O pedido não foi enviado para a cozinha.');
+          status.textContent='Pagamento em análise. Aguarde a confirmação...';
+          await consultarPagamentoAteConfirmar(order.id);
+        }catch(error){
+          status.textContent=error?.message||'Não foi possível concluir o pagamento.';
+          throw error;
+        }
+      },
+      onError:error=>{console.warn('[mp] brick_error',String(error?.message||error));}
+    }
+  });
+}
+
 updateCartBar();
 atualizarStatusHorarioPedidos();
 setInterval(atualizarStatusHorarioPedidos, 60 * 1000);
