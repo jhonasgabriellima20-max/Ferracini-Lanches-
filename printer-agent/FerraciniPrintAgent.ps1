@@ -337,7 +337,7 @@ public static class FerraciniReceiptPrinter
                         if (textFont != null) textFont.Dispose();
                         if (headingFont != null) headingFont.Dispose();
                         if (totalFont != null) totalFont.Dispose();
-                        textFont = new Font(font.FontFamily, size, FontStyle.Regular, GraphicsUnit.Point);
+                        textFont = new Font(font.FontFamily, size, FontStyle.Bold, GraphicsUnit.Point);
                         headingFont = new Font(font.FontFamily, size, FontStyle.Bold, GraphicsUnit.Point);
                         totalFont = new Font(font.FontFamily, size + 1.5f, FontStyle.Bold, GraphicsUnit.Point);
                         float widest = 0f;
