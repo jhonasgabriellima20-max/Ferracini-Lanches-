@@ -1212,7 +1212,7 @@ const checkoutConfirmEl = document.getElementById('checkoutConfirm');
 const btnEnviarPedidoEl = document.getElementById('btnEnviarPedido');
 
 let deliveryMethod = 'entrega'; // 'retirada' | 'entrega'
-let paymentMethod = 'pix';
+let paymentMethod = 'credito';
 let precisaTroco = false;
 let trocoPara = '';
 let frete = { status: 'idle', distanciaKm: null, valor: 0, estimativa: null }; // idle | loading | ok | error
@@ -1251,9 +1251,9 @@ function aplicarDisponibilidadeAtendimento(){
   if(enderecoBlockEl) enderecoBlockEl.style.display = deliveryMethod === 'entrega' ? 'block' : 'none';
 }
 
-const PAYMENT_LABELS = { pix: 'Pix', dinheiro: 'Dinheiro', debito: 'Débito', credito: 'Crédito' };
+const PAYMENT_LABELS = { debito: 'Débito online', credito: 'Crédito online' };
 function paymentOptionsForMethod(){
-  return ['pix', 'dinheiro', 'debito', 'credito'];
+  return ['credito','debito'];
 }
 function taxaServicoPorDistancia(distanciaKm){
   if(!Number.isFinite(distanciaKm) || distanciaKm <= 0) return 0;
@@ -1735,6 +1735,8 @@ function atualizarStatusHorarioPedidos(){
 }
 
 async function abrirCheckout(){
+  alert('Pagamento online temporariamente em configuração. Nenhuma comanda será enviada até a confirmação do pagamento.');
+  return;
   if(btnEnviarPedidoEl.disabled && btnEnviarPedidoEl.style.display !== 'none') return;
   if(cartTotals().totalQty === 0) return;
   await carregarDisponibilidade({ silencioso:true, force:true });
@@ -1754,7 +1756,7 @@ async function abrirCheckout(){
   deliveryMethod = metodoInicial;
   aplicarDisponibilidadeAtendimento();
   resetFrete();
-  paymentMethod = 'pix';
+  paymentMethod = 'credito';
   precisaTroco = false;
   trocoPara = '';
   checkoutErrorBoxEl.innerHTML = '';

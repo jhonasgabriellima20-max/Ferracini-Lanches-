@@ -1133,15 +1133,15 @@ const checkoutConfirmEl = document.getElementById('checkoutConfirm');
 const btnEnviarPedidoEl = document.getElementById('btnEnviarPedido');
 
 let deliveryMethod = 'retirada'; // 'retirada' | 'entrega'
-let paymentMethod = 'pix';
+let paymentMethod = 'dinheiro';
 let precisaTroco = false;
 let trocoPara = '';
 let frete = { status: 'idle', distanciaKm: null, valor: 0, estimativa: null }; // idle | loading | ok | error
 let freteRequestId = 0;
 
-const PAYMENT_LABELS = { pix: 'Pix', dinheiro: 'Dinheiro' };
+const PAYMENT_LABELS = { dinheiro: 'Pagamento no local — temporariamente suspenso' };
 const TAXA_SERVICO_MESA = 3.00;
-function paymentOptionsForMethod(){ return ['pix', 'dinheiro']; }
+function paymentOptionsForMethod(){ return ['dinheiro']; }
 function totalPedidoCentavos(){
   return Math.round(cartTotals().subtotal * 100)
     + (deliveryMethod === 'entrega' && frete.status === 'ok' ? Math.round(frete.valor * 100) : 0)
@@ -1386,13 +1386,15 @@ function renderCheckout(){
 }
 
 function abrirCheckout(){
+  alert('Pedidos por QR Code temporariamente suspensos enquanto a confirmação de pagamento é configurada.');
+  return;
   if(btnEnviarPedidoEl.disabled && btnEnviarPedidoEl.style.display !== 'none') return;
   if(cartTotals().totalQty === 0) return;
   deliveryMethod = 'retirada';
   document.querySelectorAll('.method-btn').forEach(b => b.classList.toggle('active', b.dataset.method==='retirada'));
   enderecoBlockEl.style.display = 'none';
   resetFrete();
-  paymentMethod = 'pix';
+  paymentMethod = 'dinheiro';
   precisaTroco = false;
   trocoPara = '';
   checkoutErrorBoxEl.innerHTML = '';

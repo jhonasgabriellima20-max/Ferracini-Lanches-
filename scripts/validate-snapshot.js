@@ -222,11 +222,11 @@ for(const file of ['api/comanda.js', 'api/distancia.js', 'api/disponibilidade.js
 
 if(fs.existsSync('index.html')){
   const html = fs.readFileSync('index.html', 'utf8');
-  if(!html.includes("const PAYMENT_LABELS = { pix: 'Pix', dinheiro: 'Dinheiro', debito: 'Débito', credito: 'Crédito' };")){
-    fail('index.html: Pix, dinheiro, débito e crédito precisam existir nas opções de pagamento');
+  if(!html.includes("const PAYMENT_LABELS = { debito: 'Débito online', credito: 'Crédito online' };")){
+    fail('index.html: apenas cartões devem constar nas opções do checkout');
   }
-  if(!html.includes("return ['pix', 'dinheiro', 'debito', 'credito'];")){
-    fail('index.html: retirada e entrega devem oferecer Pix, dinheiro, débito e crédito');
+  if(!html.includes("return ['credito','debito'];")){
+    fail('index.html: Pix não pode mais aparecer no checkout');
   }
 }
 

@@ -31,6 +31,8 @@ jobs:
         run: node tests/fila-impressao.test.js
       - name: Test ghost-free checkout
         run: node tests/checkout-sem-fantasma.test.js
+      - name: Test payment safety fail-closed
+        run: node tests/bloqueio-pagamento.test.js
       - name: Check thermal receipt layout
         run: node tests/print-layout.test.js
       - name: Check API syntax
