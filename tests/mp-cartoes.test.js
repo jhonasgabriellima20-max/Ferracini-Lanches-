@@ -55,21 +55,32 @@ async function call(body){
   assert.equal([...storage.keys()].filter(x=>x.startsWith('pedidos/fila/')).length,0);
   const d=await call({...order,clientRequestId:'teste-cartao-dinheiro',pagamento:{metodo:'dinheiro'}});
   assert.equal(d.statusCode,400);
-  const bad={
-    id:'123',status:'approved',currency_id:'BRL',transaction_amount:15,
-    external_reference:r.body.pedido.id,payment_type_id:'credit_card'
+  const approved={
+    id:'ORD01JS2V6CM8KJ0EC4H502TGK1WP',type:'online',processing_mode:'automatic',
+    status:'processed',status_detail:'accredited',
+    external_reference:r.body.pedido.id,total_amount:'15.00',total_paid_amount:'15.00',
+    transactions:{payments:[{
+      id:'PAY01JS2V6CM8KJ0EC4H504R7YE34',amount:'15.00',paid_amount:'15.00',
+      status:'processed',status_detail:'accredited',
+      payment_method:{id:'visa',type:'credit_card',installments:1}
+    }]}
   };
-  assert.equal(mp.validPayment(bad,{id:r.body.pedido.id,totalCentavos:1500,pagamento:{metodo:'credito'}}),true);
-  assert.equal(mp.validPayment({...bad,transaction_amount:1},{id:r.body.pedido.id,totalCentavos:1500,pagamento:{metodo:'credito'}}),false);
-  assert.equal(mp.validPayment({...bad,payment_type_id:'debit_card'},{id:r.body.pedido.id,totalCentavos:1500,pagamento:{metodo:'credito'}}),false);
-  assert.equal(mp.validPayment({...bad,status:'pending'},{id:r.body.pedido.id,totalCentavos:1500,pagamento:{metodo:'credito'}}),false);
-  assert.equal((await mp.reconcile({...bad,status:'pending'})).status,'aguardando_pagamento');
+  const local={id:r.body.pedido.id,totalCentavos:1500,pagamento:{metodo:'credito'}};
+  assert.equal(mp.moneyCents('15.00'),1500);
+  assert.equal(mp.validOrder(approved,local),true);
+  assert.equal(mp.validOrder({...approved,total_amount:'1.00'},local),false);
+  assert.equal(mp.validOrder({...approved,total_paid_amount:'1.00'},local),false);
+  assert.equal(mp.validOrder({...approved,status:'processing'},local),false);
+  assert.equal(mp.validOrder({...approved,external_reference:'outro'},local),false);
+  assert.equal(mp.validOrder({...approved,transactions:{payments:[{...approved.transactions.payments[0],payment_method:{type:'debit_card'}}]}},local),false);
+  assert.equal(mp.validOrder({...approved,transactions:{payments:[{...approved.transactions.payments[0],paid_amount:'0.01'}]}},local),false);
+  assert.equal((await mp.reconcile({...approved,status:'processing'})).status,'pending');
   assert.equal([...storage.keys()].filter(x=>x.startsWith('pedidos/fila/')).length,0);
-  const confirmed=await mp.reconcile(bad);
+  const confirmed=await mp.reconcile(approved);
   assert.equal(confirmed.status,'approved');
   assert.equal(confirmed.pedido.numero,'01');
   assert.equal([...storage.keys()].filter(x=>x.startsWith('pedidos/fila/')).length,1);
-  const again=await mp.reconcile(bad);
+  const again=await mp.reconcile(approved);
   assert.equal(again.pedido.numero,'01');
   assert.equal([...storage.keys()].filter(x=>x.startsWith('pedidos/fila/')).length,1);
   console.log('OK: comanda liberada somente após cartão aprovado e sem duplicidade');
