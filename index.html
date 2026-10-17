@@ -1218,12 +1218,13 @@ const btnEnviarPedidoEl = document.getElementById('btnEnviarPedido');
 
 let deliveryMethod = 'entrega'; // 'retirada' | 'entrega'
 let paymentMethod = 'credito';
-let mpCardEnabled = false, mpPublicKey = null, mpBrickController = null, mpScriptPromise = null, mpOrderPending = null;
+let mpCardEnabled = false, mpSandboxMode = false, mpPublicKey = null, mpBrickController = null, mpScriptPromise = null, mpOrderPending = null;
 async function atualizarConfiguracaoMP(){
   try{
     const response = await fetch('/api/mp-config',{cache:'no-store'});
     const data = await response.json();
     mpCardEnabled = response.ok && data.enabled === true && typeof data.publicKey === 'string';
+    mpSandboxMode = mpCardEnabled && data.sandbox === true;
     mpPublicKey = mpCardEnabled ? data.publicKey : null;
   }catch(error){ console.warn('[checkout] mp_config_indisponivel',error); }
 }
@@ -1710,6 +1711,7 @@ function atualizarTabelaHorarios(){
 }
 
 function statusHorarioPedidos(agora = new Date()){
+  if(mpSandboxMode) return {aberto:true,mensagem:'TESTE: nenhuma comanda será enviada à cozinha.'};
   const modo = operacaoLoja?.modoLoja || 'automatico';
   if(modo === 'aberto') return { aberto:true, mensagem:'Pedidos online abertos agora.' };
   if(modo === 'fechado') return { aberto:false, mensagem:'A loja encerrou os pedidos no momento.' };
@@ -1753,6 +1755,7 @@ async function abrirCheckout(){
   if(btnEnviarPedidoEl.disabled && btnEnviarPedidoEl.style.display !== 'none') return;
   if(cartTotals().totalQty === 0) return;
   await carregarDisponibilidade({ silencioso:true, force:true });
+  await atualizarConfiguracaoMP();
   const horario = statusHorarioPedidos();
   if(!horario.aberto){
     alert(horario.mensagem);
@@ -1769,7 +1772,6 @@ async function abrirCheckout(){
   deliveryMethod = metodoInicial;
   aplicarDisponibilidadeAtendimento();
   resetFrete();
-  await atualizarConfiguracaoMP();
   paymentMethod = mpCardEnabled ? 'credito' : 'dinheiro';
   precisaTroco = false;
   trocoPara = '';
