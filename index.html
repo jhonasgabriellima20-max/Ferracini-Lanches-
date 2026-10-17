@@ -2233,21 +2233,26 @@ async function montarPagamentoCartao(order){
           ? 'Débito à vista — 1 vez. Preencha os dados e toque em Pagar.'
           : 'Crédito — escolha as parcelas disponíveis e toque em Pagar.';
       },
-      onSubmit:async formData=>{
+      onSubmit:async (formData,additionalData)=>{
         status.textContent='Verificando pagamento...';
         try{
           const parcelas=Number(formData?.installments);
           if(!Number.isInteger(parcelas)||parcelas<1 || (paymentMethod==='debito'&&parcelas!==1)){
             throw new Error('Pagamento no débito deve ser à vista, sem parcelamento. Confira a opção de cartão e tente novamente.');
           }
-          const cardType=String(formData?.payment_type_id||'');
+          // Card Payment Brick returns paymentTypeId in its second callback argument.
+          // Validate before sending the card token to the backend.
+          const cardType=String(additionalData?.paymentTypeId||formData?.payment_type_id||'');
           const requested=paymentMethod==='credito'?'credit_card':'debit_card';
-          if(cardType && cardType!==requested){
+          if(!['credit_card','debit_card'].includes(cardType)){
+            throw new Error('O Mercado Pago não identificou a modalidade do cartão. Confira os dados do cartão e tente novamente.');
+          }
+          if(cardType!==requested){
             throw new Error('O Mercado Pago identificou um cartão '+(cardType==='debit_card'?'de débito':'de crédito')+', mas foi selecionado '+(paymentMethod==='credito'?'crédito':'débito')+'. Volte e selecione a modalidade correta.');
           }
           const resp=await fetch('/api/mp-pagamento',{
             method:'POST',headers:{'Content-Type':'application/json'},
-            body:JSON.stringify({id:order.id,form:formData})
+            body:JSON.stringify({id:order.id,form:{...formData,payment_type_id:cardType}})
           });
           const result=await resp.json().catch(()=>({}));
           if(!resp.ok && result.needsNewOrder===true){
