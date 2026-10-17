@@ -11,7 +11,12 @@ for (const page of ['index.html','mesa.html']) {
   assert.match(html, /await registrarPedidoNoSistema\(payload\)/);
   assert.match(html, /btnEnviarPedidoEl\.disabled = false;\s*btnEnviarPedidoEl\.textContent = 'Confirmar pedido'/);
   assert.match(html, /data\?\.storageDegraded \|\| !data\?\.pedido\?\.id/);
-  assert.match(html, /!?\['pendente','imprimindo','impresso','falhou'\]/);
+  if(page==='index.html'){
+    assert.match(html,/aguardando_pagamento/);
+    assert.match(html,/montarPagamentoCartao/);
+  } else {
+    assert.match(html, /!?\['pendente','imprimindo','impresso','falhou'\]/);
+  }
   assert.match(html, /linkCopia\.style\.display = 'block'/);
   assert.match(html, /checkoutConfirmEl\.style\.display = 'block'/);
   assert.match(html, /btnEnviarPedidoEl\.style\.display = 'none'/);
