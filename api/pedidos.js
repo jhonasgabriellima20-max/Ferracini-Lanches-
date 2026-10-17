@@ -30,6 +30,9 @@ function dataOperacao(){
 
 
 async function statusHorarioPedidos(){
+  if(process.env.VERCEL_ENV === 'preview' && require('../lib/mp-checkout').enabled()){
+    return {aberto:true,mensagem:'Ambiente de testes: não vai para a cozinha.'};
+  }
   return require('./disponibilidade').readStoreStatus();
 }
 
