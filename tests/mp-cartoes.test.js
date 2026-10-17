@@ -102,5 +102,36 @@ async function call(body){
   assert.match(backend,/form\.installments!==1/);
   const endpoint=fs.readFileSync(require('node:path').join(__dirname,'../api/mp-pagamento.js'),'utf8');
   assert.match(endpoint,/error\?\.status===403/);
+  // Simulate provider-side rejection; no real Mercado Pago requests are made.
+  const savedFetch=global.fetch;
+  try{
+    global.fetch=async()=>({
+      ok:false,status:400,
+      headers:{get:()=> 'mp-request-test'},
+      json:async()=>({errors:[{code:'property_value',message:'invalid payer.email domain for payer@example.invalid'}]})
+    });
+    await assert.rejects(()=>mp.requestMP('/v1/orders',{method:'POST'}),error=>{
+      assert.equal(error.status,400);
+      assert.equal(error.providerCode,'property_value');
+      assert.equal(error.providerField,'payer.email');
+      assert.equal(error.providerHint,'email');
+      assert.doesNotMatch(String(error.message),/@/);
+      return true;
+    });
+    global.fetch=async()=>({
+      ok:false,status:409,headers:{get:()=> 'mp-conflict-test'},
+      json:async()=>({errors:[{code:'idempotency_key_already_used'}]})
+    });
+    await assert.rejects(()=>mp.requestMP('/v1/orders',{method:'POST'}),error=>{
+      assert.equal(error.status,409);
+      assert.equal(error.providerCode,'idempotency_key_already_used');
+      return true;
+    });
+  }finally{global.fetch=savedFetch;}
+  assert.match(html,/result.needsNewOrder===true/);
+  assert.match(html,/clientRequestIdAtual=null;/);
+  const paymentApi=fs.readFileSync(require('node:path').join(__dirname,'../api/mp-pagamento.js'),'utf8');
+  assert.match(paymentApi,/res.status\(422\)/);
+  assert.match(paymentApi,/res.status\(409\)/);
   console.log('OK: comanda liberada somente após cartão aprovado e sem duplicidade');
 })().catch(e=>{console.error(e);process.exitCode=1;});
