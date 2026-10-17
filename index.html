@@ -2163,12 +2163,29 @@ async function montarPagamentoCartao(order){
   status.textContent='Informe os dados do cartão para pagar '+fmtPreco(order.totalCentavos/100)+'.';
   section.hidden=false;
   mpOrderPending=order.id;
+  const container=document.getElementById('cardPaymentBrick_container');
+  container.replaceChildren(); // clear an interrupted SDK render safely
+  status.textContent='Carregando os campos seguros do Mercado Pago...';
+  let brickReady=false;
+  const watchdog=setTimeout(()=>{
+    if(!brickReady && mpOrderPending===order.id){
+      status.textContent='O formulário do cartão não carregou neste navegador. Toque na bússola (canto inferior direito) para abrir no Safari e atualize a página. Não houve cobrança.';
+      status.style.color='#991b1b';
+      console.warn('[mp] card_brick_ready_timeout');
+    }
+  },12000);
+  try{
   const mp=new window.MercadoPago(mpPublicKey,{locale:'pt-BR'});
   mpBrickController=await mp.bricks().create('cardPayment','cardPaymentBrick_container',{
     initialization:{amount:order.totalCentavos/100},
     customization:{paymentMethods:{types:{excluded:paymentMethod==='debito'?['credit_card','prepaid_card']:['debit_card','prepaid_card']}}},
     callbacks:{
-      onReady:()=>{status.textContent='Preencha o cartão e toque em Pagar.';},
+      onReady:()=>{
+        brickReady=true;
+        clearTimeout(watchdog);
+        status.style.color='#181818';
+        status.textContent='Preencha os dados do cartão e toque em Pagar.';
+      },
       onSubmit:async formData=>{
         status.textContent='Verificando pagamento...';
         try{
@@ -2190,9 +2207,22 @@ async function montarPagamentoCartao(order){
           throw error;
         }
       },
-      onError:error=>{console.warn('[mp] brick_error',String(error?.message||error));}
+      onError:error=>{
+        console.warn('[mp] brick_error',String(error?.message||error?.type||error));
+        if(!brickReady){
+          clearTimeout(watchdog);
+          status.style.color='#991b1b';
+          status.textContent='Não foi possível abrir o formulário seguro do Mercado Pago. Abra esta página diretamente no Safari e tente novamente. Nenhuma cobrança foi feita.';
+        }
+      }
     }
   });
+  }catch(error){
+    clearTimeout(watchdog);
+    status.style.color='#991b1b';
+    status.textContent='Erro ao iniciar o cartão do Mercado Pago. Abra esta página diretamente no Safari. Nenhuma cobrança foi feita.';
+    throw error;
+  }
 }
 
 updateCartBar();
