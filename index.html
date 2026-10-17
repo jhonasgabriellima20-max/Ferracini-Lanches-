@@ -1219,7 +1219,7 @@ const checkoutConfirmEl = document.getElementById('checkoutConfirm');
 const btnEnviarPedidoEl = document.getElementById('btnEnviarPedido');
 
 let deliveryMethod = 'entrega'; // 'retirada' | 'entrega'
-let paymentMethod = 'credito';
+let paymentMethod = 'cartao';
 let mpCardEnabled = false, mpSandboxMode = false, mpPublicKey = null, mpBrickController = null, mpScriptPromise = null, mpOrderPending = null;
 let mpBrickAttempt=0, mpClientReports=0;
 async function atualizarConfiguracaoMP(){
@@ -1270,9 +1270,9 @@ function aplicarDisponibilidadeAtendimento(){
   if(enderecoBlockEl) enderecoBlockEl.style.display = deliveryMethod === 'entrega' ? 'block' : 'none';
 }
 
-const PAYMENT_LABELS = { pix: 'Pix', dinheiro: 'Dinheiro', debito: 'Débito', credito: 'Crédito' };
+const PAYMENT_LABELS = { pix: 'Pix', dinheiro: 'Dinheiro', debito: 'Débito', credito: 'Crédito', cartao: 'Cartão de crédito ou débito' };
 function paymentOptionsForMethod(){
-  return ['credito','debito']; // No Pix and no unpaid checkout.
+  return ['cartao']; // O Mercado Pago identifica crédito ou débito pelo próprio cartão.
 }
 function taxaServicoPorDistancia(distanciaKm){
   if(!Number.isFinite(distanciaKm) || distanciaKm <= 0) return 0;
@@ -1306,6 +1306,7 @@ function descricaoPagamento(){
   if(deliveryMethod === 'mesa') return 'Pagamento a combinar no local';
   if(paymentMethod === 'pix') return `Pix manual — chave ${CONFIG.pix.tipo}: ${CONFIG.pix.chave}\nEnviar o comprovante pelo WhatsApp`;
   const localPagamento = deliveryMethod === 'entrega' ? 'na entrega' : (deliveryMethod === 'mesa' ? 'no local' : 'na retirada');
+  if(paymentMethod === 'cartao') return 'Cartão de crédito ou débito — pagamento online Mercado Pago';
   if(paymentMethod === 'credito') return mpCardEnabled ? 'Crédito — pagamento online Mercado Pago' : `Crédito — pagamento ${localPagamento}`;
   if(paymentMethod === 'debito') return mpCardEnabled ? 'Débito — pagamento online Mercado Pago' : `Débito — pagamento ${localPagamento}`;
   if(!precisaTroco) return 'Dinheiro — sem troco';
@@ -1780,7 +1781,7 @@ async function abrirCheckout(){
   deliveryMethod = metodoInicial;
   aplicarDisponibilidadeAtendimento();
   resetFrete();
-  paymentMethod = mpCardEnabled ? 'credito' : 'dinheiro';
+  paymentMethod = mpCardEnabled ? 'cartao' : 'dinheiro';
   precisaTroco = false;
   trocoPara = '';
   checkoutErrorBoxEl.innerHTML = '';
@@ -2214,7 +2215,7 @@ async function montarPagamentoCartao(order){
   const mp=new window.MercadoPago(mpPublicKey,{locale:'pt-BR'});
   const controller=await mp.bricks().create('cardPayment','cardPaymentBrick_container',{
     initialization:{amount:order.totalCentavos/100},
-    customization:{paymentMethods:{types:{excluded:paymentMethod==='debito'?['credit_card','prepaid_card']:['debit_card','prepaid_card']}}},
+    customization:{paymentMethods:{types:{excluded:['prepaid_card']}}},
     callbacks:{
       onReady:()=>{
         if(attempt!==mpBrickAttempt) return;
@@ -2224,12 +2225,16 @@ async function montarPagamentoCartao(order){
         status.style.color='#181818';
         status.textContent='Preencha os dados do cartão e toque em Pagar.';
       },
-      onSubmit:async formData=>{
+      onSubmit:async (formData,additionalData)=>{
         status.textContent='Verificando pagamento...';
         try{
+          const cardType=String(additionalData?.paymentTypeId||'');
+          if(!['credit_card','debit_card'].includes(cardType)){
+            throw new Error('O Mercado Pago ainda não identificou crédito ou débito deste cartão. Confira os dados e use um cartão compatível.');
+          }
           const resp=await fetch('/api/mp-pagamento',{
             method:'POST',headers:{'Content-Type':'application/json'},
-            body:JSON.stringify({id:order.id,form:formData})
+            body:JSON.stringify({id:order.id,form:{...formData,payment_type_id:cardType}})
           });
           const result=await resp.json().catch(()=>({}));
           if(!resp.ok) throw new Error(result.error||'Não conseguimos verificar o pagamento.');
