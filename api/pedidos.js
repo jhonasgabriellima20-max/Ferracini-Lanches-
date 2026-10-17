@@ -5,10 +5,12 @@ const { calcularTempoInternoLanches, calcularFilaTempoInterno, listarPedidosRece
 const { isStorageUnavailable: isDatabaseUnavailable, readJson, writeJson, listBlobs } = require('../lib/postgres-storage');
 
 const TIME_ZONE = 'America/Sao_Paulo';
-const COUNTER_PATH = 'config/pedidos-sequencia.json';
-const RESERVA_DIR = 'pedidos/reservas';
-const FILA_DIR = 'pedidos/fila';
-const AGUARDANDO_DIR = 'pedidos/aguardando';
+// Preview uses independent storage keys. The live Bematech agent only polls pedidos/fila/.
+const PREVIEW_NAMESPACE = process.env.VERCEL_ENV === 'preview' ? 'mp-preview/' : '';
+const COUNTER_PATH = PREVIEW_NAMESPACE + 'config/pedidos-sequencia.json';
+const RESERVA_DIR = PREVIEW_NAMESPACE + 'pedidos/reservas';
+const FILA_DIR = PREVIEW_NAMESPACE + 'pedidos/fila';
+const AGUARDANDO_DIR = PREVIEW_NAMESPACE + 'pedidos/aguardando';
 const MAX_BODY_BYTES = 64 * 1024;
 const MAX_ROUTE_KM = 35;
 const MAX_DISTANCE_DELTA_KM = 0.35;
