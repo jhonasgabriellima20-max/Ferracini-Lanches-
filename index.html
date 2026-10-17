@@ -454,6 +454,7 @@
   .summary-row span:last-child{ color:var(--ink); font-weight:600; }
   .summary-row.total span:last-child{ color:var(--mustard); font-family:var(--display); font-size:20px; font-weight:400; }
 
+  #mpRetryCard[hidden]{display:none!important;}
   .checkout-error{ color:#ff8a70; font-size:13px; margin-top:10px; }
   .checkout-confirm{
     background:rgba(37,211,102,0.1); border:1px solid rgba(37,211,102,0.35); color:var(--ink);
@@ -686,6 +687,7 @@
       <div style="font-size:15px;font-weight:800;margin-bottom:10px;">🔒 Pague com segurança pelo Mercado Pago</div>
       <div id="cardPaymentBrick_container"></div>
       <div id="mpPaymentStatus" role="status" aria-live="polite" style="font-size:14px;margin-top:10px;"></div>
+      <button type="button" id="mpRetryCard" class="btn btn-primary btn-block" hidden style="margin-top:14px;">Tentar carregar o cartão novamente</button>
     </div>
 
     <button type="button" class="btn btn-primary btn-block btn-lg" id="btnEnviarPedido" style="margin-top:22px;">
@@ -1219,6 +1221,7 @@ const btnEnviarPedidoEl = document.getElementById('btnEnviarPedido');
 let deliveryMethod = 'entrega'; // 'retirada' | 'entrega'
 let paymentMethod = 'credito';
 let mpCardEnabled = false, mpSandboxMode = false, mpPublicKey = null, mpBrickController = null, mpScriptPromise = null, mpOrderPending = null;
+let mpBrickAttempt=0, mpClientReports=0;
 async function atualizarConfiguracaoMP(){
   try{
     const response = await fetch('/api/mp-config',{cache:'no-store'});
@@ -2118,6 +2121,18 @@ function finalizarCheckoutConfirmado(registro){
 }
 
 
+function reportarFalhaMP(phase,cause='unknown'){
+  if(mpClientReports>=8) return;
+  mpClientReports++;
+  const label=String(cause||'unknown').replace(/[^a-zA-Z0-9._-]/g,'_').slice(0,85)||'unknown';
+  fetch('/api/mp-diagnostico',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phase,cause:label})}).catch(()=>{});
+}
+window.addEventListener('securitypolicyviolation',event=>{
+  if(!mpOrderPending) return;
+  let hostname='unknown';
+  try{ hostname=new URL(event.blockedURI).hostname||'unknown'; }catch{}
+  reportarFalhaMP('csp',String(event.violatedDirective||'csp').replace(/[^a-zA-Z0-9_-]/g,'_')+'_'+hostname);
+});
 async function carregarSdkMP(){
   if(window.MercadoPago) return;
   if(!mpScriptPromise){
@@ -2156,13 +2171,30 @@ function permitirOutraTentativaCartao(){
 async function montarPagamentoCartao(order){
   if(!mpCardEnabled || !mpPublicKey || !Number.isInteger(order.totalCentavos))
     throw new Error('Cartão online ainda não foi configurado.');
-  await carregarSdkMP();
-  if(mpBrickController){mpBrickController.unmount();mpBrickController=null;}
   const section=document.getElementById('mpBrickSection');
   const status=document.getElementById('mpPaymentStatus');
-  status.textContent='Informe os dados do cartão para pagar '+fmtPreco(order.totalCentavos/100)+'.';
+  const retryBtn=document.getElementById('mpRetryCard');
+  const attempt=++mpBrickAttempt;
   section.hidden=false;
   mpOrderPending=order.id;
+  retryBtn.hidden=true;
+  retryBtn.onclick=()=>{
+    if(mpOrderPending!==order.id||retryBtn.disabled) return;
+    retryBtn.hidden=true;
+    retryBtn.disabled=true;
+    montarPagamentoCartao(order).finally(()=>{retryBtn.disabled=false;}).catch(()=>{});
+  };
+  status.textContent='Carregando os campos seguros do Mercado Pago...';
+  try{await carregarSdkMP();}
+  catch(error){
+    reportarFalhaMP('sdk_error');
+    status.style.color='#991b1b';
+    status.textContent='O Mercado Pago não carregou. Confira a conexão e tente novamente.';
+    retryBtn.hidden=false;
+    return;
+  }
+  if(attempt!==mpBrickAttempt) return;
+  if(mpBrickController){try{mpBrickController.unmount();}catch{} mpBrickController=null;}
   // Ensure card fields remain visible when the first-step button disappears.
   requestAnimationFrame(()=>{ if(mpOrderPending===order.id) section.scrollIntoView({behavior:'smooth',block:'start'}); });
   const container=document.getElementById('cardPaymentBrick_container');
@@ -2171,20 +2203,24 @@ async function montarPagamentoCartao(order){
   let brickReady=false;
   const watchdog=setTimeout(()=>{
     if(!brickReady && mpOrderPending===order.id){
-      status.textContent='O formulário do cartão não carregou neste navegador. Toque na bússola (canto inferior direito) para abrir no Safari e atualize a página. Não houve cobrança.';
+      status.textContent='O formulário do cartão não carregou. Tente novamente pelo botão abaixo. Nenhuma cobrança foi iniciada.';
       status.style.color='#991b1b';
+      retryBtn.hidden=false;
+      reportarFalhaMP('brick_timeout');
       console.warn('[mp] card_brick_ready_timeout');
     }
   },12000);
   try{
   const mp=new window.MercadoPago(mpPublicKey,{locale:'pt-BR'});
-  mpBrickController=await mp.bricks().create('cardPayment','cardPaymentBrick_container',{
+  const controller=await mp.bricks().create('cardPayment','cardPaymentBrick_container',{
     initialization:{amount:order.totalCentavos/100},
     customization:{paymentMethods:{types:{excluded:paymentMethod==='debito'?['credit_card','prepaid_card']:['debit_card','prepaid_card']}}},
     callbacks:{
       onReady:()=>{
+        if(attempt!==mpBrickAttempt) return;
         brickReady=true;
         clearTimeout(watchdog);
+        retryBtn.hidden=true;
         status.style.color='#181818';
         status.textContent='Preencha os dados do cartão e toque em Pagar.';
       },
@@ -2210,20 +2246,28 @@ async function montarPagamentoCartao(order){
         }
       },
       onError:error=>{
+        if(attempt!==mpBrickAttempt) return;
+        const cause=error?.cause?.code||error?.cause||error?.type||'unknown';
+        reportarFalhaMP('brick_error',typeof cause==='string'?cause:'unknown');
         console.warn('[mp] brick_error',String(error?.message||error?.type||error));
-        if(!brickReady){
+        if(!brickReady && error?.type==='critical'){
           clearTimeout(watchdog);
           status.style.color='#991b1b';
-          status.textContent='Não foi possível abrir o formulário seguro do Mercado Pago. Abra esta página diretamente no Safari e tente novamente. Nenhuma cobrança foi feita.';
+          status.textContent='Falha ao abrir os campos seguros do cartão. Tente carregar novamente.';
+          retryBtn.hidden=false;
         }
       }
     }
   });
+  if(attempt!==mpBrickAttempt){try{controller?.unmount();}catch{}return;}
+  mpBrickController=controller;
   }catch(error){
+    if(attempt!==mpBrickAttempt)return;
     clearTimeout(watchdog);
+    reportarFalhaMP('brick_create_error');
     status.style.color='#991b1b';
-    status.textContent='Erro ao iniciar o cartão do Mercado Pago. Abra esta página diretamente no Safari. Nenhuma cobrança foi feita.';
-    throw error;
+    status.textContent='Não foi possível iniciar o formulário do cartão. Tente novamente.';
+    retryBtn.hidden=false;
   }
 }
 
