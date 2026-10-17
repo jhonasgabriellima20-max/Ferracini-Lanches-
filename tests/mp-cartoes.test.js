@@ -133,5 +133,11 @@ async function call(body){
   const paymentApi=fs.readFileSync(require('node:path').join(__dirname,'../api/mp-pagamento.js'),'utf8');
   assert.match(paymentApi,/res.status\(422\)/);
   assert.match(paymentApi,/res.status\(409\)/);
+  // Card Payment Brick supplies paymentTypeId in additionalData, not in
+  // the primary formData object. The backend must still enforce the choice.
+  assert.match(html,/onSubmit:async \(formData,additionalData\)/);
+  assert.match(html,/additionalData\?\.paymentTypeId/);
+  assert.match(html,/payment_type_id:cardType/);
+  assert.match(backend,/form\.payment_type_id && form\.payment_type_id!==expectedType/);
   console.log('OK: comanda liberada somente após cartão aprovado e sem duplicidade');
 })().catch(e=>{console.error(e);process.exitCode=1;});
