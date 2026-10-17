@@ -22,7 +22,7 @@
   </section>
 
   <main id="appView" class="hidden">
-    <div class="top"><div><div class="brand">FERRACINI<span>.</span></div><h1>Histórico de pedidos</h1><p class="sub">Os pedidos recebidos entram automaticamente na fila e recebem número de comanda. Comandas guardadas por dia. A numeração recomeça somente a cada mês; o histórico permanece salvo.</p></div><button class="btn btn-ghost" id="sair">Sair</button></div>
+    <div class="top"><div><div class="brand">FERRACINI<span>.</span></div><h1>Histórico de pedidos</h1><p class="sub">Os pedidos recebidos entram automaticamente na fila e recebem número de comanda. Comandas guardadas por dia. A numeração recomeça a cada dia (01, 02, 03...). O histórico dos dias anteriores permanece salvo.</p></div><button class="btn btn-ghost" id="sair">Sair</button></div>
     <div class="card"><div class="field"><label for="mes">Mês do histórico</label><input id="mes" type="month"></div><p class="sub" id="resumoMes" aria-live="polite"></p><div id="dias" style="display:flex;gap:8px;flex-wrap:wrap" aria-label="Dias do mês"></div><button class="btn btn-ghost" id="hoje" style="margin-top:12px">Ir para hoje</button></div>
     <div class="toolbar"><div class="status" id="status">Carregando…</div><div class="count" id="count">0 pedidos</div></div>
     <div id="systemMsg"></div>
