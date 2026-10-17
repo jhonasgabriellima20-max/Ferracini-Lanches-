@@ -561,12 +561,14 @@ module.exports = async function handler(req, res){
     // Never create a reservation, queue entry, or printed order based on a
     // browser-supplied "paid" status. Resume only after a server-side
     // Mercado Pago verification flow has been deployed and tested.
-    return res.status(503).json({
-      error: 'Pedidos online temporariamente suspensos enquanto o pagamento automático é configurado. Nenhuma comanda foi gerada.',
-      pedidoConfirmado: false,
-      pagamentoVerificado: false,
-      checkoutSuspenso: true,
-    });
+    if(process.env.VERCEL_ENV === 'production' || process.env.VERCEL_ENV === 'preview' || process.env.NODE_ENV === 'production'){
+      return res.status(503).json({
+        error: 'Pedidos online temporariamente suspensos enquanto o pagamento automático é configurado. Nenhuma comanda foi gerada.',
+        pedidoConfirmado: false,
+        pagamentoVerificado: false,
+        checkoutSuspenso: true,
+      });
+    }
     const horario = await statusHorarioPedidos();
     if(!horario.aberto) return res.status(403).json({ error: horario.mensagem, pedidosAbertos: false });
     if(!origemPermitida(req)) return res.status(403).json({ error: 'Origem não permitida.' });
