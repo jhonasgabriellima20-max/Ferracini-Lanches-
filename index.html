@@ -2250,6 +2250,22 @@ async function montarPagamentoCartao(order){
             body:JSON.stringify({id:order.id,form:formData})
           });
           const result=await resp.json().catch(()=>({}));
+          if(!resp.ok && result.needsNewOrder===true){
+            // 400 from the provider means this specific request was rejected.
+            // A later retry must start a fresh local order and idempotency key.
+            // Keep the cart; never issue a second charge automatically.
+            const message=String(result.error||'Dados do pagamento não aceitos.');
+            checkoutErrorBoxEl.innerHTML='<div class="checkout-error">⚠️ '+escapeHTML(message)+'</div>';
+            checkoutErrorBoxEl.scrollIntoView({behavior:'smooth',block:'nearest'});
+            status.textContent='Pagamento não concluído. Corrija os dados antes de recomeçar.';
+            document.getElementById('mpBrickSection').hidden=true;
+            mpOrderPending=null;
+            clientRequestIdAtual=null;
+            btnEnviarPedidoEl.style.display='block';
+            btnEnviarPedidoEl.disabled=false;
+            btnEnviarPedidoEl.textContent='Iniciar novo pedido após conferir extrato';
+            return;
+          }
           if(!resp.ok) throw new Error(result.error||'Não conseguimos verificar o pagamento.');
           if(result.status==='approved' && result.pedido){finalizarCheckoutConfirmado({pedido:result.pedido});return;}
           if(result.status==='rejected') throw new Error('Pagamento recusado. O pedido não foi enviado para a cozinha.');
