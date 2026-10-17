@@ -1272,7 +1272,7 @@ function aplicarDisponibilidadeAtendimento(){
 
 const PAYMENT_LABELS = { pix: 'Pix', dinheiro: 'Dinheiro', debito: 'Débito', credito: 'Crédito' };
 function paymentOptionsForMethod(){
-  return ['credito','debito']; // No Pix and no unpaid checkout.
+  return ['credito','debito']; // Operação deve coincidir com o cartão identificado pelo Mercado Pago.
 }
 function taxaServicoPorDistancia(distanciaKm){
   if(!Number.isFinite(distanciaKm) || distanciaKm <= 0) return 0;
@@ -2214,7 +2214,7 @@ async function montarPagamentoCartao(order){
   const mp=new window.MercadoPago(mpPublicKey,{locale:'pt-BR'});
   const controller=await mp.bricks().create('cardPayment','cardPaymentBrick_container',{
     initialization:{amount:order.totalCentavos/100},
-    customization:{paymentMethods:{types:{excluded:paymentMethod==='debito'?['credit_card','prepaid_card']:['debit_card','prepaid_card']}}},
+    customization:{paymentMethods:{types:{excluded:['prepaid_card']}}},
     callbacks:{
       onReady:()=>{
         if(attempt!==mpBrickAttempt) return;
@@ -2227,6 +2227,11 @@ async function montarPagamentoCartao(order){
       onSubmit:async formData=>{
         status.textContent='Verificando pagamento...';
         try{
+          const cardType=String(formData?.payment_type_id||'');
+          const requested=paymentMethod==='credito'?'credit_card':'debit_card';
+          if(cardType && cardType!==requested){
+            throw new Error('O Mercado Pago identificou um cartão '+(cardType==='debit_card'?'de débito':'de crédito')+', mas foi selecionado '+(paymentMethod==='credito'?'crédito':'débito')+'. Volte e selecione a modalidade correta.');
+          }
           const resp=await fetch('/api/mp-pagamento',{
             method:'POST',headers:{'Content-Type':'application/json'},
             body:JSON.stringify({id:order.id,form:formData})
