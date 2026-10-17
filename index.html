@@ -2125,7 +2125,7 @@ async function carregarSdkMP(){
       const script=document.createElement('script');
       script.src='https://sdk.mercadopago.com/js/v2';
       script.onload=resolve;
-      script.onerror=()=>reject(new Error('Não foi possível carregar o Mercado Pago.'));
+      script.onerror=()=>{ mpScriptPromise=null; script.remove(); reject(new Error('Não foi possível carregar o Mercado Pago.')); };
       document.head.appendChild(script);
     });
   }
@@ -2163,6 +2163,8 @@ async function montarPagamentoCartao(order){
   status.textContent='Informe os dados do cartão para pagar '+fmtPreco(order.totalCentavos/100)+'.';
   section.hidden=false;
   mpOrderPending=order.id;
+  // Ensure card fields remain visible when the first-step button disappears.
+  requestAnimationFrame(()=>{ if(mpOrderPending===order.id) section.scrollIntoView({behavior:'smooth',block:'start'}); });
   const container=document.getElementById('cardPaymentBrick_container');
   container.replaceChildren(); // clear an interrupted SDK render safely
   status.textContent='Carregando os campos seguros do Mercado Pago...';
