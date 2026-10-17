@@ -321,7 +321,7 @@ function catalogo(state = defaults()){
     .map(item => ({
       ...item,
       precoCentavos: precoEfetivo(item.nome, item.precoCentavos),
-      categoria: {'dog':'Lanches-Dog','x':'Lanches-X','bebidas':'Bebidas'}[item.categoria],
+      categoria: {'dog':'Lanches-Dog','x':'Lanches-X','marmitex':'Marmitex','bebidas':'Bebidas'}[item.categoria],
       personalizado: Object.hasOwn(state.precosPersonalizados || {}, item.nome),
     }));
   const excluidosGerenciaveis = [
@@ -332,7 +332,7 @@ function catalogo(state = defaults()){
     ...state.itensNovos.filter(item => item.categoria !== 'adicional' && excluidos.has(item.nome)).map(item => ({
       ...item,
       precoCentavos: precoEfetivo(item.nome, item.precoCentavos),
-      categoria: {'dog':'Lanches-Dog','x':'Lanches-X','bebidas':'Bebidas'}[item.categoria],
+      categoria: {'dog':'Lanches-Dog','x':'Lanches-X','marmitex':'Marmitex','bebidas':'Bebidas'}[item.categoria],
     })),
   ];
   return {
