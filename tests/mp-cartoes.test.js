@@ -22,10 +22,11 @@ Module._load=function(request,parent,isMain){
     };
   return originalLoad.apply(this,arguments);
 };
+process.env.VERCEL_ENV='preview';
 process.env.MP_CARD_CHECKOUT_ENABLED='true';
 process.env.MP_PUBLIC_KEY='TEST-public';
 process.env.MP_ACCESS_TOKEN='TEST-token';
-process.env.MP_WEBHOOK_SECRET='TEST-secret';
+// No webhook secret needed in Preview: only polling is used with test credentials.
 const handler=require('../api/pedidos');
 const mp=require('../lib/mp-checkout');
 async function call(body){
@@ -54,6 +55,7 @@ async function call(body){
   assert.equal(r.body.pedido.status,'aguardando_pagamento');
   assert.equal(r.body.pedido.totalCentavos,1500);
   assert.equal([...storage.keys()].filter(x=>x.startsWith('pedidos/fila/')).length,0);
+  assert.equal([...storage.keys()].filter(x=>x.startsWith('mp-preview/pedidos/fila/')).length,0);
   const d=await call({...order,clientRequestId:'teste-cartao-dinheiro',pagamento:{metodo:'dinheiro'}});
   assert.equal(d.statusCode,400);
   const approved={
@@ -80,9 +82,11 @@ async function call(body){
   const confirmed=await mp.reconcile(approved);
   assert.equal(confirmed.status,'approved');
   assert.equal(confirmed.pedido.numero,'01');
-  assert.equal([...storage.keys()].filter(x=>x.startsWith('pedidos/fila/')).length,1);
+  assert.equal([...storage.keys()].filter(x=>x.startsWith('pedidos/fila/')).length,0);
+  assert.equal([...storage.keys()].filter(x=>x.startsWith('mp-preview/pedidos/fila/')).length,1);
   const again=await mp.reconcile(approved);
   assert.equal(again.pedido.numero,'01');
-  assert.equal([...storage.keys()].filter(x=>x.startsWith('pedidos/fila/')).length,1);
+  assert.equal([...storage.keys()].filter(x=>x.startsWith('pedidos/fila/')).length,0);
+  assert.equal([...storage.keys()].filter(x=>x.startsWith('mp-preview/pedidos/fila/')).length,1);
   console.log('OK: comanda liberada somente após cartão aprovado e sem duplicidade');
 })().catch(e=>{console.error(e);process.exitCode=1;});
