@@ -25,6 +25,7 @@ Module._load=function(request,parent,isMain){
 process.env.MP_CARD_CHECKOUT_ENABLED='true';
 process.env.MP_PUBLIC_KEY='TEST-public';
 process.env.MP_ACCESS_TOKEN='TEST-token';
+process.env.MP_WEBHOOK_SECRET='TEST-secret';
 const handler=require('../api/pedidos');
 const mp=require('../lib/mp-checkout');
 async function call(body){
