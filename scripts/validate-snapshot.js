@@ -222,7 +222,7 @@ for(const file of ['api/comanda.js', 'api/distancia.js', 'api/disponibilidade.js
 
 if(fs.existsSync('index.html')){
   const html = fs.readFileSync('index.html', 'utf8');
-  if(!html.includes("return mpCardEnabled ? ['credito','debito'] : ['dinheiro','credito','debito'];")){
+  if(!html.includes("return ['credito','debito'];")){
     fail('index.html: Checkout com cartão deve excluir Pix e dinheiro quando ativado');
   }
   if(!html.includes('await montarPagamentoCartao(registro.pedido)')){
