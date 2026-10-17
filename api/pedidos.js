@@ -5,10 +5,12 @@ const { calcularTempoInternoLanches, calcularFilaTempoInterno, listarPedidosRece
 const { isStorageUnavailable: isDatabaseUnavailable, readJson, writeJson, listBlobs } = require('../lib/postgres-storage');
 
 const TIME_ZONE = 'America/Sao_Paulo';
-const COUNTER_PATH = 'config/pedidos-sequencia.json';
-const RESERVA_DIR = 'pedidos/reservas';
-const FILA_DIR = 'pedidos/fila';
-const AGUARDANDO_DIR = 'pedidos/aguardando';
+// Preview uses independent storage keys. The live Bematech agent only polls pedidos/fila/.
+const PREVIEW_NAMESPACE = process.env.VERCEL_ENV === 'preview' ? 'mp-preview/' : '';
+const COUNTER_PATH = PREVIEW_NAMESPACE + 'config/pedidos-sequencia.json';
+const RESERVA_DIR = PREVIEW_NAMESPACE + 'pedidos/reservas';
+const FILA_DIR = PREVIEW_NAMESPACE + 'pedidos/fila';
+const AGUARDANDO_DIR = PREVIEW_NAMESPACE + 'pedidos/aguardando';
 const MAX_BODY_BYTES = 64 * 1024;
 const MAX_ROUTE_KM = 35;
 const MAX_DISTANCE_DELTA_KM = 0.35;
@@ -443,6 +445,11 @@ async function confirmarPedido(id){
     pedido = await lerJson(pathname);
   }
   if(!pedido) throw new Error('Tentativa não encontrada hoje.');
+  if(require('../lib/mp-checkout').enabled() &&
+     ['credito','debito'].includes(pedido.pagamento?.metodo) &&
+     (pedido.pagamento?.status !== 'approved' || !pedido.pagamento?.mpOrderId)){
+    throw new Error('Comanda aguardando pagamento aprovado.');
+  }
   if(pedido.confirmadoPath){
     const confirmado = await lerJson(pedido.confirmadoPath);
     if(confirmado) return confirmado;
@@ -589,9 +596,31 @@ module.exports = async function handler(req, res){
       }
       const payloadValidado = await validarEntregaNoServidor(payloadBase);
       const payload = await aplicarEstimativaInteligente(payloadValidado);
+      const cardCheckoutEnabled = require('../lib/mp-checkout').enabled();
+      if(cardCheckoutEnabled && payload.atendimento.tipo !== 'mesa' &&
+         !['credito','debito'].includes(payload.pagamento.metodo)){
+        return res.status(400).json({error:'Nesta modalidade, o pagamento deve ser por cartão online.'});
+      }
       const registro = await criarPedido(payload);
-      // O clique em confirmar pedido já torna a comanda oficial no sistema.
-      // O WhatsApp é apenas uma cópia/apoio e não bloqueia a fila de impressão.
+      if(cardCheckoutEnabled && ['credito','debito'].includes(payload.pagamento.metodo)){
+        // Somente reserva o pedido; não numera nem envia à fila de impressão.
+        const pending=registro.pedido;
+        if(pending.pagamento?.status === 'approved' && pending.pagamento?.mpPaymentId){
+          const confirmado=await confirmarPedido(pending.id);
+          return res.status(200).json({pedido:{
+            id:confirmado.id,referencia:confirmado.referencia,numero:confirmado.numero,
+            criadoEm:confirmado.criadoEm,status:confirmado.status
+          },duplicado:true});
+        }
+        return res.status(registro.duplicado?200:201).json({
+          pedido:{
+            id:pending.id,referencia:pending.referencia,criadoEm:pending.criadoEm,
+            totalCentavos:pending.totalCentavos,status:'aguardando_pagamento'
+          },
+          duplicado:registro.duplicado,impressaoAtiva:false,
+        });
+      }
+      // Fluxo da mesa e modo antigo permanecem sem mudanças até ativação testada.
       const confirmado = await confirmarPedido(registro.pedido.id);
       return res.status(registro.duplicado ? 200 : 201).json({
         pedido: {

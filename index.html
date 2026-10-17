@@ -682,6 +682,11 @@
     </div>
 
     <div id="checkoutErrorBox"></div>
+    <div id="mpBrickSection" hidden style="margin-top:18px;background:#fff;color:#181818;padding:14px;border-radius:10px;">
+      <div style="font-size:15px;font-weight:800;margin-bottom:10px;">🔒 Pague com segurança pelo Mercado Pago</div>
+      <div id="cardPaymentBrick_container"></div>
+      <div id="mpPaymentStatus" role="status" aria-live="polite" style="font-size:14px;margin-top:10px;"></div>
+    </div>
 
     <button type="button" class="btn btn-primary btn-block btn-lg" id="btnEnviarPedido" style="margin-top:22px;">
       Confirmar pedido
@@ -1212,7 +1217,17 @@ const checkoutConfirmEl = document.getElementById('checkoutConfirm');
 const btnEnviarPedidoEl = document.getElementById('btnEnviarPedido');
 
 let deliveryMethod = 'entrega'; // 'retirada' | 'entrega'
-let paymentMethod = 'pix';
+let paymentMethod = 'credito';
+let mpCardEnabled = false, mpPublicKey = null, mpBrickController = null, mpScriptPromise = null, mpOrderPending = null;
+async function atualizarConfiguracaoMP(){
+  try{
+    const response = await fetch('/api/mp-config',{cache:'no-store'});
+    const data = await response.json();
+    mpCardEnabled = response.ok && data.enabled === true && typeof data.publicKey === 'string';
+    mpPublicKey = mpCardEnabled ? data.publicKey : null;
+  }catch(error){ console.warn('[checkout] mp_config_indisponivel',error); }
+}
+atualizarConfiguracaoMP();
 let precisaTroco = false;
 let trocoPara = '';
 let frete = { status: 'idle', distanciaKm: null, valor: 0, estimativa: null }; // idle | loading | ok | error
@@ -1253,7 +1268,7 @@ function aplicarDisponibilidadeAtendimento(){
 
 const PAYMENT_LABELS = { pix: 'Pix', dinheiro: 'Dinheiro', debito: 'Débito', credito: 'Crédito' };
 function paymentOptionsForMethod(){
-  return ['pix', 'dinheiro', 'debito', 'credito'];
+  return mpCardEnabled ? ['credito','debito'] : ['dinheiro','credito','debito'];
 }
 function taxaServicoPorDistancia(distanciaKm){
   if(!Number.isFinite(distanciaKm) || distanciaKm <= 0) return 0;
@@ -1287,8 +1302,8 @@ function descricaoPagamento(){
   if(deliveryMethod === 'mesa') return 'Pagamento a combinar no local';
   if(paymentMethod === 'pix') return `Pix manual — chave ${CONFIG.pix.tipo}: ${CONFIG.pix.chave}\nEnviar o comprovante pelo WhatsApp`;
   const localPagamento = deliveryMethod === 'entrega' ? 'na entrega' : (deliveryMethod === 'mesa' ? 'no local' : 'na retirada');
-  if(paymentMethod === 'credito') return `Crédito — pagamento ${localPagamento}`;
-  if(paymentMethod === 'debito') return `Débito — pagamento ${localPagamento}`;
+  if(paymentMethod === 'credito') return mpCardEnabled ? 'Crédito — pagamento online Mercado Pago' : `Crédito — pagamento ${localPagamento}`;
+  if(paymentMethod === 'debito') return mpCardEnabled ? 'Débito — pagamento online Mercado Pago' : `Débito — pagamento ${localPagamento}`;
   if(!precisaTroco) return 'Dinheiro — sem troco';
   return `Dinheiro — troco para ${fmtPreco(valorTrocoCentavos()/100)}\nTroco a devolver: ${fmtPreco((valorTrocoCentavos()-totalPedidoCentavos())/100)}`;
 }
@@ -1754,11 +1769,14 @@ async function abrirCheckout(){
   deliveryMethod = metodoInicial;
   aplicarDisponibilidadeAtendimento();
   resetFrete();
-  paymentMethod = 'pix';
+  await atualizarConfiguracaoMP();
+  paymentMethod = mpCardEnabled ? 'credito' : 'dinheiro';
   precisaTroco = false;
   trocoPara = '';
   checkoutErrorBoxEl.innerHTML = '';
   checkoutConfirmEl.style.display = 'none';
+  document.getElementById('mpBrickSection').hidden = true;
+  document.getElementById('mpPaymentStatus').textContent = '';
   document.getElementById('linkWhatsappCopia').style.display = 'none';
   btnEnviarPedidoEl.style.display = 'block';
   btnEnviarPedidoEl.disabled = false;
@@ -1769,7 +1787,9 @@ async function abrirCheckout(){
 }
 
 function fecharCheckout(){
+  if(mpOrderPending) return;
   if(btnEnviarPedidoEl.disabled && btnEnviarPedidoEl.style.display !== 'none') return;
+  if(mpBrickController){mpBrickController.unmount(); mpBrickController=null;}
   checkoutOverlayEl.classList.remove('open');
 }
 
@@ -1954,7 +1974,7 @@ async function registrarPedidoNoSistema(payload){
     }
     armazenamentoDegradado = data?.storageDegraded === true;
     if(data?.storageDegraded || !data?.pedido?.id ||
-       !['pendente','imprimindo','impresso','falhou'].includes(data.pedido.status)) {
+       !['pendente','imprimindo','impresso','falhou',...(mpCardEnabled?['aguardando_pagamento']:[])].includes(data.pedido.status)) {
       throw new Error('O pedido ainda não foi confirmado pelo sistema. Tente novamente sem refazer o carrinho.');
     }
     if(!data?.pedido?.referencia) throw new Error('O sistema não retornou a referência do pedido. Tente novamente.');
@@ -2051,6 +2071,24 @@ btnEnviarPedidoEl.addEventListener('click', async () => {
   }
 
   // Uma mensagem de sucesso exige resposta confirmada pelo servidor.
+  if(registro.pedido.status === 'aguardando_pagamento'){
+    btnEnviarPedidoEl.style.display = 'none';
+    try{ await montarPagamentoCartao(registro.pedido); }
+    catch(err){
+      mpOrderPending=null;
+      btnEnviarPedidoEl.style.display='block';
+      btnEnviarPedidoEl.disabled=false;
+      btnEnviarPedidoEl.textContent='Tentar novamente';
+      checkoutErrorBoxEl.innerHTML='<div class="checkout-error">⚠️ '+escapeHTML(err?.message||'Pagamento indisponível')+'</div>';
+    }
+    return;
+  }
+  finalizarCheckoutConfirmado(registro);
+});
+function finalizarCheckoutConfirmado(registro){
+  if(mpBrickController){mpBrickController.unmount();mpBrickController=null;}
+  document.getElementById('mpBrickSection').hidden=true;
+  mpOrderPending=null;
   const numeroComanda = registro.pedido.numero || registro.pedido.referencia;
   const linkCopia = document.getElementById('linkWhatsappCopia');
   const estimativaPedido = deliveryMethod === 'entrega'
@@ -2070,7 +2108,71 @@ btnEnviarPedidoEl.addEventListener('click', async () => {
   clientRequestIdAtual = null;
   Object.keys(cart).forEach(nome => delete cart[nome]);
   updateCartBar();
-});
+}
+
+
+async function carregarSdkMP(){
+  if(window.MercadoPago) return;
+  if(!mpScriptPromise){
+    mpScriptPromise=new Promise((resolve,reject)=>{
+      const script=document.createElement('script');
+      script.src='https://sdk.mercadopago.com/js/v2';
+      script.onload=resolve;
+      script.onerror=()=>reject(new Error('Não foi possível carregar o Mercado Pago.'));
+      document.head.appendChild(script);
+    });
+  }
+  return mpScriptPromise;
+}
+async function consultarPagamentoAteConfirmar(id){
+  for(let i=0;i<15;i++){
+    await new Promise(resolve=>setTimeout(resolve,3000));
+    const resp=await fetch('/api/mp-status?id='+encodeURIComponent(id),{cache:'no-store'});
+    if(!resp.ok) continue;
+    const data=await resp.json();
+    if(data.status==='approved' && data.pedido){finalizarCheckoutConfirmado({pedido:data.pedido});return;}
+    if(data.status==='rejected') throw new Error('O cartão foi recusado. Não foi criada comanda.');
+  }
+  throw new Error('Pagamento em análise. A comanda será liberada automaticamente se for aprovado. Não faça outra cobrança.');
+}
+async function montarPagamentoCartao(order){
+  if(!mpCardEnabled || !mpPublicKey || !Number.isInteger(order.totalCentavos))
+    throw new Error('Cartão online ainda não foi configurado.');
+  await carregarSdkMP();
+  if(mpBrickController){mpBrickController.unmount();mpBrickController=null;}
+  const section=document.getElementById('mpBrickSection');
+  const status=document.getElementById('mpPaymentStatus');
+  status.textContent='Informe os dados do cartão para pagar '+fmtPreco(order.totalCentavos/100)+'.';
+  section.hidden=false;
+  mpOrderPending=order.id;
+  const mp=new window.MercadoPago(mpPublicKey,{locale:'pt-BR'});
+  mpBrickController=await mp.bricks().create('cardPayment','cardPaymentBrick_container',{
+    initialization:{amount:order.totalCentavos/100},
+    customization:{paymentMethods:{types:{excluded:paymentMethod==='debito'?['credit_card','prepaid_card']:['debit_card','prepaid_card']}}},
+    callbacks:{
+      onReady:()=>{status.textContent='Preencha o cartão e toque em Pagar.';},
+      onSubmit:async formData=>{
+        status.textContent='Verificando pagamento...';
+        try{
+          const resp=await fetch('/api/mp-pagamento',{
+            method:'POST',headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({id:order.id,form:formData})
+          });
+          const result=await resp.json().catch(()=>({}));
+          if(!resp.ok) throw new Error(result.error||'Não conseguimos verificar o pagamento.');
+          if(result.status==='approved' && result.pedido){finalizarCheckoutConfirmado({pedido:result.pedido});return;}
+          if(result.status==='rejected') throw new Error('Pagamento recusado. O pedido não foi enviado para a cozinha.');
+          status.textContent='Pagamento em análise. Aguarde a confirmação...';
+          await consultarPagamentoAteConfirmar(order.id);
+        }catch(error){
+          status.textContent=error?.message||'Não foi possível concluir o pagamento.';
+          throw error;
+        }
+      },
+      onError:error=>{console.warn('[mp] brick_error',String(error?.message||error));}
+    }
+  });
+}
 
 updateCartBar();
 atualizarStatusHorarioPedidos();

@@ -255,10 +255,14 @@ function Format-Receipt($Pedido, [int]$Width, [bool]$UseEmojis = $true) {
     $lines.Add('Conferir comprovante no WhatsApp')
   } elseif ($pag -eq 'credito') {
     $lines.Add((Receipt-Label '💳' 'PAGAMENTO: CREDITO' $UseEmojis))
-    if ([string]$Pedido.atendimento.tipo -eq 'entrega') { $lines.Add('Maquina na entrega') } elseif ([string]$Pedido.atendimento.tipo -eq 'mesa') { $lines.Add('Pagamento no local') } else { $lines.Add('Pagamento na retirada') }
+    if ([string]$Pedido.pagamento.status -eq 'approved') {
+      $lines.Add('PAGO ONLINE - MERCADO PAGO')
+    } elseif ([string]$Pedido.atendimento.tipo -eq 'entrega') { $lines.Add('Maquina na entrega') } elseif ([string]$Pedido.atendimento.tipo -eq 'mesa') { $lines.Add('Pagamento no local') } else { $lines.Add('Pagamento na retirada') }
   } elseif ($pag -eq 'debito') {
     $lines.Add((Receipt-Label '💳' 'PAGAMENTO: DEBITO' $UseEmojis))
-    if ([string]$Pedido.atendimento.tipo -eq 'entrega') { $lines.Add('Maquina na entrega') } elseif ([string]$Pedido.atendimento.tipo -eq 'mesa') { $lines.Add('Pagamento no local') } else { $lines.Add('Pagamento na retirada') }
+    if ([string]$Pedido.pagamento.status -eq 'approved') {
+      $lines.Add('PAGO ONLINE - MERCADO PAGO')
+    } elseif ([string]$Pedido.atendimento.tipo -eq 'entrega') { $lines.Add('Maquina na entrega') } elseif ([string]$Pedido.atendimento.tipo -eq 'mesa') { $lines.Add('Pagamento no local') } else { $lines.Add('Pagamento na retirada') }
   } elseif ($pag -eq 'cartao') {
     $lines.Add((Receipt-Label '💳' 'PAGAMENTO: CARTAO' $UseEmojis))
     if ([string]$Pedido.atendimento.tipo -eq 'entrega') { $lines.Add('Maquina na entrega') } elseif ([string]$Pedido.atendimento.tipo -eq 'mesa') { $lines.Add('Pagamento no local') } else { $lines.Add('Pagamento na retirada') }
