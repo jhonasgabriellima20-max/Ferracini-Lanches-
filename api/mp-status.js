@@ -1,4 +1,4 @@
-const {enabled,findOrder,getPayment,reconcile,identifier}=require('../lib/mp-checkout');
+const {enabled,findOrder,getOrder,reconcile,identifier,rejected}=require('../lib/mp-checkout');
 module.exports=async function handler(req,res){
   res.setHeader('Cache-Control','no-store');
   if(req.method!=='GET') return res.status(405).json({error:'Método não permitido'});
@@ -7,14 +7,12 @@ module.exports=async function handler(req,res){
   try{
     const found=await findOrder(req.query.id);
     if(!found) return res.status(404).json({error:'Pedido não encontrado'});
-    const pid=found.order?.pagamento?.mpPaymentId;
-    if(pid){
-      const payment=await getPayment(pid);
-      if(payment.status==='approved'){
-        const result=await reconcile(payment);
-        if(result?.status==='approved') return res.status(200).json(result);
-      }
-      return res.status(200).json({status:payment.status==='rejected'?'rejected':'pending'});
+    const id=found.order?.pagamento?.mpOrderId;
+    if(id){
+      const mpOrder=await getOrder(id);
+      const result=await reconcile(mpOrder);
+      if(result?.status==='approved') return res.status(200).json(result);
+      return res.status(200).json({status:rejected(mpOrder)?'rejected':'pending'});
     }
     return res.status(200).json({status:'aguardando_pagamento'});
   }catch(error){
