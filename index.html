@@ -2200,6 +2200,9 @@ async function montarPagamentoCartao(order){
   const container=document.getElementById('cardPaymentBrick_container');
   container.replaceChildren(); // clear an interrupted SDK render safely
   status.textContent='Carregando os campos seguros do Mercado Pago...';
+  if(paymentMethod==='debito'){
+    status.textContent='Débito à vista: somente 1 vez, sem parcelamento. O Mercado Pago identifica a modalidade do cartão.';
+  }
   let brickReady=false;
   const watchdog=setTimeout(()=>{
     if(!brickReady && mpOrderPending===order.id){
@@ -2214,7 +2217,11 @@ async function montarPagamentoCartao(order){
   const mp=new window.MercadoPago(mpPublicKey,{locale:'pt-BR'});
   const controller=await mp.bricks().create('cardPayment','cardPaymentBrick_container',{
     initialization:{amount:order.totalCentavos/100},
-    customization:{paymentMethods:{types:{excluded:['prepaid_card']}}},
+    customization:{paymentMethods:{
+      types:{excluded:['prepaid_card']},
+      minInstallments:1,
+      maxInstallments:paymentMethod==='debito'?1:12
+    }},
     callbacks:{
       onReady:()=>{
         if(attempt!==mpBrickAttempt) return;
@@ -2222,11 +2229,17 @@ async function montarPagamentoCartao(order){
         clearTimeout(watchdog);
         retryBtn.hidden=true;
         status.style.color='#181818';
-        status.textContent='Preencha os dados do cartão e toque em Pagar.';
+        status.textContent=paymentMethod==='debito'
+          ? 'Débito à vista — 1 vez. Preencha os dados e toque em Pagar.'
+          : 'Crédito — escolha as parcelas disponíveis e toque em Pagar.';
       },
       onSubmit:async formData=>{
         status.textContent='Verificando pagamento...';
         try{
+          const parcelas=Number(formData?.installments);
+          if(!Number.isInteger(parcelas)||parcelas<1 || (paymentMethod==='debito'&&parcelas!==1)){
+            throw new Error('Pagamento no débito deve ser à vista, sem parcelamento. Confira a opção de cartão e tente novamente.');
+          }
           const cardType=String(formData?.payment_type_id||'');
           const requested=paymentMethod==='credito'?'credit_card':'debit_card';
           if(cardType && cardType!==requested){

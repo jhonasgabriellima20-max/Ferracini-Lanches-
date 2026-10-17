@@ -96,5 +96,11 @@ async function call(body){
   assert.doesNotMatch(html,/excluded:paymentMethod===/);
   assert.match(html,/formData\?\.payment_type_id/);
   assert.match(html,/return \['credito','debito'\]/);
+  // Débito nunca pode ser parcelado, no frontend ou no servidor.
+  assert.match(html,/maxInstallments:paymentMethod==='debito'\?1:12/);
+  const backend=fs.readFileSync(require('node:path').join(__dirname,'../lib/mp-checkout.js'),'utf8');
+  assert.match(backend,/form\.installments!==1/);
+  const endpoint=fs.readFileSync(require('node:path').join(__dirname,'../api/mp-pagamento.js'),'utf8');
+  assert.match(endpoint,/error\?\.status===403/);
   console.log('OK: comanda liberada somente após cartão aprovado e sem duplicidade');
 })().catch(e=>{console.error(e);process.exitCode=1;});

@@ -19,7 +19,18 @@ module.exports=async function handler(req,res){
     return res.status(200).json(result);
   }catch(error){
     if(['cartao_invalido','pedido_nao_encontrado'].includes(error?.message)) return res.status(400).json({error:'Dados do pagamento inválidos ou pedido expirado.'});
-    console.error('[mp] pagamento_falhou',{reason:String(error?.message||error)});
+    console.error('[mp] pagamento_falhou',{
+      reason:String(error?.message||error),
+      operation:error?.operation||'unknown',
+      providerCode:error?.providerCode||'unknown',
+      providerRequestId:error?.providerRequestId||'not_provided'
+    });
+    if(error?.status===403){
+      return res.status(503).json({
+        error:'O Mercado Pago negou acesso à cobrança (erro 403). A integração precisa de autorização ou correção das credenciais da conta. Confira no Mercado Pago se existe pagamento registrado antes de tentar novamente.',
+        blockedByProvider:true
+      });
+    }
     return res.status(503).json({error:'Não foi possível verificar o pagamento. Confira o status antes de tentar novamente.'});
   }
 };
