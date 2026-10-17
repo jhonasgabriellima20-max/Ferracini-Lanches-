@@ -2248,8 +2248,17 @@ async function montarPagamentoCartao(order){
       onError:error=>{
         if(attempt!==mpBrickAttempt) return;
         const cause=error?.cause?.code||error?.cause||error?.type||'unknown';
-        reportarFalhaMP('brick_error',typeof cause==='string'?cause:'unknown');
-        console.warn('[mp] brick_error',String(error?.message||error?.type||error));
+        const code=typeof cause==='string'?cause:'unknown';
+        reportarFalhaMP('brick_error',code);
+        console.warn('[mp] brick_error',code);
+        // The SDK may call onReady before a card BIN/payment information is validated.
+        // A non-critical missing_payment_information must still get visible guidance.
+        if(code==='missing_payment_information'){
+          status.style.color='#991b1b';
+          status.textContent='O Mercado Pago não conseguiu identificar informações necessárias deste cartão (bandeira, parcelas ou emissor). Confira se escolheu crédito ou débito corretamente e os dados do cartão. Se continuar, experimente outro cartão. Nenhuma nova cobrança é iniciada ao recarregar o formulário.';
+          retryBtn.hidden=false;
+          return;
+        }
         if(!brickReady && error?.type==='critical'){
           clearTimeout(watchdog);
           status.style.color='#991b1b';
