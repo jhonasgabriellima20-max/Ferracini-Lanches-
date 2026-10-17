@@ -689,7 +689,7 @@
     </div>
 
     <button type="button" class="btn btn-primary btn-block btn-lg" id="btnEnviarPedido" style="margin-top:22px;">
-      Continuar para pagamento
+      Confirmar pedido
     </button>
 
     <div class="checkout-confirm" id="checkoutConfirm" style="display:none;" role="status" aria-live="polite"></div>
@@ -1787,7 +1787,7 @@ async function abrirCheckout(){
   document.getElementById('linkWhatsappCopia').style.display = 'none';
   btnEnviarPedidoEl.style.display = 'block';
   btnEnviarPedidoEl.disabled = false;
-  btnEnviarPedidoEl.textContent = 'Continuar para pagamento';
+  btnEnviarPedidoEl.textContent = 'Confirmar pedido';
   renderPaymentOptions();
   renderCheckout();
   checkoutOverlayEl.classList.add('open');
@@ -2043,7 +2043,7 @@ btnEnviarPedidoEl.addEventListener('click', async () => {
       btnEnviarPedidoEl.textContent = 'Calculando entrega...';
       await calcularFrete();
       btnEnviarPedidoEl.disabled = false;
-      btnEnviarPedidoEl.textContent = 'Continuar para pagamento';
+      btnEnviarPedidoEl.textContent = 'Confirmar pedido';
     }
   }
 
@@ -2068,7 +2068,7 @@ btnEnviarPedidoEl.addEventListener('click', async () => {
   } catch (err) {
     console.warn('[checkout] confirmacao_pedido_indisponivel', { erro: String(err) });
     btnEnviarPedidoEl.disabled = false;
-    btnEnviarPedidoEl.textContent = 'Continuar para pagamento';
+    btnEnviarPedidoEl.textContent = 'Confirmar pedido';
     checkoutErrorBoxEl.innerHTML =
       '<div class="checkout-error">⚠️ ' +
       escapeHTML(err?.message || 'Não conseguimos confirmar agora. Tente novamente.') +
