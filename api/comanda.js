@@ -83,16 +83,16 @@ function isConflict(err){
 }
 
 async function lerUltimo(dataAtual){
-  const result = await readJson(`${COUNTER_PATH}.${dataAtual.slice(0, 7)}`);
+  const result = await readJson(`${COUNTER_PATH}.${dataAtual}`);
   const data = result.value || (await readJson(COUNTER_PATH)).value;
-  if(!data || String(data.data || '').slice(0, 7) !== dataAtual.slice(0, 7)) return 0;
+  if(!data || String(data.data || '') !== dataAtual) return 0;
   return Number.isSafeInteger(data.ultimo) && data.ultimo >= 0 ? data.ultimo : 0;
 }
 
 async function reservarNumero(numero, dataAtual){
   const codigo = String(numero).padStart(2, '0');
   const token = crypto.randomUUID();
-  const pathname = RESERVA_DIR + '/' + dataAtual.slice(0, 7) + '/' + String(numero).padStart(8,'0') + '.json';
+  const pathname = RESERVA_DIR + '/' + dataAtual + '/' + String(numero).padStart(8,'0') + '.json';
   await writeJson(pathname, {
     numero,
     codigo,
@@ -104,7 +104,7 @@ async function reservarNumero(numero, dataAtual){
 }
 
 async function salvarUltimo(numero, dataAtual){
-  await writeJson(`${COUNTER_PATH}.${dataAtual.slice(0, 7)}`, {
+  await writeJson(`${COUNTER_PATH}.${dataAtual}`, {
     data: dataAtual,
     ultimo: numero,
     updatedAt: new Date().toISOString()
