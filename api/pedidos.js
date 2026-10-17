@@ -445,7 +445,7 @@ async function confirmarPedido(id){
   if(!pedido) throw new Error('Tentativa não encontrada hoje.');
   if(require('../lib/mp-checkout').enabled() &&
      ['credito','debito'].includes(pedido.pagamento?.metodo) &&
-     (pedido.pagamento?.status !== 'approved' || !pedido.pagamento?.mpPaymentId)){
+     (pedido.pagamento?.status !== 'approved' || !pedido.pagamento?.mpOrderId)){
     throw new Error('Comanda aguardando pagamento aprovado.');
   }
   if(pedido.confirmadoPath){
