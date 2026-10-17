@@ -689,7 +689,7 @@
     </div>
 
     <button type="button" class="btn btn-primary btn-block btn-lg" id="btnEnviarPedido" style="margin-top:22px;">
-      Confirmar pedido
+      Continuar para pagamento
     </button>
 
     <div class="checkout-confirm" id="checkoutConfirm" style="display:none;" role="status" aria-live="polite"></div>
@@ -1787,7 +1787,7 @@ async function abrirCheckout(){
   document.getElementById('linkWhatsappCopia').style.display = 'none';
   btnEnviarPedidoEl.style.display = 'block';
   btnEnviarPedidoEl.disabled = false;
-  btnEnviarPedidoEl.textContent = 'Confirmar pedido';
+  btnEnviarPedidoEl.textContent = 'Continuar para pagamento';
   renderPaymentOptions();
   renderCheckout();
   checkoutOverlayEl.classList.add('open');
@@ -2043,7 +2043,7 @@ btnEnviarPedidoEl.addEventListener('click', async () => {
       btnEnviarPedidoEl.textContent = 'Calculando entrega...';
       await calcularFrete();
       btnEnviarPedidoEl.disabled = false;
-      btnEnviarPedidoEl.textContent = 'Confirmar pedido';
+      btnEnviarPedidoEl.textContent = 'Continuar para pagamento';
     }
   }
 
@@ -2068,7 +2068,7 @@ btnEnviarPedidoEl.addEventListener('click', async () => {
   } catch (err) {
     console.warn('[checkout] confirmacao_pedido_indisponivel', { erro: String(err) });
     btnEnviarPedidoEl.disabled = false;
-    btnEnviarPedidoEl.textContent = 'Confirmar pedido';
+    btnEnviarPedidoEl.textContent = 'Continuar para pagamento';
     checkoutErrorBoxEl.innerHTML =
       '<div class="checkout-error">⚠️ ' +
       escapeHTML(err?.message || 'Não conseguimos confirmar agora. Tente novamente.') +
@@ -2125,7 +2125,7 @@ async function carregarSdkMP(){
       const script=document.createElement('script');
       script.src='https://sdk.mercadopago.com/js/v2';
       script.onload=resolve;
-      script.onerror=()=>reject(new Error('Não foi possível carregar o Mercado Pago.'));
+      script.onerror=()=>{ mpScriptPromise=null; script.remove(); reject(new Error('Não foi possível carregar o Mercado Pago.')); };
       document.head.appendChild(script);
     });
   }
@@ -2163,6 +2163,8 @@ async function montarPagamentoCartao(order){
   status.textContent='Informe os dados do cartão para pagar '+fmtPreco(order.totalCentavos/100)+'.';
   section.hidden=false;
   mpOrderPending=order.id;
+  // Ensure card fields remain visible when the first-step button disappears.
+  requestAnimationFrame(()=>{ if(mpOrderPending===order.id) section.scrollIntoView({behavior:'smooth',block:'start'}); });
   const container=document.getElementById('cardPaymentBrick_container');
   container.replaceChildren(); // clear an interrupted SDK render safely
   status.textContent='Carregando os campos seguros do Mercado Pago...';
