@@ -58,3 +58,12 @@ No menu use 5 - Abrir arquivo de log para diagnosticar. Em caso de mensagem de f
 4. Reinicie o notebook com a Bematech ligada e conectada; a inicialização automática existente passa a usar o novo script.
 5. No menu existente, escolha **2 — Imprimir teste** e confira os destaques e símbolos no papel. Essa comanda é marcada como TESTE e não vai para o servidor.
 6. Antes de atender clientes, confira se a impressão de um pedido legítimo funciona. Se as figuras saírem como quadradinhos, desative somente `useEmojis` no `config.json`, mantendo o negrito.
+
+## Comanda paga pelo site (atualizacao 17/10/2026)
+
+- Comanda de entrega ou retirada paga no cartão aprovado mostra **PAGO PELO SITE - MERCADO PAGO**.
+- A etiqueta de pago só aparece se a ordem estiver **approved** e tiver **mpOrderId**.
+- O agente de impressao tambem descarta localmente entradas sem aprovacao/ID, em complemento ao filtro de seguranca do servidor.
+- Todas as linhas ficam em negrito, com o total em fonte maior; emojis dependem do driver Bematech.
+- O menu **2 - Imprimir teste** agora usa retirada e uma aprovação fictícia, exclusivamente local, sem registrar pedido nem cobrar cartão.
+- Para atualizar uma instalacao já existente sem perder token e configuracao, substitua **apenas** FerraciniPrintAgent.ps1, depois reinicie o agente. Faça backup antes.

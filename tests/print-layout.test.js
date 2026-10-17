@@ -20,6 +20,11 @@ assert.match(script, /function Receipt-Label/);
 assert.match(script, /useEmojis = \$true/);
 assert.match(script, /Format-Receipt \$pedido \$width \$useEmojis/);
 assert.match(script, /FontStyle\.Bold/);
+assert.match(script, /PAGO PELO SITE - MERCADO PAGO/);
+assert.match(script, /pagamento\.mpOrderId/);
+assert.match(script, /Defesa adicional: nunca enviar comanda sem pagamento aprovado/);
+assert.match(script, /FontStyle\.Bold, GraphicsUnit\.Point/);
+
 assert.match(script, /private static bool IsTotal/);
 assert.match(script, /private static bool IsImportant/);
 assert.match(script, /Taxa de servico:/);

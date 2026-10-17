@@ -255,13 +255,13 @@ function Format-Receipt($Pedido, [int]$Width, [bool]$UseEmojis = $true) {
     $lines.Add('Conferir comprovante no WhatsApp')
   } elseif ($pag -eq 'credito') {
     $lines.Add((Receipt-Label '💳' 'PAGAMENTO: CREDITO' $UseEmojis))
-    if ([string]$Pedido.pagamento.status -eq 'approved') {
-      $lines.Add('PAGO ONLINE - MERCADO PAGO')
+    if ([string]$Pedido.pagamento.status -eq 'approved' -and -not [string]::IsNullOrWhiteSpace([string]$Pedido.pagamento.mpOrderId)) {
+      $lines.Add('PAGO PELO SITE - MERCADO PAGO')
     } elseif ([string]$Pedido.atendimento.tipo -eq 'entrega') { $lines.Add('Maquina na entrega') } elseif ([string]$Pedido.atendimento.tipo -eq 'mesa') { $lines.Add('Pagamento no local') } else { $lines.Add('Pagamento na retirada') }
   } elseif ($pag -eq 'debito') {
     $lines.Add((Receipt-Label '💳' 'PAGAMENTO: DEBITO' $UseEmojis))
-    if ([string]$Pedido.pagamento.status -eq 'approved') {
-      $lines.Add('PAGO ONLINE - MERCADO PAGO')
+    if ([string]$Pedido.pagamento.status -eq 'approved' -and -not [string]::IsNullOrWhiteSpace([string]$Pedido.pagamento.mpOrderId)) {
+      $lines.Add('PAGO PELO SITE - MERCADO PAGO')
     } elseif ([string]$Pedido.atendimento.tipo -eq 'entrega') { $lines.Add('Maquina na entrega') } elseif ([string]$Pedido.atendimento.tipo -eq 'mesa') { $lines.Add('Pagamento no local') } else { $lines.Add('Pagamento na retirada') }
   } elseif ($pag -eq 'cartao') {
     $lines.Add((Receipt-Label '💳' 'PAGAMENTO: CARTAO' $UseEmojis))
@@ -457,14 +457,16 @@ function Print-Test {
     numero = 'TESTE'
     criadoEm = (Get-Date).ToString('o')
     cliente = [pscustomobject]@{ nome = 'CLIENTE TESTE'; telefone = '(43) 00000-0000' }
-    atendimento = [pscustomobject]@{ tipo = 'mesa'; mesa = '01'; taxaServicoCentavos = 300 }
+    atendimento = [pscustomobject]@{ tipo = 'retirada'; taxaServicoCentavos = 300 }
     itens = @([pscustomobject]@{
       nome = 'X-SALADA'; quantidade = 2; precoUnitarioCentavos = 2500
       adicionais = @(); observacao = 'SEM CEBOLA'
     })
     subtotalCentavos = 5000
     totalCentavos = 5300
-    pagamento = [pscustomobject]@{ metodo = 'no_local' }
+    pagamento = [pscustomobject]@{
+      metodo = 'credito'; status = 'approved'; mpOrderId = 'TESTE_SEM_COBRANCA'
+    }
   }
   $text = 'TESTE DE IMPRESSAO - NAO E PEDIDO REAL' + [Environment]::NewLine +
           (Format-Receipt $pedidoTeste $width $useEmojis)
@@ -515,7 +517,13 @@ function Run-Agent {
     while ($true) {
       try {
         $fila = Invoke-Api 'GET' ($baseUrl + '/api/fila-impressao?limit=25') $token
-        $pendentes = @($fila.pedidos | Where-Object { $_.status -eq 'pendente' } | Sort-Object criadoEm)
+        # Defesa adicional: nunca enviar comanda sem pagamento aprovado no Mercado Pago.
+        $pendentes = @($fila.pedidos | Where-Object {
+          $_.status -eq 'pendente' -and
+          $_.pagamento.metodo -in @('credito','debito') -and
+          [string]$_.pagamento.status -eq 'approved' -and
+          -not [string]::IsNullOrWhiteSpace([string]$_.pagamento.mpOrderId)
+        } | Sort-Object criadoEm)
 
         foreach ($pedido in $pendentes) {
           try {
