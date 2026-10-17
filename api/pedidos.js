@@ -448,9 +448,12 @@ async function confirmarPedido(id){
     pedido = await lerJson(pathname);
   }
   if(!pedido) throw new Error('Tentativa não encontrada hoje.');
-  if(require('../lib/mp-checkout').enabled() &&
-     ['credito','debito'].includes(pedido.pagamento?.metodo) &&
-     (pedido.pagamento?.status !== 'approved' || !pedido.pagamento?.mpOrderId)){
+  // Fail closed: only card orders verified server-side can enter the print queue.
+  // Do not trust a payment status provided by the browser.
+  if((process.env.VERCEL_ENV === 'production' || process.env.VERCEL_ENV === 'preview') &&
+     (!require('../lib/mp-checkout').enabled() ||
+      !['credito','debito'].includes(pedido.pagamento?.metodo) ||
+      pedido.pagamento?.status !== 'approved' || !pedido.pagamento?.mpOrderId)){
     throw new Error('Comanda aguardando pagamento aprovado.');
   }
   if(pedido.confirmadoPath){
@@ -567,6 +570,13 @@ module.exports = async function handler(req, res){
   }
 
   if(req.method === 'POST'){
+    // If online card processing is disabled, never fall back to the old
+    // "confirmar pedido" path: it created unpaid ghost receipts.
+    if((process.env.VERCEL_ENV === 'production' || process.env.VERCEL_ENV === 'preview') &&
+       !require('../lib/mp-checkout').enabled()){
+      return res.status(503).json({error:'Pagamento online em configuração. Nenhuma comanda foi gerada.',
+        pedidoConfirmado:false,pagamentoVerificado:false,checkoutSuspenso:true});
+    }
     const horario = await statusHorarioPedidos();
     if(!horario.aberto) return res.status(403).json({ error: horario.mensagem, pedidosAbertos: false });
     if(!origemPermitida(req)) return res.status(403).json({ error: 'Origem não permitida.' });
@@ -600,15 +610,16 @@ module.exports = async function handler(req, res){
       const payloadValidado = await validarEntregaNoServidor(payloadBase);
       const payload = await aplicarEstimativaInteligente(payloadValidado);
       const cardCheckoutEnabled = require('../lib/mp-checkout').enabled();
-      if(cardCheckoutEnabled && payload.atendimento.tipo !== 'mesa' &&
-         !['credito','debito'].includes(payload.pagamento.metodo)){
-        return res.status(400).json({error:'Nesta modalidade, o pagamento deve ser por cartão online.'});
+      if(cardCheckoutEnabled &&
+         (payload.atendimento.tipo === 'mesa' ||
+         !['credito','debito'].includes(payload.pagamento.metodo))){
+        return res.status(400).json({error:'Só liberamos pedidos após pagamento online aprovado. Pedidos no local ainda não estão habilitados.'});
       }
       const registro = await criarPedido(payload);
       if(cardCheckoutEnabled && ['credito','debito'].includes(payload.pagamento.metodo)){
         // Somente reserva o pedido; não numera nem envia à fila de impressão.
         const pending=registro.pedido;
-        if(pending.pagamento?.status === 'approved' && pending.pagamento?.mpPaymentId){
+        if(pending.pagamento?.status === 'approved' && pending.pagamento?.mpOrderId){
           const confirmado=await confirmarPedido(pending.id);
           return res.status(200).json({pedido:{
             id:confirmado.id,referencia:confirmado.referencia,numero:confirmado.numero,
@@ -623,7 +634,7 @@ module.exports = async function handler(req, res){
           duplicado:registro.duplicado,impressaoAtiva:false,
         });
       }
-      // Fluxo da mesa e modo antigo permanecem sem mudanças até ativação testada.
+      // No card authorization in the checkout means no receipt or print job in Vercel.
       const confirmado = await confirmarPedido(registro.pedido.id);
       return res.status(registro.duplicado ? 200 : 201).json({
         pedido: {
