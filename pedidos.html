@@ -80,8 +80,8 @@ function pagamento(p){
   }
   if(p.pagamento?.metodo === 'pix') return 'Pix · conferir comprovante no WhatsApp';
   const local = p.atendimento?.tipo === 'entrega' ? 'na entrega' : (p.atendimento?.tipo === 'mesa' ? 'no local' : 'na retirada');
-  if(p.pagamento?.metodo === 'credito') return `Crédito · máquina ${local}`;
-  if(p.pagamento?.metodo === 'debito') return `Débito · máquina ${local}`;
+  if(p.pagamento?.metodo === 'credito') return p.pagamento?.status === 'approved' ? 'Crédito · PAGO ONLINE Mercado Pago' : `Crédito · máquina ${local}`;
+  if(p.pagamento?.metodo === 'debito') return p.pagamento?.status === 'approved' ? 'Débito · PAGO ONLINE Mercado Pago' : `Débito · máquina ${local}`;
   if(p.pagamento?.metodo === 'cartao') return `Cartão · máquina ${local}`;
   return 'Forma de pagamento não informada';
 }
