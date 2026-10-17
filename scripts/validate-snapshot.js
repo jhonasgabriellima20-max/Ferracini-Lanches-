@@ -222,11 +222,11 @@ for(const file of ['api/comanda.js', 'api/distancia.js', 'api/disponibilidade.js
 
 if(fs.existsSync('index.html')){
   const html = fs.readFileSync('index.html', 'utf8');
-  if(!html.includes("const PAYMENT_LABELS = { debito: 'Débito online', credito: 'Crédito online' };")){
-    fail('index.html: apenas cartões devem constar nas opções do checkout');
-  }
   if(!html.includes("return ['credito','debito'];")){
-    fail('index.html: Pix não pode mais aparecer no checkout');
+    fail('index.html: Checkout com cartão deve excluir Pix e dinheiro quando ativado');
+  }
+  if(!html.includes('await montarPagamentoCartao(registro.pedido)')){
+    fail('index.html: formulário de cartão deve aguardar pedido reservado');
   }
 }
 
