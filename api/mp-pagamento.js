@@ -23,8 +23,21 @@ module.exports=async function handler(req,res){
       reason:String(error?.message||error),
       operation:error?.operation||'unknown',
       providerCode:error?.providerCode||'unknown',
+      providerField:error?.providerField||'unspecified',
+      providerHint:error?.providerHint||'unspecified',
       providerRequestId:error?.providerRequestId||'not_provided'
     });
+    if(error?.operation==='create_order' && error?.status===400){
+      const message=error?.providerHint==='email'
+        ? 'O Mercado Pago rejeitou o e-mail informado. Use seu e-mail pessoal real e válido (sem endereços de teste).'
+        : error?.providerHint==='installments'
+          ? 'O Mercado Pago rejeitou as parcelas selecionadas. Confira a modalidade e utilize débito somente à vista.'
+          : 'O Mercado Pago rejeitou uma informação do pagamento. Confira e-mail, modalidade e dados do cartão.';
+      return res.status(422).json({error:message+' Confira se houve cobrança antes de iniciar um novo pedido.',needsNewOrder:true,providerCode:error?.providerCode||'invalid_request'});
+    }
+    if(error?.operation==='create_order' && error?.status===409){
+      return res.status(409).json({error:'Esta tentativa já foi utilizada pelo Mercado Pago. Confira o extrato antes de fazer outro pedido; não reutilize a mesma tentativa.',needsNewOrder:true,providerCode:error?.providerCode||'idempotency_conflict'});
+    }
     if(error?.status===403){
       return res.status(503).json({
         error:'O Mercado Pago negou acesso à cobrança (erro 403). A integração precisa de autorização ou correção das credenciais da conta. Confira no Mercado Pago se existe pagamento registrado antes de tentar novamente.',
