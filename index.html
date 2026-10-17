@@ -1269,7 +1269,7 @@ function aplicarDisponibilidadeAtendimento(){
 
 const PAYMENT_LABELS = { pix: 'Pix', dinheiro: 'Dinheiro', debito: 'Débito', credito: 'Crédito' };
 function paymentOptionsForMethod(){
-  return mpCardEnabled ? ['credito','debito'] : ['dinheiro','credito','debito'];
+  return ['credito','debito']; // No Pix and no unpaid checkout.
 }
 function taxaServicoPorDistancia(distanciaKm){
   if(!Number.isFinite(distanciaKm) || distanciaKm <= 0) return 0;
@@ -1752,6 +1752,11 @@ function atualizarStatusHorarioPedidos(){
 }
 
 async function abrirCheckout(){
+  await atualizarConfiguracaoMP();
+  if(!mpCardEnabled){
+    alert('Pagamento online temporariamente indisponível. Nenhuma comanda foi gerada.');
+    return;
+  }
   if(btnEnviarPedidoEl.disabled && btnEnviarPedidoEl.style.display !== 'none') return;
   if(cartTotals().totalQty === 0) return;
   await carregarDisponibilidade({ silencioso:true, force:true });
