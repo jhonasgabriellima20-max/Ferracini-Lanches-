@@ -321,7 +321,7 @@ function catalogo(state = defaults()){
     .map(item => ({
       ...item,
       precoCentavos: precoEfetivo(item.nome, item.precoCentavos),
-      categoria: {'dog':'Lanches-Dog','x':'Lanches-X','bebidas':'Bebidas'}[item.categoria],
+      categoria: {'dog':'Lanches-Dog','x':'Lanches-X','marmitex':'Marmitex','bebidas':'Bebidas'}[item.categoria],
       personalizado: Object.hasOwn(state.precosPersonalizados || {}, item.nome),
     }));
   const excluidosGerenciaveis = [
@@ -332,7 +332,7 @@ function catalogo(state = defaults()){
     ...state.itensNovos.filter(item => item.categoria !== 'adicional' && excluidos.has(item.nome)).map(item => ({
       ...item,
       precoCentavos: precoEfetivo(item.nome, item.precoCentavos),
-      categoria: {'dog':'Lanches-Dog','x':'Lanches-X','bebidas':'Bebidas'}[item.categoria],
+      categoria: {'dog':'Lanches-Dog','x':'Lanches-X','marmitex':'Marmitex','bebidas':'Bebidas'}[item.categoria],
     })),
   ];
   return {
@@ -600,7 +600,14 @@ module.exports = async function handler(req, res){
       const current = await readState({force:true});
       if(!current.storageReady) return res.status(503).json({error:'Armazenamento indisponível. Tente novamente.'});
       if(body.updatedAt !== current.state.updatedAt) return res.status(409).json({error:'O painel foi atualizado em outro acesso. Recarregue a página antes de salvar.'});
-      const itensNovos = body.novoItem ? addItem(current.state.itensNovos, body.novoItem, INGREDIENTES.map(([id]) => id)) : current.state.itensNovos;
+      let itensNovos = body.novoItem ? addItem(current.state.itensNovos, body.novoItem, INGREDIENTES.map(([id]) => id)) : current.state.itensNovos;
+      if(body.editarDescricao){
+        const nome = String(body.editarDescricao.nome || '');
+        const descricao = String(body.editarDescricao.descricao || '').trim();
+        if(descricao.length > 300 || /[\u0000-\u001f<>]/.test(descricao)) return res.status(400).json({error:'Descrição inválida (máximo 300 caracteres).'});
+        if(!itensNovos.some(item => item.nome === nome)) return res.status(400).json({error:'A descrição pode ser editada nos produtos cadastrados pelo painel.'});
+        itensNovos = itensNovos.map(item => item.nome === nome ? {...item, descricao} : item);
+      }
       let precosPersonalizados = current.state.precosPersonalizados || {};
       let itensExcluidos = current.state.itensExcluidos || [];
       if(body.editarItem) precosPersonalizados = editItemPrice(itensNovos, precosPersonalizados, body.editarItem);

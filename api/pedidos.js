@@ -151,15 +151,15 @@ async function gravarJson(pathname, value, allowOverwrite){
 }
 
 async function lerUltimo(dataAtual){
-  const value = await lerJson(`${COUNTER_PATH}.${dataAtual.slice(0, 7)}`) || await lerJson(COUNTER_PATH);
-  if(!value || String(value.data || '').slice(0, 7) !== dataAtual.slice(0, 7)) return 0;
+  const value = await lerJson(`${COUNTER_PATH}.${dataAtual}`) || await lerJson(COUNTER_PATH);
+  if(!value || String(value.data || '') !== dataAtual) return 0;
   return Number.isSafeInteger(value.ultimo) && value.ultimo >= 0 ? value.ultimo : 0;
 }
 
 async function reservarNumero(numero, dataAtual){
   const codigo = String(numero).padStart(2, '0');
   await gravarJson(
-    `${RESERVA_DIR}/${dataAtual.slice(0, 7)}/${String(numero).padStart(8, '0')}.json`,
+    `${RESERVA_DIR}/${dataAtual}/${String(numero).padStart(8, '0')}.json`,
     { numero, codigo, data: dataAtual, criadoEm: new Date().toISOString() },
     false
   );
@@ -172,7 +172,7 @@ async function proximoNumero(dataAtual){
     try{
       const codigo = await reservarNumero(candidato, dataAtual);
       try{
-        await gravarJson(`${COUNTER_PATH}.${dataAtual.slice(0, 7)}`, {
+        await gravarJson(`${COUNTER_PATH}.${dataAtual}`, {
           data: dataAtual,
           ultimo: candidato,
           updatedAt: new Date().toISOString(),
