@@ -557,6 +557,16 @@ module.exports = async function handler(req, res){
   }
 
   if(req.method === 'POST'){
+    // EMERGENCY FAIL-CLOSED: the legacy checkout does not verify payments.
+    // Never create a reservation, queue entry, or printed order based on a
+    // browser-supplied "paid" status. Resume only after a server-side
+    // Mercado Pago verification flow has been deployed and tested.
+    return res.status(503).json({
+      error: 'Pedidos online temporariamente suspensos enquanto o pagamento automático é configurado. Nenhuma comanda foi gerada.',
+      pedidoConfirmado: false,
+      pagamentoVerificado: false,
+      checkoutSuspenso: true,
+    });
     const horario = await statusHorarioPedidos();
     if(!horario.aberto) return res.status(403).json({ error: horario.mensagem, pedidosAbertos: false });
     if(!origemPermitida(req)) return res.status(403).json({ error: 'Origem não permitida.' });
