@@ -46,10 +46,6 @@
         <div class="field wide" id="descricaoField"><label for="novoDescricao">Descrição do produto / ingredientes</label><textarea id="novoDescricao" maxlength="300" rows="2" placeholder="Descreva o item para o cliente"></textarea></div>
         <div class="field wide" id="ingredientesField"><label>Ingredientes usados</label><p class="sub">Marque os ingredientes para bloquear este lanche quando estiverem em falta.</p><div id="novoIngredientes" class="ingredient-picks"></div></div>
       </div>
-      <div class="store-actions" aria-label="Cadastro rápido de marmitex">
-        <button type="button" class="btn btn-ghost" data-marmitex-preset="Marmitex Mini">🍱 Preencher Marmitex Mini</button>
-        <button type="button" class="btn btn-ghost" data-marmitex-preset="Marmitex Média">🍱 Preencher Marmitex Média</button>
-      </div>
       <button class="btn btn-primary" id="adicionarItem">Adicionar e salvar item</button>
       <div id="novoMsg" role="status" aria-live="polite"></div>
     </section>
@@ -157,7 +153,8 @@ function renderIngredientes(){
 }
 
 function valorPrecoInput(precoCentavos){
-  return (Number(precoCentavos || 0) / 100).toFixed(2).replace('.', ',');
+  return Number.isInteger(precoCentavos) && precoCentavos >= 100
+    ? (precoCentavos / 100).toFixed(2).replace('.', ',') : '';
 }
 
 function renderProdutos(){
@@ -170,12 +167,12 @@ function renderProdutos(){
         <div class="row product-admin-row">
           <div class="row-main">
             <div class="row-name">${esc(p.nome)}</div>
-            <div class="row-note">${estado.produtos[p.nome]!==false?'Disponível individualmente':'Desativado manualmente'} · Valor atual: R$ ${valorPrecoInput(p.precoCentavos)}</div>
+            <div class="row-note">${estado.produtos[p.nome]!==false?'Disponível individualmente':'Desativado manualmente'} · ${valorPrecoInput(p.precoCentavos) ? 'Valor atual: R$ ' + valorPrecoInput(p.precoCentavos) : 'Preço a definir — não disponível para pedidos'}</div>
           </div>
           <div class="item-controls">
-            <div class="price-control"><span>R$</span><input inputmode="decimal" maxlength="8" data-price-input="${esc(p.nome)}" value="${valorPrecoInput(p.precoCentavos)}" aria-label="Preço de ${esc(p.nome)}"></div>
-            <button type="button" class="btn btn-mini btn-price" data-item-action="price" data-item-name="${esc(p.nome)}">Alterar valor</button>
-            ${p.id?.startsWith("novo_") ? `<button type="button" class="btn btn-mini btn-ghost" data-item-action="description" data-item-name="${esc(p.nome)}">Editar descrição</button>` : ""}
+            <div class="price-control"><span>R$</span><input inputmode="decimal" maxlength="8" placeholder="Definir" data-price-input="${esc(p.nome)}" value="${valorPrecoInput(p.precoCentavos)}" aria-label="Preço de ${esc(p.nome)}"></div>
+            <button type="button" class="btn btn-mini btn-price" data-item-action="price" data-item-name="${esc(p.nome)}">${valorPrecoInput(p.precoCentavos) ? 'Alterar valor' : 'Salvar preço'}</button>
+            ${p.id?.startsWith("novo_") || ['Marmitex Mini', 'Marmitex Média'].includes(p.nome) ? `<button type="button" class="btn btn-mini btn-ghost" data-item-action="description" data-item-name="${esc(p.nome)}">Editar descrição</button>` : ""}
             <button type="button" class="btn btn-mini btn-delete" data-item-action="delete" data-item-name="${esc(p.nome)}">Excluir</button>
             <label class="toggle" title="Disponibilidade"><input type="checkbox" data-kind="produto" data-key="${esc(p.nome)}" ${estado.produtos[p.nome]!==false?'checked':''}><span class="slider"></span></label>
           </div>
@@ -188,7 +185,7 @@ function renderExcluidos(){
   $('excluidosSection').classList.toggle('hidden', itens.length === 0);
   $('itensExcluidos').innerHTML = itens.map(p=>`
     <div class="row">
-      <div class="row-main"><div class="row-name">${esc(p.nome)}</div><div class="row-note">${esc(p.categoria || 'Item')} · último valor: R$ ${valorPrecoInput(p.precoCentavos)}</div></div>
+      <div class="row-main"><div class="row-name">${esc(p.nome)}</div><div class="row-note">${esc(p.categoria || 'Item')} · ${valorPrecoInput(p.precoCentavos) ? 'último valor: R$ ' + valorPrecoInput(p.precoCentavos) : 'Preço não definido'}</div></div>
       <button type="button" class="btn btn-mini btn-restore" data-item-action="restore" data-item-name="${esc(p.nome)}">Restaurar</button>
     </div>`).join('');
 }
@@ -381,14 +378,6 @@ $('appView').addEventListener('click', async e => {
   }
 });
 
-document.querySelectorAll('[data-marmitex-preset]').forEach(btn => btn.addEventListener('click', () => {
-  $('novoTipo').value = 'marmitex';
-  $('novoTipo').dispatchEvent(new Event('change'));
-  $('novoNome').value = btn.dataset.marmitexPreset;
-  $('novoDescricao').value = '';
-  $('novoMsg').innerHTML = notice('Preencha o valor e a descrição real do prato, depois toque em Adicionar e salvar item.', 'warn');
-  $('novoPreco').focus();
-}));
 $('novoTipo').addEventListener('change', () => {
   const lanche = ['dog','x'].includes($('novoTipo').value);
   $('ingredientesField').classList.toggle('hidden', !lanche);
