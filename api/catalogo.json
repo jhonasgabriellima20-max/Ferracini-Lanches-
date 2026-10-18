@@ -53,6 +53,14 @@
       "precoCentavos": 10000,
       "aceitaAdicionais": true
     },
+    "Marmitex Mini": {
+      "precoCentavos": null,
+      "aceitaAdicionais": false
+    },
+    "Marmitex Média": {
+      "precoCentavos": null,
+      "aceitaAdicionais": false
+    },
     "Água com gás": {
       "precoCentavos": 400,
       "aceitaAdicionais": false
