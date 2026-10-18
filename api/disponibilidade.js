@@ -106,6 +106,8 @@ const PRODUTOS = [
   ['X-Frango', 'Lanches-X'],
   ['X-Bacon (1 Kilo)', 'Lanches-X'],
   ['X-Tudo (2 Kilo)', 'Lanches-X'],
+  ['Marmitex Mini', 'Marmitex'],
+  ['Marmitex Média', 'Marmitex'],
   ['Água com gás', 'Bebidas'],
   ['Água sem gás', 'Bebidas'],
   ['Refrigerante lata', 'Bebidas'],
@@ -250,6 +252,7 @@ function defaults(){
     updatedAt: null,
     itensNovos: [],
     precosPersonalizados: {},
+    descricoesPersonalizadas: {},
     itensExcluidos: [],
   };
 }
@@ -272,6 +275,14 @@ function mergeState(raw){
     if(raw.precosPersonalizados && typeof raw.precosPersonalizados === 'object' && !Array.isArray(raw.precosPersonalizados)){
       for(const [nome, precoCentavos] of Object.entries(raw.precosPersonalizados)){
         if(nomesConhecidos.has(nome) && validPrice(precoCentavos)) base.precosPersonalizados[nome] = precoCentavos;
+      }
+    }
+    if(raw.descricoesPersonalizadas && typeof raw.descricoesPersonalizadas === 'object' && !Array.isArray(raw.descricoesPersonalizadas)){
+      for(const nome of ['Marmitex Mini', 'Marmitex Média']){
+        const descricao = raw.descricoesPersonalizadas[nome];
+        if(typeof descricao === 'string' && descricao.length <= 300 && !/[\u0000-\u001f<>]/.test(descricao)){
+          base.descricoesPersonalizadas[nome] = descricao.trim();
+        }
       }
     }
     if(Array.isArray(raw.itensExcluidos)) base.itensExcluidos = [...new Set(raw.itensExcluidos.filter(nome => typeof nome === 'string' && nomesConhecidos.has(nome)))];
@@ -309,11 +320,13 @@ function mergeState(raw){
 function catalogo(state = defaults()){
   const excluidos = new Set(state.itensExcluidos || []);
   const precoEfetivo = (nome, fallback) => validPrice(state.precosPersonalizados?.[nome]) ? state.precosPersonalizados[nome] : fallback;
+  const nomesCadastrados = new Set(state.itensNovos.map(item => item.nome));
   const produtosBase = PRODUTOS
-    .filter(([nome]) => !excluidos.has(nome))
+    .filter(([nome]) => !excluidos.has(nome) && !nomesCadastrados.has(nome))
     .map(([nome, categoria]) => ({
       nome, categoria,
       precoCentavos: precoEfetivo(nome, BASE_CATALOGO.produtos[nome]?.precoCentavos),
+      descricao: state.descricoesPersonalizadas?.[nome] || '',
       personalizado: Object.hasOwn(state.precosPersonalizados || {}, nome),
     }));
   const produtosNovos = state.itensNovos
@@ -325,7 +338,7 @@ function catalogo(state = defaults()){
       personalizado: Object.hasOwn(state.precosPersonalizados || {}, item.nome),
     }));
   const excluidosGerenciaveis = [
-    ...PRODUTOS.filter(([nome]) => excluidos.has(nome)).map(([nome, categoria]) => ({
+    ...PRODUTOS.filter(([nome]) => excluidos.has(nome) && !nomesCadastrados.has(nome)).map(([nome, categoria]) => ({
       nome, categoria,
       precoCentavos: precoEfetivo(nome, BASE_CATALOGO.produtos[nome]?.precoCentavos),
     })),
@@ -601,19 +614,25 @@ module.exports = async function handler(req, res){
       if(!current.storageReady) return res.status(503).json({error:'Armazenamento indisponível. Tente novamente.'});
       if(body.updatedAt !== current.state.updatedAt) return res.status(409).json({error:'O painel foi atualizado em outro acesso. Recarregue a página antes de salvar.'});
       let itensNovos = body.novoItem ? addItem(current.state.itensNovos, body.novoItem, INGREDIENTES.map(([id]) => id)) : current.state.itensNovos;
+      let descricoesPersonalizadas = current.state.descricoesPersonalizadas || {};
       if(body.editarDescricao){
         const nome = String(body.editarDescricao.nome || '');
         const descricao = String(body.editarDescricao.descricao || '').trim();
         if(descricao.length > 300 || /[\u0000-\u001f<>]/.test(descricao)) return res.status(400).json({error:'Descrição inválida (máximo 300 caracteres).'});
-        if(!itensNovos.some(item => item.nome === nome)) return res.status(400).json({error:'A descrição pode ser editada nos produtos cadastrados pelo painel.'});
-        itensNovos = itensNovos.map(item => item.nome === nome ? {...item, descricao} : item);
+        if(itensNovos.some(item => item.nome === nome)){
+          itensNovos = itensNovos.map(item => item.nome === nome ? {...item, descricao} : item);
+        }else if(['Marmitex Mini', 'Marmitex Média'].includes(nome)){
+          descricoesPersonalizadas = {...descricoesPersonalizadas, [nome]: descricao};
+        }else{
+          return res.status(400).json({error:'A descrição deste produto não pode ser editada.'});
+        }
       }
       let precosPersonalizados = current.state.precosPersonalizados || {};
       let itensExcluidos = current.state.itensExcluidos || [];
       if(body.editarItem) precosPersonalizados = editItemPrice(itensNovos, precosPersonalizados, body.editarItem);
       if(body.excluirItem) itensExcluidos = excludeItem(itensNovos, itensExcluidos, body.excluirItem);
       if(body.restaurarItem) itensExcluidos = restoreItem(itensNovos, itensExcluidos, body.restaurarItem);
-      const next = mergeState({...body, itensNovos, precosPersonalizados, itensExcluidos});
+      const next = mergeState({...body, itensNovos, precosPersonalizados, descricoesPersonalizadas, itensExcluidos});
       next.updatedAt = new Date().toISOString();
       const saved = await writeState(next);
       return res.status(200).json({
