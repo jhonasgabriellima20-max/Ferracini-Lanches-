@@ -30,8 +30,21 @@ assert.match(script, /taxaServicoCentavos = 300/);
 assert.match(script, /'🧾'/);
 assert.match(script, /'💰'/);
 assert.match(script, /'🍔'/);
+assert.match(script, /function Item-Icon\(\$Item\)/);
+assert.match(script, /\$categoria -eq 'marmitex'/);
+assert.match(script, /\$nome -match '\^\(marmitex\|marmita\)/);
+assert.match(script, /return '🍱'/);
+assert.match(script, /\$itemIcon = Item-Icon \$item/);
+assert.match(script, /Receipt-Label \$itemIcon/);
+assert.match(script, /nome = 'Marmitex Mini'/);
+assert.match(script, /nome = 'Marmitex Média'/);
+assert.match(script, /observacao = 'ARROZ SEPARADO'/);
+assert.match(script, /nome = 'X-SALADA'/);
+assert.match(script, /subtotalCentavos = 9500/);
+assert.match(script, /totalCentavos = 9800/);
+
 assert.match(script, /'👤'/);
 assert.match(script, /'➕'/);
 assert.match(script, /\$null -eq \$cfg\.useEmojis/);
 
-console.log('OK: bobina 80 mm, negrito, icones, taxa de servico, sem pagamento na mesa e teste ficticio.');
+console.log('OK: bobina 80 mm, negrito, icones, marmitex mini e media, taxa de servico e teste ficticio.');
