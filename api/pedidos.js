@@ -424,7 +424,7 @@ async function criarPedido(payload){
     data,
     criadoEm: agora,
     atualizadoEm: agora,
-    status: 'aguardando_whatsapp',
+    status: 'aguardando_confirmacao',
     tentativasImpressao: 0,
     ...payload,
   };

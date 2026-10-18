@@ -42,10 +42,10 @@ function checkHtml(file, isMesa){
     if(!ok) fail(`${file}: ${label}`);
   }
 
-  if(!html.includes('https://wa.me/') || !html.includes('5543998075190')) fail(`${file}: WhatsApp da loja ausente`);
+  if(/WhatsApp|wa\.me|linkWhatsappCopia/i.test(html)) fail(`${file}: referencia ao WhatsApp ainda presente`);
   if(!html.includes('armazenamentoDegradado')) fail(`${file}: contingência rápida do armazenamento ausente`);
   if(html.includes('registroFallbackWhatsapp') || html.includes('window.location.assign(destinoWhatsApp)')) fail(`${file}: WhatsApp nao pode confirmar pedidos automaticamente`);
-  if(!html.includes('id="linkWhatsappCopia"') || !html.includes('Confirmar pedido')) fail(`${file}: confirmacao explicita e copia opcional ausentes`);
+  if(!html.includes('Confirmar pedido') || !html.includes('Guarde o número da comanda')) fail(`${file}: confirmacao no proprio site ausente`);
   if(!html.includes('controller.abort(), 20000')) fail(`${file}: timeout de confirmação deve ser 20 segundos`);
   if(html.includes('controller.abort(), 12000')) fail(`${file}: timeout antigo de 12 segundos ainda presente`);
 

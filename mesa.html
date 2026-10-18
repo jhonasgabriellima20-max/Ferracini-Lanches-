@@ -338,17 +338,6 @@
   footer .footer-bottom{ margin-top:22px; font-size:12.5px; color:var(--ink-faint); }
 
   /* PEDIDO FLUTUANTE + BARRA MOBILE */
-  .wa-float{
-    position:fixed; right:24px; bottom:28px; z-index:90;
-    display:none; align-items:center; gap:10px;
-    background:#25D366; color:#0c1a12; padding:15px 24px; border-radius:999px;
-    font-weight:700; font-size:14px; max-width:340px; text-align:center;
-    box-shadow:0 10px 30px -8px rgba(37,211,102,0.55);
-    transition:transform .15s ease;
-  }
-  .wa-float:hover{ transform:translateY(-3px); }
-  @media (min-width:760px){ .wa-float{ display:inline-flex; } }
-
   .mobile-tabbar{
     position:fixed; bottom:0; left:0; right:0; z-index:90;
     background:var(--bg-surface); border-top:1px solid var(--line);
@@ -673,7 +662,6 @@
     </button>
 
     <div class="checkout-confirm" id="checkoutConfirm" style="display:none;" role="status" aria-live="polite"></div>
-    <a id="linkWhatsappCopia" class="btn btn-primary btn-block" style="display:none;margin-top:12px;text-align:center;text-decoration:none;" target="_blank" rel="noopener noreferrer">Enviar cópia no WhatsApp (opcional)</a>
   </div>
 </div>
 
@@ -705,7 +693,6 @@ const ADICIONAIS_PADRAO = [
 ];
 
 const CONFIG = {
-  whatsapp: "5543998075190",
   pix: {
     tipo: "CPF",
     chave: "078.746.889-45",
@@ -1162,7 +1149,7 @@ function erroTroco(){
 }
 function descricaoPagamento(){
   if(paymentMethod === 'no_local') return 'Pagamento na loja';
-  if(paymentMethod === 'pix') return `Pix manual — chave ${CONFIG.pix.tipo}: ${CONFIG.pix.chave}\nEnviar o comprovante pelo WhatsApp`;
+  if(paymentMethod === 'pix') return `Pix manual — chave ${CONFIG.pix.tipo}: ${CONFIG.pix.chave}\nGuarde o comprovante para conferência pela loja`;
   if(!precisaTroco) return 'Dinheiro — sem troco';
   return `Dinheiro — troco para ${fmtPreco(valorTrocoCentavos()/100)}\nTroco a devolver: ${fmtPreco((valorTrocoCentavos()-totalPedidoCentavos())/100)}`;
 }
@@ -1177,7 +1164,7 @@ function renderPaymentOptions(){
       <div style="font-weight:800;margin-bottom:6px">Chave Pix (${CONFIG.pix.tipo})</div>
       <div style="font-size:18px;font-weight:800;letter-spacing:.3px">${CONFIG.pix.chave}</div>
       <button type="button" class="btn btn-ghost" id="copiarChavePix" style="margin-top:10px;padding:10px 14px">Copiar chave Pix</button>
-      <div style="font-size:13px;margin-top:9px;color:var(--ink-dim)">Após pagar, envie o comprovante junto com o pedido no WhatsApp.</div>
+      <div style="font-size:13px;margin-top:9px;color:var(--ink-dim)">Após pagar, guarde o comprovante para conferência pela loja.</div>
     </div>` : '';
   document.getElementById('paymentOptions').innerHTML = paymentOptionsForMethod().map(id => `
     <label class="payment-option ${paymentMethod===id?'active':''}" data-id="${id}">
@@ -1398,7 +1385,6 @@ function abrirCheckout(){
   trocoPara = '';
   checkoutErrorBoxEl.innerHTML = '';
   checkoutConfirmEl.style.display = 'none';
-  document.getElementById('linkWhatsappCopia').style.display = 'none';
   btnEnviarPedidoEl.style.display = 'block';
   btnEnviarPedidoEl.disabled = false;
   btnEnviarPedidoEl.textContent = 'Confirmar pedido';
@@ -1441,70 +1427,6 @@ document.getElementById('cartHeaderBtn').addEventListener('click', () => {
 });
 
 
-
-function linkWhatsApp(mensagem){
-  return `https://wa.me/${CONFIG.whatsapp}?text=${encodeURIComponent(mensagem)}`;
-}
-
-function horarioPedidoWhatsApp(criadoEm = ''){
-  const data = criadoEm ? new Date(criadoEm) : new Date();
-  const segura = Number.isNaN(data.getTime()) ? new Date() : data;
-  return new Intl.DateTimeFormat('pt-BR', {
-    timeZone: 'America/Sao_Paulo',
-    hour: '2-digit',
-    minute: '2-digit'
-  }).format(segura);
-}
-
-function montarMensagemPedido(comanda = '', criadoEm = ''){
-  const { items, subtotal } = cartTotals();
-  const nome = document.getElementById('clienteNome').value.trim();
-  const telefone = document.getElementById('clienteTelefone').value.trim();
-  const taxaEntrega = (deliveryMethod === 'entrega' && frete.status === 'ok') ? frete.valor : 0;
-  const taxaServico = deliveryMethod !== 'entrega' ? TAXA_SERVICO_MESA : 0;
-  const total = subtotal + taxaEntrega + taxaServico;
-
-  const linhasProdutos = items.map(([produto, v]) => {
-    const addons = (v.adicionais || []).map(a => `  + ${a.nome}`).join('\n');
-    const obs = v.observacao ? `  Obs: ${v.observacao}` : '';
-    return [`${v.qty}x ${produto} — ${fmtPreco(v.qty * precoUnitario(v))}`, addons, obs].filter(Boolean).join('\n');
-  }).join('\n');
-
-  let blocoEntrega;
-  if(deliveryMethod === 'entrega'){
-    const rua = document.getElementById('endRua').value.trim();
-    const numero = document.getElementById('endNumero').value.trim();
-    const complemento = document.getElementById('endComplemento').value.trim();
-    const bairro = document.getElementById('endBairro').value.trim();
-    const cidade = document.getElementById('endCidade').value.trim();
-    blocoEntrega = `🚚 ENTREGA\n${rua}, ${numero}${complemento ? ' - ' + complemento : ''}\n${bairro} — ${cidade}\n\n📍 Distância: ${frete.distanciaKm.toFixed(1)} km\n🚚 Taxa de entrega: ${fmtPreco(frete.valor)}\n⏱️ Previsão de entrega: ${textoEstimativa(frete.estimativa)}`;
-  } else {
-    blocoEntrega = `🍽️ CONSUMO NO LOCAL — MESA ${document.getElementById("numeroMesa").value.trim()}`;
-  }
-
-  const blocoPagamento = `💳 PAGAMENTO\n${descricaoPagamento()}`;
-
-  const blocoValores = deliveryMethod === 'entrega'
-    ? `💰 TOTAL\nProdutos: ${fmtPreco(subtotal)}\nEntrega: ${fmtPreco(taxaEntrega)}\nTOTAL: ${fmtPreco(total)}`
-    : `💰 TOTAL\nProdutos: ${fmtPreco(subtotal)}\nTaxa de serviço: ${fmtPreco(taxaServico)}\nTOTAL: ${fmtPreco(total)}`;
-
-  return [
-    '📋 CÓPIA DA COMANDA — MESA',
-    comanda ? `✅ COMANDA ${comanda} — já registrada no site` : '',
-    '⚠️ CÓPIA INFORMATIVA. NÃO GERAR OUTRA COMANDA.',
-    `🕐 HORÁRIO DO PEDIDO: ${horarioPedidoWhatsApp(criadoEm)}`,
-    '',
-    `👤 CLIENTE\n${nome}\n${telefone}`,
-    '',
-    `🍔 PEDIDO\n${linhasProdutos}`,
-    '',
-    blocoEntrega,
-    '',
-    blocoPagamento,
-    '',
-    blocoValores,
-  ].join('\n');
-}
 
 function criarIdPedido(){
   if(globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
@@ -1626,7 +1548,7 @@ btnEnviarPedidoEl.addEventListener('click', async () => {
   btnEnviarPedidoEl.textContent = 'Preparando pedido...';
 
   // O clique do cliente em Confirmar pedido registra a compra no sistema.
-  // Abrir WhatsApp ou abandonar o checkout nunca insere pedido na fila.
+  // Abandonar o checkout nunca insere pedido na fila.
   const clientRequestId = clientRequestIdAtual || criarIdPedido();
   clientRequestIdAtual = clientRequestId;
   const payload = montarPayloadPedido(clientRequestId);
@@ -1647,14 +1569,9 @@ btnEnviarPedidoEl.addEventListener('click', async () => {
 
   // Uma mensagem de sucesso exige resposta confirmada pelo servidor.
   const numeroComanda = registro.pedido.numero || registro.pedido.referencia;
-  const linkCopia = document.getElementById('linkWhatsappCopia');
-  linkCopia.href = linkWhatsApp(montarMensagemPedido(numeroComanda, registro.pedido.criadoEm));
-  linkCopia.style.display = 'block';
   checkoutConfirmEl.innerHTML =
     '✅ <strong>Comanda ' + escapeHTML(numeroComanda) + ' confirmada no sistema!</strong>' +
-    '<div style="margin-top:8px">Seu pedido foi registrado para atendimento pela loja. ' +
-    'Não é preciso mandar mensagem nem esperar alguém aceitar. ' +
-    'Se desejar, envie uma cópia pelo WhatsApp no botão abaixo.</div>';
+    '<div style="margin-top:8px">Seu pedido foi registrado para atendimento pela loja. Guarde o número da comanda.</div>';
   checkoutConfirmEl.style.display = 'block';
   checkoutErrorBoxEl.innerHTML = '';
   btnEnviarPedidoEl.disabled = true;
