@@ -155,6 +155,17 @@ function Add-WrappedLine($Lines, [string]$Text, [int]$Width, [string]$Prefix = '
   }
 }
 
+# Itens de marmitex usam identificacao propria, sem alterar a fila ou o checkout.
+# A categoria e opcional: pedidos antigos trazem somente o nome do produto.
+function Item-Icon($Item) {
+  $categoria = [string]$Item.categoria
+  $nome = [string]$Item.nome
+  if ($categoria -eq 'marmitex' -or $nome -match '^(marmitex|marmita)\b') {
+    return '🍱'
+  }
+  return '🍔'
+}
+
 function Format-Receipt($Pedido, [int]$Width, [bool]$UseEmojis = $true) {
   $lines = New-Object 'System.Collections.Generic.List[string]'
   $sep = '-' * $Width
@@ -211,7 +222,8 @@ function Format-Receipt($Pedido, [int]$Width, [bool]$UseEmojis = $true) {
   $lines.Add((Receipt-Label '🍔' 'PEDIDO' $UseEmojis))
   $lines.Add($doubleSep)
   foreach ($item in @($Pedido.itens)) {
-    Add-WrappedLine $lines (Receipt-Label '🍔' (([string]$item.quantidade) + 'x ' + ([string]$item.nome)) $UseEmojis) $Width
+    $itemIcon = Item-Icon $item
+    Add-WrappedLine $lines (Receipt-Label $itemIcon (([string]$item.quantidade) + 'x ' + ([string]$item.nome)) $UseEmojis) $Width
     foreach ($adicional in @($item.adicionais)) {
       Add-WrappedLine $lines (([string]$adicional.nome) + '  +' + (Money $adicional.precoCentavos)) $Width '  + '
     }
@@ -454,12 +466,22 @@ function Print-Test {
     criadoEm = (Get-Date).ToString('o')
     cliente = [pscustomobject]@{ nome = 'CLIENTE TESTE'; telefone = '(43) 00000-0000' }
     atendimento = [pscustomobject]@{ tipo = 'mesa'; mesa = '01'; taxaServicoCentavos = 300 }
-    itens = @([pscustomobject]@{
-      nome = 'X-SALADA'; quantidade = 2; precoUnitarioCentavos = 2500
-      adicionais = @(); observacao = 'SEM CEBOLA'
-    })
-    subtotalCentavos = 5000
-    totalCentavos = 5300
+    itens = @(
+      [pscustomobject]@{
+        nome = 'Marmitex Mini'; categoria = 'marmitex'; quantidade = 1; precoUnitarioCentavos = 1900
+        adicionais = @(); observacao = 'SEM FEIJAO'
+      },
+      [pscustomobject]@{
+        nome = 'Marmitex Média'; categoria = 'marmitex'; quantidade = 1; precoUnitarioCentavos = 2600
+        adicionais = @(); observacao = 'ARROZ SEPARADO'
+      },
+      [pscustomobject]@{
+        nome = 'X-SALADA'; quantidade = 2; precoUnitarioCentavos = 2500
+        adicionais = @(); observacao = 'SEM CEBOLA'
+      }
+    )
+    subtotalCentavos = 9500
+    totalCentavos = 9800
     pagamento = [pscustomobject]@{ metodo = 'no_local' }
   }
   $text = 'TESTE DE IMPRESSAO - NAO E PEDIDO REAL' + [Environment]::NewLine +
