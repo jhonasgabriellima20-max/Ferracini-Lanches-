@@ -855,28 +855,35 @@ function adicionalDisponivel(adicional){
 
 function removerItensIndisponiveisDoCarrinho(){
   let removeu = false;
+  let precoAlterado = false;
   Object.keys(cart).forEach(nome => {
     const produto = CONFIG.produtos.find(p => p.nome === nome);
-    if(!produto || !produtoDisponivel(produto)){
+    if(!produto || !produtoDisponivel(produto) || !Number.isFinite(produto.preco) || produto.preco <= 0){
       delete cart[nome];
       removeu = true;
       return;
     }
-    const permitidos = new Set((produto.adicionais || []).filter(adicionalDisponivel).map(a => a.nome));
-    const antes = cart[nome].adicionais || [];
-    const depois = antes.filter(a => permitidos.has(a.nome));
-    if(depois.length !== antes.length){
-      cart[nome].adicionais = depois;
-      removeu = true;
+    if(!Number.isFinite(cart[nome].preco) || Math.round(cart[nome].preco * 100) !== Math.round(produto.preco * 100)){
+      cart[nome].preco = produto.preco;
+      precoAlterado = true;
     }
+    const disponiveis = new Map((produto.adicionais || []).filter(adicionalDisponivel).map(adicional => [adicional.nome, adicional]));
+    const antes = cart[nome].adicionais || [];
+    const depois = antes.filter(adicional => disponiveis.has(adicional.nome)).map(adicional => {
+      const precoAtual = disponiveis.get(adicional.nome).preco;
+      if(!Number.isFinite(adicional.preco) || Math.round(adicional.preco * 100) !== Math.round(precoAtual * 100)) precoAlterado = true;
+      return { ...adicional, preco: precoAtual };
+    });
+    if(depois.length !== antes.length) removeu = true;
+    cart[nome].adicionais = depois;
   });
-  if(removeu) updateCartBar();
-  return removeu;
+  if(removeu || precoAlterado) updateCartBar();
+  return { removeu, precoAlterado };
 }
 
-async function carregarDisponibilidade({ silencioso = true } = {}){
+async function carregarDisponibilidade({ silencioso = true, force = false } = {}){
   try{
-    const resp = await fetch(`/api/disponibilidade?t=${Date.now()}`, { cache:'no-store' });
+    const resp = await fetch(`/api/disponibilidade?fresh=1&t=${Date.now()}`, { cache:'no-store' });
     if(!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const data = await resp.json();
     disponibilidade = {
@@ -887,13 +894,15 @@ async function carregarDisponibilidade({ silencioso = true } = {}){
     disponibilidadeAtualizadaEm = data.updatedAt || null;
     demandaAtual = ['baixa','normal','alta'].includes(data.operacao?.demanda) ? data.operacao.demanda : 'normal';
       armazenamentoDegradado = data.storageDegraded === true;
-    const removeu = removerItensIndisponiveisDoCarrinho();
-    renderMenu();
-    if(removeu && !silencioso){
-      alert('Um item do seu carrinho ficou indisponível e foi removido automaticamente.');
-    }
+    const alteracoes = removerItensIndisponiveisDoCarrinho();
+      renderMenu();
+      if(alteracoes.removeu && !silencioso){
+        alert('Um item do seu carrinho ficou indisponível e foi removido automaticamente.');
+      }
+    return alteracoes;
   }catch(err){
     console.warn('Não foi possível atualizar a disponibilidade agora; mantendo o cardápio atual.', err);
+    return { falhaConsulta:true };
   }
 }
 
@@ -1385,9 +1394,12 @@ function renderCheckout(){
   `;
 }
 
-function abrirCheckout(){
+async function abrirCheckout(){
   if(btnEnviarPedidoEl.disabled && btnEnviarPedidoEl.style.display !== 'none') return;
   if(cartTotals().totalQty === 0) return;
+  const consulta = await carregarDisponibilidade({ silencioso:true, force:true });
+  if(consulta?.falhaConsulta){ alert('Não foi possível verificar o cardápio agora. Tente novamente.'); return; }
+  if(cartTotals().totalQty === 0){ alert('Os produtos escolhidos estão indisponíveis. Revise seu pedido.'); return; }
   deliveryMethod = 'retirada';
   document.querySelectorAll('.method-btn').forEach(b => b.classList.toggle('active', b.dataset.method==='retirada'));
   enderecoBlockEl.style.display = 'none';
@@ -1614,6 +1626,17 @@ function validarCheckout(){
 
 btnEnviarPedidoEl.addEventListener('click', async () => {
   if(btnEnviarPedidoEl.disabled) return;
+  const carrinhoAntes = JSON.stringify(cart);
+  const consulta = await carregarDisponibilidade({ silencioso:true, force:true });
+  if(consulta?.falhaConsulta){
+    checkoutErrorBoxEl.innerHTML = '<div class="checkout-error">⚠️ Não foi possível verificar o cardápio agora. Tente novamente.</div>';
+    return;
+  }
+  if(carrinhoAntes !== JSON.stringify(cart)){
+    renderCheckout();
+    checkoutErrorBoxEl.innerHTML = '<div class="checkout-error">⚠️ O cardápio mudou. Confira produtos e valores atualizados e toque novamente em Confirmar pedido.</div>';
+    return;
+  }
   const erros = validarCheckout();
   if(erros.length){
     checkoutErrorBoxEl.innerHTML = erros.map(e => `<div class="checkout-error">⚠️ ${escapeHTML(e)}</div>`).join('');
@@ -1664,6 +1687,7 @@ btnEnviarPedidoEl.addEventListener('click', async () => {
 });
 
 updateCartBar();
+carregarDisponibilidade({ silencioso:true, force:true });
 const mesaDoLink = new URLSearchParams(location.search).get('mesa') || '';
 if (/^[1-9][0-9]{0,2}$/.test(mesaDoLink)) document.getElementById('numeroMesa').value = mesaDoLink;
 irParaCardapio();

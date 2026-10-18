@@ -907,23 +907,30 @@ function adicionalDisponivel(adicional){
 
 function removerItensIndisponiveisDoCarrinho(){
   let removeu = false;
+  let precoAlterado = false;
   Object.keys(cart).forEach(nome => {
     const produto = CONFIG.produtos.find(p => p.nome === nome);
-    if(!produto || !produtoDisponivel(produto)){
+    if(!produto || !produtoDisponivel(produto) || !Number.isFinite(produto.preco) || produto.preco <= 0){
       delete cart[nome];
       removeu = true;
       return;
     }
-    const permitidos = new Set((produto.adicionais || []).filter(adicionalDisponivel).map(a => a.nome));
-    const antes = cart[nome].adicionais || [];
-    const depois = antes.filter(a => permitidos.has(a.nome));
-    if(depois.length !== antes.length){
-      cart[nome].adicionais = depois;
-      removeu = true;
+    if(!Number.isFinite(cart[nome].preco) || Math.round(cart[nome].preco * 100) !== Math.round(produto.preco * 100)){
+      cart[nome].preco = produto.preco;
+      precoAlterado = true;
     }
+    const disponiveis = new Map((produto.adicionais || []).filter(adicionalDisponivel).map(adicional => [adicional.nome, adicional]));
+    const antes = cart[nome].adicionais || [];
+    const depois = antes.filter(adicional => disponiveis.has(adicional.nome)).map(adicional => {
+      const precoAtual = disponiveis.get(adicional.nome).preco;
+      if(!Number.isFinite(adicional.preco) || Math.round(adicional.preco * 100) !== Math.round(precoAtual * 100)) precoAlterado = true;
+      return { ...adicional, preco: precoAtual };
+    });
+    if(depois.length !== antes.length) removeu = true;
+    cart[nome].adicionais = depois;
   });
-  if(removeu) updateCartBar();
-  return removeu;
+  if(removeu || precoAlterado) updateCartBar();
+  return { removeu, precoAlterado };
 }
 
 async function carregarDisponibilidade({ silencioso = true, force = false } = {}){
@@ -957,13 +964,15 @@ async function carregarDisponibilidade({ silencioso = true, force = false } = {}
       armazenamentoDegradado = data.storageDegraded === true;
       atualizarTabelaHorarios();
       atualizarStatusHorarioPedidos();
-      const removeu = removerItensIndisponiveisDoCarrinho();
+      const alteracoes = removerItensIndisponiveisDoCarrinho();
       renderMenu();
-      if(removeu && !silencioso){
+      if(alteracoes.removeu && !silencioso){
         alert('Um item do seu carrinho ficou indisponível e foi removido automaticamente.');
       }
+      return alteracoes;
     }catch(err){
       console.warn('Não foi possível atualizar a disponibilidade agora; mantendo o cardápio atual.', err);
+      return { falhaConsulta:true };
     }finally{
       disponibilidadeConsultaEmAndamento = null;
     }
@@ -1751,7 +1760,9 @@ function atualizarStatusHorarioPedidos(){
 async function abrirCheckout(){
   if(btnEnviarPedidoEl.disabled && btnEnviarPedidoEl.style.display !== 'none') return;
   if(cartTotals().totalQty === 0) return;
-  await carregarDisponibilidade({ silencioso:true, force:true });
+  const consulta = await carregarDisponibilidade({ silencioso:true, force:true });
+  if(consulta?.falhaConsulta){ alert('Não foi possível verificar o cardápio agora. Tente novamente.'); return; }
+  if(cartTotals().totalQty === 0){ alert('Os produtos escolhidos estão indisponíveis. Revise seu pedido.'); return; }
   const horario = statusHorarioPedidos();
   if(!horario.aberto){
     alert(horario.mensagem);
@@ -2010,7 +2021,17 @@ btnEnviarPedidoEl.addEventListener('click', async () => {
   if(btnEnviarPedidoEl.disabled) return;
   checkoutErrorBoxEl.innerHTML = '';
 
-  await carregarDisponibilidade({ silencioso:true, force:true });
+  const carrinhoAntes = JSON.stringify(cart);
+  const consulta = await carregarDisponibilidade({ silencioso:true, force:true });
+  if(consulta?.falhaConsulta){
+    checkoutErrorBoxEl.innerHTML = '<div class="checkout-error">⚠️ Não foi possível verificar o cardápio agora. Tente novamente.</div>';
+    return;
+  }
+  if(carrinhoAntes !== JSON.stringify(cart)){
+    renderCheckout();
+    checkoutErrorBoxEl.innerHTML = '<div class="checkout-error">⚠️ O cardápio mudou. Confira produtos e valores atualizados e toque novamente em Confirmar pedido.</div>';
+    return;
+  }
   const horario = statusHorarioPedidos();
   if(!horario.aberto){
     checkoutErrorBoxEl.innerHTML = `<div class="checkout-error">⚠️ ${escapeHTML(horario.mensagem)}</div>`;
