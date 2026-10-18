@@ -758,6 +758,7 @@ const CONFIG = {
   categorias: [
     { id: "dog", label: "🌭 Lanches-Dog" },
     { id: "x",   label: "🍔 Lanches-X" },
+    { id: "marmitex", label: "🍱 Marmitex" },
     { id: "bebidas", label: "🥤 Bebidas" },
   ],
 
@@ -847,7 +848,7 @@ function aplicarItensNovos(items = [], precosPersonalizados = {}, itensExcluidos
     .map(item => ({
       ...item,
       preco: precoEfetivo(item.nome, Math.round(item.preco * 100)) / 100,
-      adicionais: item.categoria === 'bebidas' ? [] : ADICIONAIS_PADRAO,
+      adicionais: ['dog', 'x'].includes(item.categoria) ? ADICIONAIS_PADRAO : [],
     }));
   const produtosNovos = items
     .filter(item => item.categoria !== 'adicional' && !excluidos.has(item.nome))
@@ -857,7 +858,7 @@ function aplicarItensNovos(items = [], precosPersonalizados = {}, itensExcluidos
       preco:precoEfetivo(item.nome, item.precoCentavos) / 100,
       descricao:item.descricao,
       ingredientes:item.ingredientes || [],
-      adicionais:item.categoria === 'bebidas' ? [] : ADICIONAIS_PADRAO,
+      adicionais:['dog', 'x'].includes(item.categoria) ? ADICIONAIS_PADRAO : [],
     }));
   CONFIG.produtos = [...produtosBase, ...produtosNovos];
 }
