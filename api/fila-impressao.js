@@ -45,15 +45,10 @@ module.exports = async function handler(req, res) {
       const limit = Number.isInteger(requested) && requested >= 1
         ? Math.min(50, requested) : 25;
       // Filtra no PostgreSQL e evita reler os primeiros 100 pedidos do dia.
-      const onlyPaid = process.env.VERCEL_ENV === 'production' &&
-        process.env.MP_CARD_CHECKOUT_ENABLED === 'true';
-      const paymentFilter = onlyPaid ?
-        "AND value->'pagamento'->>'status' = 'approved' " +
-        "AND COALESCE(value->'pagamento'->>'mpOrderId','') <> '' " : "";
       const rows = await env.sql.query(
         "SELECT pathname, value FROM public.ferracini_store " +
         "WHERE pathname LIKE 'pedidos/fila/%' AND created_at >= $1 " +
-        "AND value->>'status' = 'pendente' " + paymentFilter +
+        "AND value->>'status' = 'pendente' " +
         "ORDER BY created_at ASC, pathname ASC LIMIT $2",
         [env.cutoff, limit]
       );
@@ -87,11 +82,7 @@ module.exports = async function handler(req, res) {
       "|| CASE WHEN $1::text = 'impresso' THEN jsonb_build_object('impressoEm', $2::text) " +
       "WHEN $1::text = 'falhou' THEN jsonb_build_object('erroImpressao', $4::text) " +
       "ELSE '{}'::jsonb END, updated_at = now() " +
-      "WHERE pathname = $5 AND created_at >= $6 AND value->>'status' = $7 " +
-      (process.env.VERCEL_ENV === 'production' && process.env.MP_CARD_CHECKOUT_ENABLED === 'true'
-        ? "AND value->'pagamento'->>'status' = 'approved' " +
-          "AND COALESCE(value->'pagamento'->>'mpOrderId','') <> '' "
-        : "") + "RETURNING pathname",
+      "WHERE pathname = $5 AND created_at >= $6 AND value->>'status' = $7 RETURNING pathname",
       [status, timestamp, attemptsIncrement, printerError, pathname, env.cutoff, from]
     );
     if (rows.length === 0) {

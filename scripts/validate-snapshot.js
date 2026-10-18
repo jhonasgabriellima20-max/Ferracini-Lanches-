@@ -42,10 +42,10 @@ function checkHtml(file, isMesa){
     if(!ok) fail(`${file}: ${label}`);
   }
 
-  if(/WhatsApp|wa\.me|linkWhatsappCopia/i.test(html)) fail(`${file}: referencia ao WhatsApp ainda presente`);
+  if(!html.includes('https://wa.me/') || !html.includes('5543998075190')) fail(`${file}: WhatsApp da loja ausente`);
   if(!html.includes('armazenamentoDegradado')) fail(`${file}: contingência rápida do armazenamento ausente`);
   if(html.includes('registroFallbackWhatsapp') || html.includes('window.location.assign(destinoWhatsApp)')) fail(`${file}: WhatsApp nao pode confirmar pedidos automaticamente`);
-  if(!html.includes('Confirmar pedido') || !html.includes('Guarde o número da comanda')) fail(`${file}: confirmacao no proprio site ausente`);
+  if(!html.includes('id="linkWhatsappCopia"') || !html.includes('Confirmar pedido')) fail(`${file}: confirmacao explicita e copia opcional ausentes`);
   if(!html.includes('controller.abort(), 20000')) fail(`${file}: timeout de confirmação deve ser 20 segundos`);
   if(html.includes('controller.abort(), 12000')) fail(`${file}: timeout antigo de 12 segundos ainda presente`);
 
@@ -222,11 +222,11 @@ for(const file of ['api/comanda.js', 'api/distancia.js', 'api/disponibilidade.js
 
 if(fs.existsSync('index.html')){
   const html = fs.readFileSync('index.html', 'utf8');
-  if(!html.includes("return ['credito','debito'];")){
-    fail('index.html: Checkout com cartão deve excluir Pix e dinheiro quando ativado');
+  if(!html.includes("const PAYMENT_LABELS = { pix: 'Pix', dinheiro: 'Dinheiro', debito: 'Débito', credito: 'Crédito' };")){
+    fail('index.html: Pix, dinheiro, débito e crédito precisam existir nas opções de pagamento');
   }
-  if(!html.includes('await montarPagamentoCartao(registro.pedido)')){
-    fail('index.html: formulário de cartão deve aguardar pedido reservado');
+  if(!html.includes("return ['pix', 'dinheiro', 'debito', 'credito'];")){
+    fail('index.html: retirada e entrega devem oferecer Pix, dinheiro, débito e crédito');
   }
 }
 

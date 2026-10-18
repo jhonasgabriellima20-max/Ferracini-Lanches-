@@ -5,12 +5,10 @@ const { calcularTempoInternoLanches, calcularFilaTempoInterno, listarPedidosRece
 const { isStorageUnavailable: isDatabaseUnavailable, readJson, writeJson, listBlobs } = require('../lib/postgres-storage');
 
 const TIME_ZONE = 'America/Sao_Paulo';
-// Preview uses independent storage keys. The live Bematech agent only polls pedidos/fila/.
-const PREVIEW_NAMESPACE = process.env.VERCEL_ENV === 'preview' ? 'mp-preview/' : '';
-const COUNTER_PATH = PREVIEW_NAMESPACE + 'config/pedidos-sequencia.json';
-const RESERVA_DIR = PREVIEW_NAMESPACE + 'pedidos/reservas';
-const FILA_DIR = PREVIEW_NAMESPACE + 'pedidos/fila';
-const AGUARDANDO_DIR = PREVIEW_NAMESPACE + 'pedidos/aguardando';
+const COUNTER_PATH = 'config/pedidos-sequencia.json';
+const RESERVA_DIR = 'pedidos/reservas';
+const FILA_DIR = 'pedidos/fila';
+const AGUARDANDO_DIR = 'pedidos/aguardando';
 const MAX_BODY_BYTES = 64 * 1024;
 const MAX_ROUTE_KM = 35;
 const MAX_DISTANCE_DELTA_KM = 0.35;
@@ -30,9 +28,6 @@ function dataOperacao(){
 
 
 async function statusHorarioPedidos(){
-  if(process.env.VERCEL_ENV === 'preview' && require('../lib/mp-checkout').enabled()){
-    return {aberto:true,mensagem:'Ambiente de testes: não vai para a cozinha.'};
-  }
   return require('./disponibilidade').readStoreStatus();
 }
 
@@ -151,15 +146,15 @@ async function gravarJson(pathname, value, allowOverwrite){
 }
 
 async function lerUltimo(dataAtual){
-  const value = await lerJson(`${COUNTER_PATH}.${dataAtual}`) || await lerJson(COUNTER_PATH);
-  if(!value || String(value.data || '') !== dataAtual) return 0;
+  const value = await lerJson(`${COUNTER_PATH}.${dataAtual.slice(0, 7)}`) || await lerJson(COUNTER_PATH);
+  if(!value || String(value.data || '').slice(0, 7) !== dataAtual.slice(0, 7)) return 0;
   return Number.isSafeInteger(value.ultimo) && value.ultimo >= 0 ? value.ultimo : 0;
 }
 
 async function reservarNumero(numero, dataAtual){
   const codigo = String(numero).padStart(2, '0');
   await gravarJson(
-    `${RESERVA_DIR}/${dataAtual}/${String(numero).padStart(8, '0')}.json`,
+    `${RESERVA_DIR}/${dataAtual.slice(0, 7)}/${String(numero).padStart(8, '0')}.json`,
     { numero, codigo, data: dataAtual, criadoEm: new Date().toISOString() },
     false
   );
@@ -172,7 +167,7 @@ async function proximoNumero(dataAtual){
     try{
       const codigo = await reservarNumero(candidato, dataAtual);
       try{
-        await gravarJson(`${COUNTER_PATH}.${dataAtual}`, {
+        await gravarJson(`${COUNTER_PATH}.${dataAtual.slice(0, 7)}`, {
           data: dataAtual,
           ultimo: candidato,
           updatedAt: new Date().toISOString(),
@@ -424,7 +419,7 @@ async function criarPedido(payload){
     data,
     criadoEm: agora,
     atualizadoEm: agora,
-    status: 'aguardando_confirmacao',
+    status: 'aguardando_whatsapp',
     tentativasImpressao: 0,
     ...payload,
   };
@@ -448,14 +443,6 @@ async function confirmarPedido(id){
     pedido = await lerJson(pathname);
   }
   if(!pedido) throw new Error('Tentativa não encontrada hoje.');
-  // Fail closed: only card orders verified server-side can enter the print queue.
-  // Do not trust a payment status provided by the browser.
-  if((process.env.VERCEL_ENV === 'production' || process.env.VERCEL_ENV === 'preview') &&
-     (!require('../lib/mp-checkout').enabled() ||
-      !['credito','debito'].includes(pedido.pagamento?.metodo) ||
-      pedido.pagamento?.status !== 'approved' || !pedido.pagamento?.mpOrderId)){
-    throw new Error('Comanda aguardando pagamento aprovado.');
-  }
   if(pedido.confirmadoPath){
     const confirmado = await lerJson(pedido.confirmadoPath);
     if(confirmado) return confirmado;
@@ -570,13 +557,6 @@ module.exports = async function handler(req, res){
   }
 
   if(req.method === 'POST'){
-    // If online card processing is disabled, never fall back to the old
-    // "confirmar pedido" path: it created unpaid ghost receipts.
-    if((process.env.VERCEL_ENV === 'production' || process.env.VERCEL_ENV === 'preview') &&
-       !require('../lib/mp-checkout').enabled()){
-      return res.status(503).json({error:'Pagamento online em configuração. Nenhuma comanda foi gerada.',
-        pedidoConfirmado:false,pagamentoVerificado:false,checkoutSuspenso:true});
-    }
     const horario = await statusHorarioPedidos();
     if(!horario.aberto) return res.status(403).json({ error: horario.mensagem, pedidosAbertos: false });
     if(!origemPermitida(req)) return res.status(403).json({ error: 'Origem não permitida.' });
@@ -609,32 +589,9 @@ module.exports = async function handler(req, res){
       }
       const payloadValidado = await validarEntregaNoServidor(payloadBase);
       const payload = await aplicarEstimativaInteligente(payloadValidado);
-      const cardCheckoutEnabled = require('../lib/mp-checkout').enabled();
-      if(cardCheckoutEnabled &&
-         (payload.atendimento.tipo === 'mesa' ||
-         !['credito','debito'].includes(payload.pagamento.metodo))){
-        return res.status(400).json({error:'Só liberamos pedidos após pagamento online aprovado. Pedidos no local ainda não estão habilitados.'});
-      }
       const registro = await criarPedido(payload);
-      if(cardCheckoutEnabled && ['credito','debito'].includes(payload.pagamento.metodo)){
-        // Somente reserva o pedido; não numera nem envia à fila de impressão.
-        const pending=registro.pedido;
-        if(pending.pagamento?.status === 'approved' && pending.pagamento?.mpOrderId){
-          const confirmado=await confirmarPedido(pending.id);
-          return res.status(200).json({pedido:{
-            id:confirmado.id,referencia:confirmado.referencia,numero:confirmado.numero,
-            criadoEm:confirmado.criadoEm,status:confirmado.status
-          },duplicado:true});
-        }
-        return res.status(registro.duplicado?200:201).json({
-          pedido:{
-            id:pending.id,referencia:pending.referencia,criadoEm:pending.criadoEm,
-            totalCentavos:pending.totalCentavos,status:'aguardando_pagamento'
-          },
-          duplicado:registro.duplicado,impressaoAtiva:false,
-        });
-      }
-      // No card authorization in the checkout means no receipt or print job in Vercel.
+      // O clique em confirmar pedido já torna a comanda oficial no sistema.
+      // O WhatsApp é apenas uma cópia/apoio e não bloqueia a fila de impressão.
       const confirmado = await confirmarPedido(registro.pedido.id);
       return res.status(registro.duplicado ? 200 : 201).json({
         pedido: {

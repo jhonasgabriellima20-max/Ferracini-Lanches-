@@ -25,8 +25,6 @@ jobs:
         run: node scripts/validate-snapshot.js
       - name: Test automatic order receipt
         run: node tests/comanda-confirmacao.test.js
-      - name: Test Mercado Pago payment gate
-        run: node tests/mp-cartoes.test.js
       - name: Test monthly order history
         run: node tests/historico-mensal.test.js
       - name: Test large print queue
@@ -43,9 +41,4 @@ jobs:
           node --check api/disponibilidade.js
           node --check api/painel-pedidos.js
           node --check api/pedidos.js
-          node --check lib/mp-checkout.js
-          node --check api/mp-config.js
-          node --check api/mp-pagamento.js
-          node --check api/mp-status.js
-          node --check api/mp-webhook.js
           node --check lib/delivery-distance.js

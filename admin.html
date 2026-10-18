@@ -40,10 +40,10 @@
     <section class="card" aria-labelledby="novoTitulo">
       <h2 id="novoTitulo">Adicionar item</h2>
       <div class="new-grid">
-        <div class="field"><label for="novoTipo">Categoria</label><select id="novoTipo"><option value="dog">Lanche — Dog</option><option value="x">Lanche — X</option><option value="marmitex">Marmitex</option><option value="adicional">Adicional</option><option value="bebidas">Bebida</option></select></div>
+        <div class="field"><label for="novoTipo">Categoria</label><select id="novoTipo"><option value="dog">Lanche — Dog</option><option value="x">Lanche — X</option><option value="adicional">Adicional</option><option value="bebidas">Bebida</option></select></div>
         <div class="field"><label for="novoPreco">Preço (R$)</label><input id="novoPreco" inputmode="decimal" placeholder="Ex.: 25,00" maxlength="8"></div>
         <div class="field wide"><label for="novoNome">Nome do item</label><input id="novoNome" maxlength="80" placeholder="Ex.: X-Especial"></div>
-        <div class="field wide" id="descricaoField"><label for="novoDescricao">Descrição do produto / ingredientes</label><textarea id="novoDescricao" maxlength="300" rows="2" placeholder="Descreva o item para o cliente"></textarea></div>
+        <div class="field wide" id="descricaoField"><label for="novoDescricao">Descrição / ingredientes do lanche</label><textarea id="novoDescricao" maxlength="300" rows="2" placeholder="Descreva o item para o cliente"></textarea></div>
         <div class="field wide" id="ingredientesField"><label>Ingredientes usados</label><p class="sub">Marque os ingredientes para bloquear este lanche quando estiverem em falta.</p><div id="novoIngredientes" class="ingredient-picks"></div></div>
       </div>
       <button class="btn btn-primary" id="adicionarItem">Adicionar e salvar item</button>
@@ -171,7 +171,6 @@ function renderProdutos(){
           <div class="item-controls">
             <div class="price-control"><span>R$</span><input inputmode="decimal" maxlength="8" data-price-input="${esc(p.nome)}" value="${valorPrecoInput(p.precoCentavos)}" aria-label="Preço de ${esc(p.nome)}"></div>
             <button type="button" class="btn btn-mini btn-price" data-item-action="price" data-item-name="${esc(p.nome)}">Alterar valor</button>
-            ${p.id?.startsWith('novo_') ? `<button type="button" class="btn btn-mini btn-ghost" data-item-action="description" data-item-name="${esc(p.nome)}">Editar descrição</button>` : ''}
             <button type="button" class="btn btn-mini btn-delete" data-item-action="delete" data-item-name="${esc(p.nome)}">Excluir</button>
             <label class="toggle" title="Disponibilidade"><input type="checkbox" data-kind="produto" data-key="${esc(p.nome)}" ${estado.produtos[p.nome]!==false?'checked':''}><span class="slider"></span></label>
           </div>
@@ -354,15 +353,6 @@ $('appView').addEventListener('click', async e => {
       return;
     }
     await salvar(null, { editarItem:{ nome, precoCentavos } });
-    return;
-  }
-
-  if(action === 'description'){
-    const item = catalogo.produtos.find(p => p.nome === nome);
-    const descricao = prompt('Edite a descrição de '+nome+' (até 300 caracteres):', item?.descricao || '');
-    if(descricao === null) return;
-    if(descricao.length > 300){ $('systemMsg').innerHTML = notice('Limite de 300 caracteres.','err'); return; }
-    await salvar(null, { editarDescricao:{nome, descricao} });
     return;
   }
 

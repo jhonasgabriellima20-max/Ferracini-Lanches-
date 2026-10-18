@@ -144,9 +144,7 @@ async function listarPedidos(data){
   // Falhas de leitura são reportadas: não apresentar histórico parcial como completo.
   for(let i = 0; i < blobs.length; i += 10){
     const lote = await Promise.all(blobs.slice(i, i + 10).map(lerPedidoComCache));
-    const paidOnly=process.env.VERCEL_ENV==='production' && process.env.MP_CARD_CHECKOUT_ENABLED==='true';
-    pedidos.push(...lote.filter(p=>p && (!paidOnly ||
-      (p.pagamento?.status==='approved' && Boolean(p.pagamento?.mpOrderId)))));
+    pedidos.push(...lote.filter(Boolean));
   }
   if(pedidoReadCache.size > 5000) pedidoReadCache.clear();
   return pedidos.sort((a,b) => String(b.criadoEm || '').localeCompare(String(a.criadoEm || '')));
@@ -222,8 +220,7 @@ module.exports = async function handler(req, res){
     }
     const data = /^\d{4}-\d{2}-\d{2}$/.test(dataParam) ? dataParam : dataOperacao();
     const pedidos = await listarPedidos(data);
-    const aguardando = process.env.VERCEL_ENV==='production' && process.env.MP_CARD_CHECKOUT_ENABLED==='true'
-      ? [] : await listarAguardando(data);
+    const aguardando = await listarAguardando(data);
     return res.status(200).json({ data, pedidos, aguardando, atualizadoEm: new Date().toISOString() });
   }catch(err){
     console.error('[painel-pedidos] listagem_falhou', { error: String(err) });
