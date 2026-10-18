@@ -50,6 +50,16 @@ No menu use 5 - Abrir arquivo de log para diagnosticar. Em caso de mensagem de f
 - Em **comer no local**, a comanda mostra mesa e taxa de serviço de R$ 3,00 quando o pedido contém `taxaServicoCentavos: 300`, mas não imprime o bloco de forma de pagamento.
 - Não existe alteração na API, fila, token ou ordem dos pedidos: é somente o formato local do recibo.
 
+## Marmitex Mini e Média na comanda
+
+- Marmitas cadastradas no cardápio seguem **a mesma fila automática** dos lanches, depois que o pedido estiver confirmado/liberado pelas regras existentes. Não há segunda impressora ou cobrança adicional por modalidade.
+- A impressão identifica pelo nome `Marmitex` ou `Marmita` (ou pela categoria `marmitex` quando informada), usando o ícone 🍱; os lanches continuam com 🍔.
+- A comanda mostra quantidade, nome, observações e total de cada item. O pedido pode conter marmitas e lanches juntos.
+- O menu **2 - Imprimir teste** agora gera um exemplo **fictício** com Marmitex Mini, Marmitex Média e X-SALADA. Os preços exibidos no exemplo são apenas ilustrativos e **não** alteram os valores do painel.
+- Marmitex sem preço definido permanece indisponível para compras. O responsável cadastra os preços e a descrição no painel antes da primeira venda.
+- **O arquivo local do notebook não é atualizado sozinho por um commit no GitHub.** Substitua apenas `C:\FerraciniPrintAgent\FerraciniPrintAgent.ps1` pela nova versão do repositório; não toque em `config.json`, `token.dat`, arquivos `.cmd` ou log. Reinicie o agente/Windows para carregar o novo layout.
+- Verifique a saída física na Bematech. O retorno do spooler não garante por si só a impressão no papel.
+
 ### Atualizar o notebook já instalado
 
 1. Mantenha uma cópia de segurança do arquivo `FerraciniPrintAgent.ps1` atual.
