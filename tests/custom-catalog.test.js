@@ -68,3 +68,31 @@ test('site e mesa integram itens novos, adicionais, bloqueios e escape HTML',()=
   api.aplicarItensNovos([]);assert.equal(api.CONFIG.produtos.length,27);assert.equal(api.ADICIONAIS_PADRAO.length,17);
  }
 });
+
+test('pedido misto: marmitex mini/media, lanche, doce e sobremesa geram uma unica lista validada',()=>{
+ let items=[];
+ items=addItem(items,{nome:'Brigadeiro',categoria:'doces',precoCentavos:600},[]);
+ items=addItem(items,{nome:'Pudim',categoria:'sobremesas',precoCentavos:1100},[]);
+ const catalog=orderCatalog(items,{'Marmitex Mini':1900,'Marmitex Média':2600});
+ const file=require.resolve('../api/pedidos');
+ const ctx={require:createRequire(file),module:{exports:{}},process,console,Buffer,setTimeout,clearTimeout};
+ vm.createContext(ctx);
+ vm.runInContext(fs.readFileSync(file,'utf8')+'\nmodule.exports.validarItem=validarItem;',ctx);
+ const validar=ctx.module.exports.validarItem;
+ const itens=[
+  {nome:'Marmitex Mini',quantidade:1,precoUnitarioCentavos:1900},
+  {nome:'Marmitex Média',quantidade:1,precoUnitarioCentavos:2600},
+  {nome:'Dog Simples',quantidade:1,precoUnitarioCentavos:1200},
+  {nome:'Brigadeiro',quantidade:2,precoUnitarioCentavos:600,categoria:'x'},
+  {nome:'Pudim',quantidade:1,precoUnitarioCentavos:1100,categoria:'x'},
+ ];
+ const validados=itens.map(item=>validar({...item,adicionais:[],observacao:'TESTE'},catalog));
+ assert.equal(validados.length,5);
+ assert.ok(validados.every(Boolean));
+ assert.equal(validados[3].categoria,'doces');
+ assert.equal(validados[4].categoria,'sobremesas');
+ assert.equal(validados[0].nome,'Marmitex Mini');
+ assert.equal(validados[1].nome,'Marmitex Média');
+ assert.equal(validados.reduce((total,item)=>total+item.quantidade*item.precoUnitarioCentavos,0),8000);
+ assert.equal(validar({nome:'Pudim',quantidade:1,precoUnitarioCentavos:1},catalog),null);
+});
