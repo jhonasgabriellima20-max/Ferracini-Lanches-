@@ -255,7 +255,7 @@ function Format-Receipt($Pedido, [int]$Width, [bool]$UseEmojis = $true) {
 
   $lines.Add((Receipt-Label '💵' ('Subtotal: ' + (Money $Pedido.subtotalCentavos)) $UseEmojis))
   if ($tipo -eq 'entrega' -and $Pedido.atendimento.taxaEntregaCentavos) {
-    $lines.Add('Entrega:  ' + (Money $Pedido.atendimento.taxaEntregaCentavos))
+    $lines.Add((Receipt-Label '🛵' ('Taxa de entrega: ' + (Money $Pedido.atendimento.taxaEntregaCentavos)) $UseEmojis))
   }
   if ($Pedido.atendimento.taxaServicoCentavos) {
     $lines.Add((Receipt-Label '➕' ('Taxa de servico: ' + (Money $Pedido.atendimento.taxaServicoCentavos)) $UseEmojis))
@@ -419,7 +419,7 @@ public static class FerraciniReceiptPrinter
         string[] highlights = { "FERRACINI LANCHES", "COMANDA ", "TESTE DE",
             "DATA:", "HORARIO DO PEDIDO:", "ATENDIMENTO:", "COMER NO LOCAL",
             "CLIENTE", "NOME:", "ENDERECO", "ITENS DO PEDIDO", "Subtotal:",
-            "Taxa de servico:", "PAGAMENTO:" };
+            "Taxa de entrega:", "Taxa de servico:", "PAGAMENTO:" };
         foreach (string h in highlights)
             if (text.IndexOf(h, StringComparison.OrdinalIgnoreCase) >= 0) return true;
         return System.Text.RegularExpressions.Regex.IsMatch(text, @"\b\d+x\s+");
@@ -477,7 +477,13 @@ function Print-Test {
     numero = 'TESTE'
     criadoEm = (Get-Date).ToString('o')
     cliente = [pscustomobject]@{ nome = 'CLIENTE TESTE'; telefone = '(43) 00000-0000' }
-    atendimento = [pscustomobject]@{ tipo = 'mesa'; mesa = '01'; taxaServicoCentavos = 300 }
+    atendimento = [pscustomobject]@{
+      tipo = 'entrega'; taxaEntregaCentavos = 700; taxaServicoCentavos = 300
+      endereco = [pscustomobject]@{
+        rua = 'Rua Exemplo'; numero = '123'; bairro = 'Centro'; cidade = 'Londrina'
+        complemento = ''; cep = '86000-000'
+      }
+    }
     itens = @(
       [pscustomobject]@{
         nome = 'Marmitex Mini'; categoria = 'marmitex'; quantidade = 1; precoUnitarioCentavos = 1900
@@ -501,7 +507,7 @@ function Print-Test {
       }
     )
     subtotalCentavos = 11800
-    totalCentavos = 12100
+    totalCentavos = 12800
     pagamento = [pscustomobject]@{ metodo = 'no_local' }
   }
   $text = 'TESTE DE IMPRESSAO - NAO E PEDIDO REAL' + [Environment]::NewLine +
