@@ -1119,7 +1119,7 @@ function renderMenu(){
   menuGridEl.innerHTML = CONFIG.categorias.map(cat => {
     const items = CONFIG.produtos.filter(p => p.categoria === cat.id);
     if (!items.length) return '';
-    return `;
+    return `
       <div class="menu-category">
         <h3 class="menu-category-title">${cat.label}</h3>
         <div class="menu-grid-inner">
