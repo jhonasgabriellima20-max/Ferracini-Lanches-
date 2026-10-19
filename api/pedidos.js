@@ -216,6 +216,8 @@ function validarItem(raw, catalogo = CATALOGO){
     precoUnitarioCentavos,
     adicionais,
     observacao: texto(raw?.observacao, 300),
+    // Categoria validada no servidor. Nunca aceitar a categoria fornecida pelo navegador.
+    ...(produto.categoria ? { categoria: produto.categoria } : {}),
   };
 }
 
