@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <title>Ferracini • Checkout de teste (não é uma compra)</title>
+  <style>
+    :root{color-scheme:dark;--bg:#101114;--panel:#1b1d22;--panel2:#24262c;--line:#393b43;--ink:#f5f5f5;--muted:#b5b8c3;--accent:#ff633e;--ok:#99edbd;--warn:#ffe2a3}
+    *{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 12% 0%,#47241c 0%,#171719 32%,var(--bg) 70%);color:var(--ink);font:16px/1.5 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+    main{max-width:1000px;margin:auto;padding:34px 20px 65px}header{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:38px;flex-wrap:wrap}
+    .logo{font-size:21px;font-weight:900;letter-spacing:.4px}.logo span{color:var(--accent)}
+    header a{color:var(--muted);font-size:14px;text-decoration:none}.kicker{color:var(--accent);text-transform:uppercase;font-weight:800;font-size:12px;letter-spacing:1.6px;margin:0 0 6px}
+    h1{font-size:clamp(30px,5vw,46px);line-height:1.08;letter-spacing:-1px;margin:8px 0 12px}h2{font-size:21px;margin:0 0 18px}.sub{color:var(--muted);max-width:700px;margin:0 0 30px}
+    .alert{padding:13px 16px;border:1px solid #b68955;border-radius:12px;background:#40301d;color:#ffe3b0;margin:20px 0 24px;font-weight:650}
+    .grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(290px,.78fr);gap:18px}.card{background:var(--panel);border:1px solid var(--line);border-radius:17px;padding:23px;min-width:0}
+    .item,.total{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}.item p{margin:0;font-weight:750}.hint{color:var(--muted);font-size:13px}
+    .separator{border:0;border-top:1px solid var(--line);margin:20px 0}.total{font-size:21px;font-weight:850}.price{font-variant-numeric:tabular-nums}
+    .status{padding:12px 14px;background:var(--panel2);border-radius:9px;border:1px solid var(--line);font-size:14px;line-height:1.5;margin-bottom:18px}
+    .btn{background:var(--accent);color:#180d0a;border:0;padding:13px 18px;border-radius:10px;font-weight:850;cursor:pointer;width:100%;min-height:48px}.btn:hover{filter:brightness(1.1)}
+    .alt{background:#353840;color:white}.stack{display:grid;gap:9px}.desc{font-size:14px;color:var(--muted);margin:12px 0}.result{padding:16px;border-radius:12px;border:1px solid var(--line);background:var(--panel2);margin-top:18px;min-height:64px}
+    .result.ok{border-color:#367953;color:var(--ok)}.result.bad{border-color:#a66a6a;color:#ffd2d2}.result.warn{border-color:#8f7540;color:var(--warn)}
+    #cardPaymentBrick_container{background:white;border-radius:12px;padding:16px;color:#161616;min-height:140px}
+    footer{margin-top:24px;color:var(--muted);font-size:13px} [hidden]{display:none!important}
+    @media(max-width:710px){.grid{grid-template-columns:1fr}header{margin-bottom:24px}.card{padding:18px}}
+  </style>
+</head>
+<body>
+<main>
+<header><div class="logo">FERRACINI <span>LANCHES</span></div><a href="/">← Voltar ao cardápio da versão de testes</a></header>
+<p class="kicker">Ambiente de homologação • Não é uma compra</p>
+<h1>Pagamento no próprio site</h1>
+<p class="sub">Prévia do checkout com o Mercado Pago Card Payment Brick. Esta página é isolada: não envia pedido para a cozinha, não gera comanda e não altera o site principal.</p>
+<div class="alert">⚠️ Somente para testes. Não use cartão real. Quando habilitado, use exclusivamente cartões de teste do Mercado Pago.</div>
+<div class="grid">
+  <section class="card">
+    <h2>💳 Testar checkout</h2>
+    <div class="status" id="ambiente" role="status">Verificando se o ambiente é de demonstração ou sandbox…</div>
+    <div id="demonstracao" hidden>
+      <p class="desc">Modo visual: os botões abaixo simulam resultados, sem enviar dados ao Mercado Pago e sem movimentar dinheiro.</p>
+      <div class="stack">
+        <button class="btn" type="button" data-status="approved">✅ Simular pagamento aprovado</button>
+        <button class="btn alt" type="button" data-status="rejected">❌ Simular pagamento recusado</button>
+        <button class="btn alt" type="button" data-status="pending">⌛ Simular pagamento pendente</button>
+      </div>
+    </div>
+    <div id="sandbox" hidden>
+      <p class="desc">Sandbox conectado com credenciais TEST-. Utilize cartões de teste e e-mail diferente do da conta do vendedor. O processamento ocorre na API isolada de homologação.</p>
+      <div id="cardPaymentBrick_container"></div>
+    </div>
+    <div id="resultado" class="result" role="status" aria-live="polite">Nenhuma simulação ou pagamento de teste efetuado.</div>
+  </section>
+  <aside class="card">
+    <h2>🧾 Pedido ilustrativo</h2>
+    <div class="item"><div><p>1 × Item de teste</p><div class="hint">Valor fixo exclusivo desta demonstração</div></div><strong class="price">R$ 5,00</strong></div>
+    <hr class="separator">
+    <div class="item"><span class="hint">Taxa de entrega</span><span>—</span></div>
+    <div class="item"><span class="hint">Taxa de serviço</span><span>—</span></div>
+    <hr class="separator">
+    <div class="total"><span>Total de teste</span><span class="price">R$ 5,00</span></div>
+    <hr class="separator">
+    <p class="desc">O checkout definitivo usará os itens reais do carrinho e os valores recalculados no servidor. Esta prévia não altera preços, estoque, fila de impressão ou painel.</p>
+    <p class="hint">🔒 Nenhum dado do cartão passa por campos criados pelo Ferracini: o formulário sensível é renderizado pelo SDK oficial do Mercado Pago.</p>
+  </aside>
+</div>
+<footer>Ferracini Lanches • Branch teste-checkout-transparente • NÃO PUBLICADO NO DOMÍNIO PRINCIPAL</footer>
+</main>
+<script src="https://sdk.mercadopago.com/js/v2"></script>
+<script>
+(function(){
+  'use strict';
+  const ambiente = document.getElementById('ambiente');
+  const demo = document.getElementById('demonstracao');
+  const sandbox = document.getElementById('sandbox');
+  const resultado = document.getElementById('resultado');
+  // Mantém a mesma idempotência em reenvios desta tentativa; recarregue para começar outra.
+  const tentativaId = window.crypto && window.crypto.randomUUID ? window.crypto.randomUUID() : '';
+  function exibir(texto, status) {
+    resultado.textContent = texto;
+    resultado.className = 'result ' + (status === 'approved' ? 'ok' : status === 'rejected' ? 'bad' : 'warn');
+  }
+  document.querySelectorAll('[data-status]').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      const estado = btn.getAttribute('data-status');
+      const mensagens = {
+        approved: '✅ APROVADO (simulação visual). Nenhuma cobrança ocorreu e nenhuma comanda foi enviada.',
+        rejected: '❌ RECUSADO (simulação visual). Nenhuma cobrança ocorreu e nenhuma comanda foi enviada.',
+        pending: '⌛ PENDENTE (simulação visual). A cozinha não deve receber uma comanda até a aprovação.'
+      };
+      exibir(mensagens[estado], estado);
+    });
+  });
+  async function iniciar() {
+    try {
+      const response = await fetch('/api/checkout-teste', {cache:'no-store'});
+      if (!response.ok) throw new Error('Ambiente não autorizado para homologação.');
+      const cfg = await response.json();
+      if (cfg.modo !== 'sandbox' || !cfg.publicKey) {
+        ambiente.textContent = 'MODO DEMONSTRAÇÃO • Sem cobranças ou comandas. Chaves MP_TEST_ ainda não configuradas nesta prévia.';
+        demo.hidden = false;
+        return;
+      }
+      ambiente.textContent = 'MODO SANDBOX • Mercado Pago com credenciais de teste. Sem pedidos reais ou impressão.';
+      sandbox.hidden = false;
+      if (typeof window.MercadoPago !== 'function') {
+        exibir('O SDK oficial do Mercado Pago não carregou. Verifique a conexão e o bloqueio do navegador.', 'rejected');
+        return;
+      }
+      const mp = new MercadoPago(cfg.publicKey, {locale:'pt-BR'});
+      const builder = mp.bricks();
+      await builder.create('cardPayment', 'cardPaymentBrick_container', {
+        initialization: {amount: cfg.valorCentavos / 100},
+        customization: {visual: {style: {theme:'default'}}},
+        callbacks: {
+          onReady: function() { exibir('Cartões de teste disponíveis. Preencha o formulário para simular no Mercado Pago.', 'pending'); },
+          onError: function(error) {
+            console.warn('[checkout-teste] Erro no componente de teste', error && error.name);
+            exibir('Não foi possível carregar ou validar o formulário de teste.', 'rejected');
+          },
+          onSubmit: async function(formData) {
+            const body = Object.assign({}, formData, {idempotencyKey: tentativaId});
+            const r = await fetch('/api/checkout-teste', {
+              method:'POST',
+              headers:{'Content-Type':'application/json'},
+              body:JSON.stringify(body)
+            });
+            const data = await r.json().catch(function(){return {};});
+            if (!r.ok) {
+              exibir(data.error || data.mensagem || 'Pagamento de teste não processado. Confira as credenciais.', 'rejected');
+              throw new Error('Falha no processamento do teste.');
+            }
+            const status = data.status;
+            let text = status === 'approved' ? '✅ Pagamento APROVADO no ambiente de testes.' :
+                       status === 'rejected' ? '❌ Pagamento RECUSADO no ambiente de testes.' :
+                       '⌛ Status do pagamento de teste: ' + String(status || 'desconhecido') + '.';
+            text += ' ID de teste: ' + String(data.pagamentoId || 'não informado') + '. Nenhum pedido ou comanda foi gerado.';
+            exibir(text, status);
+          }
+        }
+      });
+    } catch (error) {
+      ambiente.textContent = 'Não foi possível validar o ambiente de homologação.';
+      exibir('Checkout de teste indisponível. Nenhuma cobrança foi realizada por esta página.', 'rejected');
+    }
+  }
+  iniciar();
+})();
+</script>
+</body>
+</html>
