@@ -419,7 +419,7 @@ public static class FerraciniReceiptPrinter
         string[] highlights = { "FERRACINI LANCHES", "COMANDA ", "TESTE DE",
             "DATA:", "HORARIO DO PEDIDO:", "ATENDIMENTO:", "COMER NO LOCAL",
             "CLIENTE", "NOME:", "ENDERECO", "ITENS DO PEDIDO", "Subtotal:",
-            "Taxa de servico:", "PAGAMENTO:" };
+            "Taxa de entrega:", "Taxa de servico:", "PAGAMENTO:" };
         foreach (string h in highlights)
             if (text.IndexOf(h, StringComparison.OrdinalIgnoreCase) >= 0) return true;
         return System.Text.RegularExpressions.Regex.IsMatch(text, @"\b\d+x\s+");
