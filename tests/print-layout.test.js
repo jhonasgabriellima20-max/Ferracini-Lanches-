@@ -13,7 +13,8 @@ assert.match(script, /StringFormatFlags\.NoWrap/);
 assert.match(script, /float availableWidth = limitX - x/);
 assert.match(script, /e\.HasMorePages = nextLine < lines\.Length/);
 assert.doesNotMatch(script, /\|\s*Out-Printer/);
-assert.match(script, /Send-ToPrinter \$text \(\[string\]\$cfg\.printerName\)/);
+assert.match(script, /Send-ToPrinter \$textEntrega \(\[string\]\$cfg\.printerName\)/);
+assert.match(script, /Send-ToPrinter \$textMesa \(\[string\]\$cfg\.printerName\)/);
 assert.match(script, /Send-ToPrinter \$receipt \$printerName/);
 
 assert.match(script, /function Receipt-Label/);
