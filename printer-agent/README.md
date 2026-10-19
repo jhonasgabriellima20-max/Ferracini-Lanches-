@@ -55,7 +55,10 @@ No menu use 5 - Abrir arquivo de log para diagnosticar. Em caso de mensagem de f
 - Marmitas cadastradas no cardápio seguem **a mesma fila automática** dos lanches, depois que o pedido estiver confirmado/liberado pelas regras existentes. Não há segunda impressora ou cobrança adicional por modalidade.
 - A impressão identifica pelo nome `Marmitex` ou `Marmita` (ou pela categoria `marmitex` quando informada), usando o ícone 🍱; os lanches continuam com 🍔.
 - A comanda mostra quantidade, nome, observações e total de cada item. O pedido pode conter marmitas e lanches juntos.
-- O menu **2 - Imprimir teste** agora gera um exemplo **fictício** com Marmitex Mini, Marmitex Média e X-SALADA. Os preços exibidos no exemplo são apenas ilustrativos e **não** alteram os valores do painel.
+- O menu **2 - Imprimir teste** agora gera um exemplo **fictício** com Marmitex Mini, Marmitex Média, X-SALADA, Brigadeiro e Pudim, mostrando **taxa de entrega** e **taxa de serviço**. Os preços exibidos no exemplo são apenas ilustrativos e **não** alteram os valores do painel.
+- Doces e sobremesas cadastrados no painel são impressos na **mesma comanda e na mesma fila** dos lanches e marmitas. A categoria é validada no servidor (nunca aceita como enviada pelo cliente). Novos doces saem como `DOCE - Nome` e sobremesas como `SOBREMESA - Nome`, com 🍬 e 🍰 caso a Bematech suporte os emojis.
+- A impressão usa os valores reais do pedido: subtotal, taxa de entrega **apenas em entrega quando cobrada**, taxa de serviço **quando aplicável**, e total final. O exemplo é de entrega para verificar ambas as taxas; pedidos de mesa continuam usando a mesma formatação sem taxa de entrega.
+- Pedidos antigos sem categoria continuam funcionando como antes; marmitex continua identificado também pelo nome.
 - Marmitex sem preço definido permanece indisponível para compras. O responsável cadastra os preços e a descrição no painel antes da primeira venda.
 - **O arquivo local do notebook não é atualizado sozinho por um commit no GitHub.** Substitua apenas `C:\FerraciniPrintAgent\FerraciniPrintAgent.ps1` pela nova versão do repositório; não toque em `config.json`, `token.dat`, arquivos `.cmd` ou log. Reinicie o agente/Windows para carregar o novo layout.
 - Verifique a saída física na Bematech. O retorno do spooler não garante por si só a impressão no papel.
@@ -68,3 +71,14 @@ No menu use 5 - Abrir arquivo de log para diagnosticar. Em caso de mensagem de f
 4. Reinicie o notebook com a Bematech ligada e conectada; a inicialização automática existente passa a usar o novo script.
 5. No menu existente, escolha **2 — Imprimir teste** e confira os destaques e símbolos no papel. Essa comanda é marcada como TESTE e não vai para o servidor.
 6. Antes de atender clientes, confira se a impressão de um pedido legítimo funciona. Se as figuras saírem como quadradinhos, desative somente `useEmojis` no `config.json`, mantendo o negrito.
+
+### Atualizador facilitado (sem perder token)
+
+Baixe os dois arquivos `FerraciniPrintAgent.ps1` e `Atualizar-Comanda-Ferracini.cmd` **na mesma pasta do notebook**, mantendo os nomes. Pare o agente em execução e abra `Atualizar-Comanda-Ferracini.cmd`. O atualizador:
+
+1. Confere se há uma instalação em `C:\FerraciniPrintAgent` e pede confirmação.
+2. Faz um backup do script de impressão antigo.
+3. Troca **somente** `FerraciniPrintAgent.ps1`, confere a cópia e preserva `config.json`, `token.dat`, `Ferracini-Impressao.cmd` e os logs.
+4. Permite recomeçar pelo `Ferracini-Impressao.cmd` já existente, escolhendo **2 — Imprimir teste**.
+
+**Atenção:** a publicação no GitHub/Vercel não modifica o arquivo local do notebook. O teste impresso verifica desenho e caracteres; ainda é necessário conferir o fluxo com um pedido real. A execução na Bematech é local, não remota.
