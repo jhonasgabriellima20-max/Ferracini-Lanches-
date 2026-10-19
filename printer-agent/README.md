@@ -55,16 +55,21 @@ No menu use 5 - Abrir arquivo de log para diagnosticar. Em caso de mensagem de f
 - Marmitas cadastradas no cardápio seguem **a mesma fila automática** dos lanches, depois que o pedido estiver confirmado/liberado pelas regras existentes. Não há segunda impressora ou cobrança adicional por modalidade.
 - A impressão identifica pelo nome `Marmitex` ou `Marmita` (ou pela categoria `marmitex` quando informada), usando o ícone 🍱; os lanches continuam com 🍔.
 - A comanda mostra quantidade, nome, observações e total de cada item. O pedido pode conter marmitas e lanches juntos.
-- O menu **2 - Imprimir teste** agora gera um exemplo **fictício** com Marmitex Mini, Marmitex Média e X-SALADA. Os preços exibidos no exemplo são apenas ilustrativos e **não** alteram os valores do painel.
+- O menu **2 - Imprimir teste** gera **duas comandas fictícias** usando exatamente o mesmo modelo universal: uma para ENTREGA (com taxa de entrega) e outra para MESA (com taxa de serviço). Ambas contêm Marmitex Mini, Marmitex Média, X-SALADA, Brigadeiro e Pudim. Os preços dos testes são ilustrativos e **não** alteram os valores do painel.
 - Marmitex sem preço definido permanece indisponível para compras. O responsável cadastra os preços e a descrição no painel antes da primeira venda.
+- Doces e sobremesas cadastrados no painel compartilham a mesma fila e a mesma comanda dos demais produtos. O servidor valida a categoria antes da impressão. Doces aparecem como `DOCE - Nome` com 🍬, sobremesas como `SOBREMESA - Nome` com 🍰, marmitas 🍱 e lanches 🍔.
+- A taxa de entrega 🛵 aparece **somente para entrega**, quando cobrada; a taxa de serviço ➕ aparece **quando registrada no pedido**. Subtotal, total, observações, horário, atendimento e forma de pagamento continuam no mesmo layout. Os itens e as taxas nunca são inventados pelo agente.
+- Há **um único modelo**, independentemente de horário, categoria ou tipo de atendimento; não é necessário trocar a impressão entre o almoço e a noite.
+- A impressão de símbolos e emojis depende do suporte real do driver Bematech/Windows e precisa ser confirmada na impressora. Mesmo sem emoji, `DOCE -` e `SOBREMESA -` permanecem legíveis.
 - **O arquivo local do notebook não é atualizado sozinho por um commit no GitHub.** Substitua apenas `C:\FerraciniPrintAgent\FerraciniPrintAgent.ps1` pela nova versão do repositório; não toque em `config.json`, `token.dat`, arquivos `.cmd` ou log. Reinicie o agente/Windows para carregar o novo layout.
 - Verifique a saída física na Bematech. O retorno do spooler não garante por si só a impressão no papel.
 
 ### Atualizar o notebook já instalado
 
-1. Mantenha uma cópia de segurança do arquivo `FerraciniPrintAgent.ps1` atual.
-2. Baixe a nova versão de `printer-agent/FerraciniPrintAgent.ps1` deste repositório e substitua **somente** esse arquivo na pasta instalada, normalmente `C:\FerraciniPrintAgent`.
-3. **Não** apague nem substitua `config.json`, `token.dat`, os arquivos `.cmd` nem o log. Não é preciso gerar outro token.
-4. Reinicie o notebook com a Bematech ligada e conectada; a inicialização automática existente passa a usar o novo script.
-5. No menu existente, escolha **2 — Imprimir teste** e confira os destaques e símbolos no papel. Essa comanda é marcada como TESTE e não vai para o servidor.
-6. Antes de atender clientes, confira se a impressão de um pedido legítimo funciona. Se as figuras saírem como quadradinhos, desative somente `useEmojis` no `config.json`, mantendo o negrito.
+1. Preferencialmente, baixe e execute `Atualizar-Comanda-Ferracini.cmd` do repositório no **notebook Windows**, com o agente parado; ele faz backup e atualiza somente o `FerraciniPrintAgent.ps1`, preservando configuração, token e logs. É uma atualização única, não uma troca a cada período do dia.
+2. Como alternativa manual, mantenha uma cópia de segurança do arquivo `FerraciniPrintAgent.ps1` atual.
+3. Baixe a nova versão de `printer-agent/FerraciniPrintAgent.ps1` deste repositório e substitua **somente** esse arquivo na pasta instalada, normalmente `C:\FerraciniPrintAgent`.
+4. **Não** apague nem substitua `config.json`, `token.dat`, os arquivos `.cmd` nem o log. Não é preciso gerar outro token.
+5. Reinicie o agente (ou Windows) com a Bematech ligada e conectada; a inicialização automática existente passa a usar o novo script.
+6. No menu existente, escolha **2 — Imprimir teste** e confira ambas as comandas e símbolos no papel. Os testes não vão para o servidor.
+7. Antes de atender clientes, confira se a impressão de um pedido legítimo funciona. Se as figuras saírem como quadradinhos, desative somente `useEmojis` no `config.json`, mantendo o negrito.
