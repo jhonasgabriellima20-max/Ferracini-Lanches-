@@ -155,15 +155,26 @@ function Add-WrappedLine($Lines, [string]$Text, [int]$Width, [string]$Prefix = '
   }
 }
 
-# Itens de marmitex usam identificacao propria, sem alterar a fila ou o checkout.
-# A categoria e opcional: pedidos antigos trazem somente o nome do produto.
+# Um unico modelo para todos os pedidos. A categoria vem do catalogo validado.
+# Para comandas antigas sem categoria, preservamos a identificacao do marmitex.
 function Item-Icon($Item) {
-  $categoria = [string]$Item.categoria
+  $categoria = ([string]$Item.categoria).ToLowerInvariant()
   $nome = [string]$Item.nome
-  if ($categoria -eq 'marmitex' -or $nome -match '^(marmitex|marmita)\b') {
+  if ($categoria -eq 'marmitex' -or ($categoria -eq '' -and $nome -match '^(marmitex|marmita)\b')) {
     return '🍱'
   }
+  if ($categoria -eq 'doces') { return '🍬' }
+  if ($categoria -eq 'sobremesas') { return '🍰' }
+  if ($categoria -eq 'bebidas') { return '🥤' }
   return '🍔'
+}
+
+function Item-Label($Item) {
+  $nome = [string]$Item.nome
+  $categoria = ([string]$Item.categoria).ToLowerInvariant()
+  if ($categoria -eq 'doces') { return ('DOCE - ' + $nome) }
+  if ($categoria -eq 'sobremesas') { return ('SOBREMESA - ' + $nome) }
+  return $nome
 }
 
 function Format-Receipt($Pedido, [int]$Width, [bool]$UseEmojis = $true) {
@@ -219,11 +230,12 @@ function Format-Receipt($Pedido, [int]$Width, [bool]$UseEmojis = $true) {
   }
 
   $lines.Add($doubleSep)
-  $lines.Add((Receipt-Label '🍔' 'PEDIDO' $UseEmojis))
+  $lines.Add((Receipt-Label '🧾' 'ITENS DO PEDIDO' $UseEmojis))
   $lines.Add($doubleSep)
   foreach ($item in @($Pedido.itens)) {
     $itemIcon = Item-Icon $item
-    Add-WrappedLine $lines (Receipt-Label $itemIcon (([string]$item.quantidade) + 'x ' + ([string]$item.nome)) $UseEmojis) $Width
+    $itemLabel = Item-Label $item
+    Add-WrappedLine $lines (Receipt-Label $itemIcon (([string]$item.quantidade) + 'x ' + $itemLabel) $UseEmojis) $Width
     foreach ($adicional in @($item.adicionais)) {
       Add-WrappedLine $lines (([string]$adicional.nome) + '  +' + (Money $adicional.precoCentavos)) $Width '  + '
     }
@@ -243,7 +255,7 @@ function Format-Receipt($Pedido, [int]$Width, [bool]$UseEmojis = $true) {
 
   $lines.Add((Receipt-Label '💵' ('Subtotal: ' + (Money $Pedido.subtotalCentavos)) $UseEmojis))
   if ($tipo -eq 'entrega' -and $Pedido.atendimento.taxaEntregaCentavos) {
-    $lines.Add('Entrega:  ' + (Money $Pedido.atendimento.taxaEntregaCentavos))
+    $lines.Add((Receipt-Label '🛵' ('Taxa de entrega: ' + (Money $Pedido.atendimento.taxaEntregaCentavos)) $UseEmojis))
   }
   if ($Pedido.atendimento.taxaServicoCentavos) {
     $lines.Add((Receipt-Label '➕' ('Taxa de servico: ' + (Money $Pedido.atendimento.taxaServicoCentavos)) $UseEmojis))
@@ -406,8 +418,8 @@ public static class FerraciniReceiptPrinter
         string text = line.TrimStart();
         string[] highlights = { "FERRACINI LANCHES", "COMANDA ", "TESTE DE",
             "DATA:", "HORARIO DO PEDIDO:", "ATENDIMENTO:", "COMER NO LOCAL",
-            "CLIENTE", "NOME:", "ENDERECO", "PEDIDO", "Subtotal:",
-            "Taxa de servico:", "PAGAMENTO:" };
+            "CLIENTE", "NOME:", "ENDERECO", "ITENS DO PEDIDO", "Subtotal:",
+            "Taxa de entrega:", "Taxa de servico:", "PAGAMENTO:" };
         foreach (string h in highlights)
             if (text.IndexOf(h, StringComparison.OrdinalIgnoreCase) >= 0) return true;
         return System.Text.RegularExpressions.Regex.IsMatch(text, @"\b\d+x\s+");
@@ -476,19 +488,44 @@ function Print-Test {
         adicionais = @(); observacao = 'ARROZ SEPARADO'
       },
       [pscustomobject]@{
-        nome = 'X-SALADA'; quantidade = 2; precoUnitarioCentavos = 2500
+        nome = 'X-SALADA'; categoria = 'x'; quantidade = 2; precoUnitarioCentavos = 2500
         adicionais = @(); observacao = 'SEM CEBOLA'
+      },
+      [pscustomobject]@{
+        nome = 'Brigadeiro'; categoria = 'doces'; quantidade = 2; precoUnitarioCentavos = 600
+        adicionais = @(); observacao = ''
+      },
+      [pscustomobject]@{
+        nome = 'Pudim'; categoria = 'sobremesas'; quantidade = 1; precoUnitarioCentavos = 1100
+        adicionais = @(); observacao = ''
       }
     )
-    subtotalCentavos = 9500
-    totalCentavos = 9800
+    subtotalCentavos = 11800
+    totalCentavos = 12100
     pagamento = [pscustomobject]@{ metodo = 'no_local' }
   }
-  $text = 'TESTE DE IMPRESSAO - NAO E PEDIDO REAL' + [Environment]::NewLine +
-          (Format-Receipt $pedidoTeste $width $useEmojis)
-  Send-ToPrinter $text ([string]$cfg.printerName)
-  Write-Host 'Teste de comanda enviado para a impressora (nao cria pedido no sistema).' -ForegroundColor Green
-  Write-Log 'Comanda ficticia de teste enviada para a impressora.'
+  # Duas simulacoes usando exatamente o mesmo Format-Receipt:
+  # entrega inclui frete; mesa inclui taxa de servico. Nenhuma cria pedido real.
+  $pedidoEntrega = $pedidoTeste | ConvertTo-Json -Depth 12 | ConvertFrom-Json
+  $pedidoEntrega.numero = 'TESTE ENTREGA'
+  $pedidoEntrega.atendimento = [pscustomobject]@{
+    tipo = 'entrega'
+    endereco = [pscustomobject]@{ rua = 'RUA TESTE'; numero = '100'; bairro = 'CENTRO'; cidade = 'LONDRINA'; cep = '86000-000' }
+    taxaEntregaCentavos = 700
+    taxaServicoCentavos = 0
+  }
+  $pedidoEntrega.totalCentavos = 12500
+  $pedidoEntrega.pagamento = [pscustomobject]@{ metodo = 'dinheiro'; precisaTroco = $false }
+
+  $textEntrega = 'TESTE FICTICIO - NAO E PEDIDO REAL' + [Environment]::NewLine +
+                 (Format-Receipt $pedidoEntrega $width $useEmojis)
+  $textMesa = 'TESTE FICTICIO - NAO E PEDIDO REAL' + [Environment]::NewLine +
+              (Format-Receipt $pedidoTeste $width $useEmojis)
+  Send-ToPrinter $textEntrega ([string]$cfg.printerName)
+  Send-ToPrinter $textMesa ([string]$cfg.printerName)
+  Write-Host 'Duas comandas de TESTE enviadas: ENTREGA (taxa de entrega) e MESA (taxa de servico).' -ForegroundColor Green
+  Write-Host 'Nao cria pedidos no site nem altera a fila de impressao.' -ForegroundColor Cyan
+  Write-Log 'Dois testes ficticios enviados para impressora, sem acessar a API.'
 }
 
 function Install-Startup {
