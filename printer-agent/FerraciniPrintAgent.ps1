@@ -155,15 +155,26 @@ function Add-WrappedLine($Lines, [string]$Text, [int]$Width, [string]$Prefix = '
   }
 }
 
-# Itens de marmitex usam identificacao propria, sem alterar a fila ou o checkout.
-# A categoria e opcional: pedidos antigos trazem somente o nome do produto.
+# A categoria e fornecida pelo catalogo do servidor e acompanha o pedido confirmado.
+# Pedidos antigos sem categoria seguem imprimindo como antes.
 function Item-Icon($Item) {
-  $categoria = [string]$Item.categoria
+  $categoria = ([string]$Item.categoria).ToLowerInvariant()
   $nome = [string]$Item.nome
-  if ($categoria -eq 'marmitex' -or $nome -match '^(marmitex|marmita)\b') {
+  if ($categoria -eq 'marmitex' -or ($categoria -eq '' -and $nome -match '^(marmitex|marmita)\b')) {
     return '🍱'
   }
+  if ($categoria -eq 'doces') { return '🍬' }
+  if ($categoria -eq 'sobremesas') { return '🍰' }
+  if ($categoria -eq 'bebidas') { return '🥤' }
   return '🍔'
+}
+
+function Item-Label($Item) {
+  $nome = [string]$Item.nome
+  $categoria = ([string]$Item.categoria).ToLowerInvariant()
+  if ($categoria -eq 'doces') { return ('DOCE - ' + $nome) }
+  if ($categoria -eq 'sobremesas') { return ('SOBREMESA - ' + $nome) }
+  return $nome
 }
 
 function Format-Receipt($Pedido, [int]$Width, [bool]$UseEmojis = $true) {
@@ -219,11 +230,12 @@ function Format-Receipt($Pedido, [int]$Width, [bool]$UseEmojis = $true) {
   }
 
   $lines.Add($doubleSep)
-  $lines.Add((Receipt-Label '🍔' 'PEDIDO' $UseEmojis))
+  $lines.Add((Receipt-Label '🧾' 'ITENS DO PEDIDO' $UseEmojis))
   $lines.Add($doubleSep)
   foreach ($item in @($Pedido.itens)) {
     $itemIcon = Item-Icon $item
-    Add-WrappedLine $lines (Receipt-Label $itemIcon (([string]$item.quantidade) + 'x ' + ([string]$item.nome)) $UseEmojis) $Width
+    $itemLabel = Item-Label $item
+    Add-WrappedLine $lines (Receipt-Label $itemIcon (([string]$item.quantidade) + 'x ' + $itemLabel) $UseEmojis) $Width
     foreach ($adicional in @($item.adicionais)) {
       Add-WrappedLine $lines (([string]$adicional.nome) + '  +' + (Money $adicional.precoCentavos)) $Width '  + '
     }
@@ -406,7 +418,7 @@ public static class FerraciniReceiptPrinter
         string text = line.TrimStart();
         string[] highlights = { "FERRACINI LANCHES", "COMANDA ", "TESTE DE",
             "DATA:", "HORARIO DO PEDIDO:", "ATENDIMENTO:", "COMER NO LOCAL",
-            "CLIENTE", "NOME:", "ENDERECO", "PEDIDO", "Subtotal:",
+            "CLIENTE", "NOME:", "ENDERECO", "ITENS DO PEDIDO", "Subtotal:",
             "Taxa de servico:", "PAGAMENTO:" };
         foreach (string h in highlights)
             if (text.IndexOf(h, StringComparison.OrdinalIgnoreCase) >= 0) return true;
@@ -476,12 +488,20 @@ function Print-Test {
         adicionais = @(); observacao = 'ARROZ SEPARADO'
       },
       [pscustomobject]@{
-        nome = 'X-SALADA'; quantidade = 2; precoUnitarioCentavos = 2500
+        nome = 'X-SALADA'; categoria = 'x'; quantidade = 2; precoUnitarioCentavos = 2500
         adicionais = @(); observacao = 'SEM CEBOLA'
+      },
+      [pscustomobject]@{
+        nome = 'Brigadeiro (TESTE)'; categoria = 'doces'; quantidade = 2; precoUnitarioCentavos = 600
+        adicionais = @(); observacao = ''
+      },
+      [pscustomobject]@{
+        nome = 'Pudim (TESTE)'; categoria = 'sobremesas'; quantidade = 1; precoUnitarioCentavos = 1100
+        adicionais = @(); observacao = ''
       }
     )
-    subtotalCentavos = 9500
-    totalCentavos = 9800
+    subtotalCentavos = 11800
+    totalCentavos = 12100
     pagamento = [pscustomobject]@{ metodo = 'no_local' }
   }
   $text = 'TESTE DE IMPRESSAO - NAO E PEDIDO REAL' + [Environment]::NewLine +
