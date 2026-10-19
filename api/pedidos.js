@@ -216,6 +216,8 @@ function validarItem(raw, catalogo = CATALOGO){
     precoUnitarioCentavos,
     adicionais,
     observacao: texto(raw?.observacao, 300),
+    // A categoria e confiavel somente quando vem do catalogo do servidor.
+    ...(produto.categoria ? { categoria: produto.categoria } : {}),
   };
 }
 
