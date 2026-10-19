@@ -730,8 +730,11 @@ const CONFIG = {
   },
 
   categorias: [
+    { id: "marmitex", label: "🍱 Marmitex" },
     { id: "dog", label: "🌭 Lanches-Dog" },
     { id: "x",   label: "🍔 Lanches-X" },
+    { id: "doces", label: "🍬 Doces" },
+    { id: "sobremesas", label: "🍰 Sobremesas" },
     { id: "bebidas", label: "🥤 Bebidas" },
   ],
 
@@ -752,6 +755,9 @@ const CONFIG = {
     { categoria:"x", nome:"X-Frango", preco:30.00, descricao:"Pão, 1 hambúrguer, frango desfiado, 2 queijo, 2 presunto, batata palha, 4 alface, tomate, ketchup, maionese", ingredientes:["pao","hamburguer","frango","mussarela","presunto","batata_palha","alface","tomate","ketchup","maionese"], adicionais: ADICIONAIS_PADRAO },
     { categoria:"x", nome:"X-Bacon (1 Kilo)", preco:35.00, descricao:"Pão, 1 hambúrguer, bacon, 2 queijo, 2 presunto, batata palha, 4 alface, tomate, ketchup, maionese", ingredientes:["pao","hamburguer","bacon","mussarela","presunto","batata_palha","alface","tomate","ketchup","maionese"], adicionais: ADICIONAIS_PADRAO },
     { categoria:"x", nome:"X-Tudo (2 Kilo)", preco:100.00, descricao:"Pão, 1 hambúrguer, frango desfiado, 3 salsicha, calabresa, bacon, 4 ovo, 3 queijo, 3 presunto, batata palha, 6 alface", ingredientes:["pao","hamburguer","frango","salsicha","calabresa","bacon","ovo","mussarela","presunto","batata_palha","alface"], adicionais: ADICIONAIS_PADRAO },
+
+    { categoria:"marmitex", nome:"Marmitex Mini", preco:null, descricao:"Marmita tamanho mini. Composição definida pela cozinha.", ingredientes:[], adicionais:[] },
+    { categoria:"marmitex", nome:"Marmitex Média", preco:null, descricao:"Marmita tamanho médio. Composição definida pela cozinha.", ingredientes:[], adicionais:[] },
 
     { categoria:"bebidas", nome:"Água com gás", preco:4.00 },
     { categoria:"bebidas", nome:"Água sem gás", preco:4.00 },
@@ -795,11 +801,19 @@ const cart = {}; // { "Nome do produto": { qty, preco, adicionais:[{nome,preco}]
    ===================================================================== */
 const PRODUTOS_ORIGINAIS = CONFIG.produtos.slice();
 const ADICIONAIS_ORIGINAIS = ADICIONAIS_PADRAO.slice();
-function aplicarItensNovos(items = [], precosPersonalizados = {}, itensExcluidos = []){
+function aplicarItensNovos(items = [], precosPersonalizados = {}, itensExcluidos = [], descricoesPersonalizadas = {}){
   const excluidos = new Set(itensExcluidos || []);
-  const precoEfetivo = (nome, fallbackCentavos) => Number.isInteger(precosPersonalizados?.[nome])
-    ? precosPersonalizados[nome]
-    : fallbackCentavos;
+  const nomesNovos = new Set(items.map(item => item.nome));
+  const precoEfetivo = (nome, fallbackCentavos) => {
+    const personalizado = precosPersonalizados?.[nome];
+    return Number.isInteger(personalizado) && personalizado >= 100 && personalizado <= 50000
+      ? personalizado
+      : fallbackCentavos;
+  };
+  const precoEmReais = (nome, fallbackCentavos) => {
+    const centavos = precoEfetivo(nome, fallbackCentavos);
+    return Number.isInteger(centavos) && centavos >= 100 ? centavos / 100 : null;
+  };
 
   const adicionaisBase = ADICIONAIS_ORIGINAIS
     .filter(item => !excluidos.has(item.nome))
@@ -817,11 +831,13 @@ function aplicarItensNovos(items = [], precosPersonalizados = {}, itensExcluidos
   ADICIONAIS_PADRAO.splice(0, ADICIONAIS_PADRAO.length, ...adicionaisBase, ...extras);
 
   const produtosBase = PRODUTOS_ORIGINAIS
-    .filter(item => !excluidos.has(item.nome))
+    .filter(item => !excluidos.has(item.nome) && !nomesNovos.has(item.nome))
     .map(item => ({
       ...item,
-      preco: precoEfetivo(item.nome, Math.round(item.preco * 100)) / 100,
-      adicionais: item.categoria === 'bebidas' ? [] : ADICIONAIS_PADRAO,
+      preco: precoEmReais(item.nome, Number.isFinite(item.preco) ? Math.round(item.preco * 100) : null),
+      descricao: typeof descricoesPersonalizadas[item.nome] === 'string' && descricoesPersonalizadas[item.nome]
+        ? descricoesPersonalizadas[item.nome] : item.descricao,
+      adicionais: ['dog', 'x'].includes(item.categoria) ? ADICIONAIS_PADRAO : [],
     }));
   const produtosNovos = items
     .filter(item => item.categoria !== 'adicional' && !excluidos.has(item.nome))
@@ -831,7 +847,7 @@ function aplicarItensNovos(items = [], precosPersonalizados = {}, itensExcluidos
       preco:precoEfetivo(item.nome, item.precoCentavos) / 100,
       descricao:item.descricao,
       ingredientes:item.ingredientes || [],
-      adicionais:item.categoria === 'bebidas' ? [] : ADICIONAIS_PADRAO,
+      adicionais:['dog', 'x'].includes(item.categoria) ? ADICIONAIS_PADRAO : [],
     }));
   CONFIG.produtos = [...produtosBase, ...produtosNovos];
 }
@@ -890,7 +906,7 @@ async function carregarDisponibilidade({ silencioso = true, force = false } = {}
       ingredientes: data.ingredientes || {},
       produtos: data.produtos || {},
     };
-    aplicarItensNovos(data.itensNovos || [], data.precosPersonalizados || {}, data.itensExcluidos || []);
+    aplicarItensNovos(data.itensNovos || [], data.precosPersonalizados || {}, data.itensExcluidos || [], data.descricoesPersonalizadas || {});
     disponibilidadeAtualizadaEm = data.updatedAt || null;
     demandaAtual = ['baixa','normal','alta'].includes(data.operacao?.demanda) ? data.operacao.demanda : 'normal';
       armazenamentoDegradado = data.storageDegraded === true;
@@ -1028,6 +1044,7 @@ function productCardHTML(p){
 function renderMenu(){
   menuGridEl.innerHTML = CONFIG.categorias.map(cat => {
     const items = CONFIG.produtos.filter(p => p.categoria === cat.id);
+    if (!items.length) return '';
     return `
       <div class="menu-category">
         <h3 class="menu-category-title">${cat.label}</h3>
