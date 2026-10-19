@@ -68,3 +68,32 @@ test('site e mesa integram itens novos, adicionais, bloqueios e escape HTML',()=
   api.aplicarItensNovos([]);assert.equal(api.CONFIG.produtos.length,27);assert.equal(api.ADICIONAIS_PADRAO.length,17);
  }
 });
+
+// Uma unica comanda preserva os produtos diferentes e a categoria confiavel do catalogo.
+test('validacao conjunta de marmitex, lanche, doce e sobremesa na fila unica',()=>{
+  let items=[];
+  for(const [nome,categoria,precoCentavos] of [
+    ['Brigadeiro','doces',600],
+    ['Pudim','sobremesas',1100],
+  ]) items=addItem(items,{nome,categoria,precoCentavos},[]);
+  const catalog=orderCatalog(items,{'Marmitex Mini':1900,'Marmitex Média':2600});
+  const file=require.resolve('../api/pedidos');
+  const ctx={require:createRequire(file),module:{exports:{}},process,console,Buffer,setTimeout,clearTimeout};
+  vm.createContext(ctx);
+  vm.runInContext(fs.readFileSync(file,'utf8')+'\nmodule.exports.validarItem=validarItem;',ctx);
+  const validar=ctx.module.exports.validarItem;
+  const carrinho=[
+    {nome:'Marmitex Mini',quantidade:1,precoUnitarioCentavos:1900},
+    {nome:'Marmitex Média',quantidade:1,precoUnitarioCentavos:2600},
+    {nome:'X-Salada',quantidade:2,precoUnitarioCentavos:2500},
+    {nome:'Brigadeiro',categoria:'x',quantidade:2,precoUnitarioCentavos:600},
+    {nome:'Pudim',categoria:'x',quantidade:1,precoUnitarioCentavos:1100},
+  ];
+  const itens=carrinho.map(i=>validar({...i,observacao:'Teste',adicionais:[]},catalog));
+  assert.ok(itens.every(Boolean));
+  assert.equal(itens.length,5);
+  assert.equal(itens[3].categoria,'doces');
+  assert.equal(itens[4].categoria,'sobremesas');
+  assert.equal(itens.reduce((s,i)=>s+i.precoUnitarioCentavos*i.quantidade,0),11800);
+  assert.equal(validar({nome:'Pudim',quantidade:1,precoUnitarioCentavos:5},catalog),null);
+});
