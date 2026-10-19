@@ -38,6 +38,7 @@ assert.match(script, /DOCE - /);
 assert.match(script, /SOBREMESA - /);
 assert.match(script, /ITENS DO PEDIDO/);
 assert.match(script, /Taxa de entrega:/);
+assert.match(script, /"Taxa de entrega:", "Taxa de servico:"/);
 assert.match(script, /Taxa de servico:/);
 assert.match(script, /function Item-Icon\(\$Item\)/);
 assert.match(script, /\$categoria -eq 'marmitex'/);
