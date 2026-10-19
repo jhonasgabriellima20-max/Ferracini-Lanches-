@@ -158,7 +158,7 @@ if(fs.existsSync('api/catalogo.json')){
     const catalogo = JSON.parse(fs.readFileSync('api/catalogo.json', 'utf8'));
     const nomesProdutos = Object.keys(catalogo.produtos || {});
     const nomesAdicionais = Object.keys(catalogo.adicionais || {});
-    if(nomesProdutos.length !== 27) fail('api/catalogo.json: quantidade de produtos inesperada');
+    if(nomesProdutos.length !== 29) fail('api/catalogo.json: quantidade de produtos inesperada');
     if(nomesAdicionais.length !== 17) fail('api/catalogo.json: quantidade de adicionais inesperada');
 
     for(const file of ['index.html', 'mesa.html']){
@@ -167,8 +167,9 @@ if(fs.existsSync('api/catalogo.json')){
 
       for(const nome of nomesProdutos){
         const escaped = nome.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const preco = catalogo.produtos[nome].precoCentavos / 100;
-        const pattern = new RegExp(`nome:\\s*["']${escaped}["']\\s*,\\s*preco:\\s*${preco.toFixed(2)}\\b`);
+        const precoCentavos = catalogo.produtos[nome].precoCentavos;
+        const precoTexto = precoCentavos === null ? 'null' : (precoCentavos / 100).toFixed(2);
+        const pattern = new RegExp(`nome:\\s*["']${escaped}["']\\s*,\\s*preco:\\s*${precoTexto}\\b`);
         if(!pattern.test(html)) fail(`${file}: catálogo divergente para ${nome}`);
       }
 
