@@ -22,7 +22,7 @@
   </section>
 
   <main id="appView" class="hidden">
-    <div class="top"><div><div class="brand">FERRACINI<span>.</span></div><h1>Histórico de pedidos</h1><p class="sub">Os pedidos recebidos entram automaticamente na fila e recebem número de comanda. Comandas guardadas por dia. A numeração recomeça somente a cada mês; o histórico permanece salvo.</p></div><button class="btn btn-ghost" id="sair">Sair</button></div>
+    <div class="top"><div><div class="brand">FERRACINI<span>.</span></div><h1>Histórico de pedidos</h1><p class="sub">Os pedidos recebidos entram automaticamente na fila e recebem número de comanda. Comandas guardadas por dia. A numeração começa em 01 a cada novo expediente; o histórico permanece salvo. Pedidos após meia-noite pertencem ao expediente anterior até as 6h.</p></div><button class="btn btn-ghost" id="sair">Sair</button></div>
     <div class="card"><div class="field"><label for="mes">Mês do histórico</label><input id="mes" type="month"></div><p class="sub" id="resumoMes" aria-live="polite"></p><div id="dias" style="display:flex;gap:8px;flex-wrap:wrap" aria-label="Dias do mês"></div><button class="btn btn-ghost" id="hoje" style="margin-top:12px">Ir para hoje</button></div>
     <div class="toolbar"><div class="status" id="status">Carregando…</div><div class="count" id="count">0 pedidos</div></div>
     <div id="systemMsg"></div>
@@ -30,12 +30,14 @@
     <div id="orders" class="orders"></div>
   </main>
 </div>
+<script src="/assets/dia-operacao.js"></script>
 <script>
 let senhaAdmin = sessionStorage.getItem('ferracini_admin_password') || '';
 let idsConhecidos = new Set();
 let primeiraCarga = true;
 let timer = null;
-const diaHoje = () => new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+const diaHoje = () => FerraciniExpediente.dataOperacao();
+let acompanhandoHoje = true;
 let diaSelecionado = diaHoje();
 let versaoConsulta = 0;
 let ultimoResumo = 0;
@@ -122,6 +124,14 @@ function render(pedidos){
 }
 
 async function carregar(){
+  if(acompanhandoHoje && diaSelecionado !== diaHoje()){
+    diaSelecionado = diaHoje();
+    $('mes').value = diaSelecionado.slice(0,7);
+    ultimoResumo = 0;
+    primeiraCarga = true;
+    idsConhecidos = new Set();
+    render([]);
+  }
   const versao = ++versaoConsulta;
   try{
     const r=await fetch('/api/painel-pedidos?data='+encodeURIComponent(diaSelecionado)+'&t='+Date.now(),{cache:'no-store',headers:{'X-Admin-Password':senhaAdmin}});
@@ -168,6 +178,7 @@ async function carregarResumo(){
 }
 function selecionarDia(dia){
   diaSelecionado = dia;
+  acompanhandoHoje = dia === diaHoje();
   primeiraCarga = true;
   idsConhecidos = new Set();
   $('orders').innerHTML = '<div class="card empty">Carregando comandas…</div>';
@@ -185,7 +196,7 @@ $('mes').addEventListener('change',()=>{
 });
 $('dias').addEventListener('click', e=>{ const b=e.target.closest('[data-dia]'); if(b) selecionarDia(b.dataset.dia); });
 $('hoje').addEventListener('click',()=>{ $('mes').value=diaHoje().slice(0,7); ultimoResumo=0; selecionarDia(diaHoje()); });
-// A seleção permanece aberta à meia-noite: nenhuma comanda desaparece da tela.
+// A tela acompanha o novo expediente; consultas ao histórico mantêm a data escolhida.
 $('entrar').addEventListener('click',()=>{ const s=$('senha').value.trim(); if(!s){$('loginMsg').innerHTML=notice('Digite a senha.','err');return;} senhaAdmin=s; sessionStorage.setItem('ferracini_admin_password',s); abrirPainel(); });
 $('senha').addEventListener('keydown',e=>{if(e.key==='Enter')$('entrar').click();});
 $('sair').addEventListener('click',()=>{ clearInterval(timer); sessionStorage.removeItem('ferracini_admin_password'); location.reload(); });
