@@ -1584,7 +1584,7 @@ async function calcularFrete(){
       throw new Error('Endereço não localizado');
     }
     const valor = Math.ceil((data.distanciaKm * CONFIG.entrega.valorPorKm) - 1e-9);
-    frete = { status: 'ok', distanciaKm: data.distanciaKm, valor, estimativa: null };
+    frete = { status: 'ok', distanciaKm: data.distanciaKm, valor, cotacaoFrete: data.cotacaoFrete || null, estimativa: null };
     atualizarPrevisaoEntrega();
     freteBoxEl.className = 'frete-box ok';
     const taxaServico = taxaServicoPorDistancia(data.distanciaKm);
@@ -1926,6 +1926,7 @@ function montarPayloadPedido(clientRequestId){
         cep: formatarCep(somenteDigitos(document.getElementById('endCep').value)),
       },
       distanciaKm: frete.distanciaKm,
+      cotacaoFrete: frete.cotacaoFrete || undefined,
       taxaEntregaCentavos: Math.round(frete.valor * 100),
       taxaServicoCentavos: Math.round(taxaServicoPorDistancia(frete.distanciaKm) * 100),
     };
