@@ -2,6 +2,7 @@ const { dataOperacao } = require('../assets/dia-operacao');
 const crypto = require('crypto');
 const CATALOGO = require('./catalogo.json');
 const { calcularDistanciaEndereco } = require('../lib/delivery-distance');
+const { validarCotacao } = require('../lib/delivery-quote');
 const { calcularTempoInternoLanches, calcularFilaTempoInterno, listarPedidosRecentes, estimarPrazo } = require('../lib/prep-estimator');
 const { isStorageUnavailable: isDatabaseUnavailable, readJson, writeJson, listBlobs } = require('../lib/postgres-storage');
 
@@ -285,6 +286,8 @@ function validarPayload(raw, catalogo = CATALOGO){
     if(taxaServicoCentavos !== servicoEsperado) throw new Error('A taxa de serviço não confere. Calcule novamente.');
 
     atendimento.endereco = endereco;
+    const cotacaoFrete = texto(raw.atendimento?.cotacaoFrete, 1000);
+    if(cotacaoFrete) atendimento.cotacaoFrete = cotacaoFrete;
     atendimento.distanciaKm = Math.round(distanciaKm * 100) / 100;
     atendimento.taxaEntregaCentavos = taxaEntregaCentavos;
     atendimento.taxaServicoCentavos = taxaServicoCentavos;
@@ -329,6 +332,22 @@ function validarPayload(raw, catalogo = CATALOGO){
 async function validarEntregaNoServidor(payload){
   if(payload.atendimento.tipo !== 'entrega') return payload;
 
+  // Uma cotacao assinada preserva a tarifa apresentada ao cliente, mesmo
+  // que o Google encontre outra rota ao confirmar o pedido.
+  if(payload.atendimento.cotacaoFrete){
+    const autentica = validarCotacao(
+      payload.atendimento.cotacaoFrete,
+      payload.atendimento.endereco,
+      payload.atendimento.distanciaKm
+    );
+    delete payload.atendimento.cotacaoFrete;
+    if(!autentica){
+      throw new Error('A cotação do frete expirou ou o endereço mudou. Calcule novamente.');
+    }
+    return payload;
+  }
+
+  // Compatibilidade temporaria com navegadores antigos: revalida a rota.
   let resultado;
   try{
     resultado = await calcularDistanciaEndereco(payload.atendimento.endereco);
@@ -621,6 +640,7 @@ module.exports = async function handler(req, res){
         'Endereço de entrega incompleto.',
         'A entrega automática atende somente Londrina.',
         'Frete inválido. Calcule novamente.',
+        'A cotação do frete expirou ou o endereço mudou. Calcule novamente.',
         'A distância de entrega não confere. Calcule novamente.',
         'A taxa de entrega não confere. Calcule novamente.',
         'A taxa de serviço não confere. Calcule novamente.',
