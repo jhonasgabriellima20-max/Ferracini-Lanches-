@@ -2078,6 +2078,7 @@ btnEnviarPedidoEl.addEventListener('click', async () => {
   try {
     registro = await registrarPedidoNoSistema(payload);
   } catch (err) {
+    if(String(err?.message || '').includes('cotação do frete expirou')) resetFrete();
     console.warn('[checkout] confirmacao_pedido_indisponivel', { erro: String(err) });
     btnEnviarPedidoEl.disabled = false;
     btnEnviarPedidoEl.textContent = 'Confirmar pedido';
