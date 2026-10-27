@@ -117,7 +117,19 @@ module.exports = async function handler(req, res) {
       provider: resultado.provider,
     });
   } catch (error) {
-    console.error('[distancia] calculo_falhou', { requestId, error: String(error) });
+    const providerUnavailable = error?.code === 'ROUTE_PROVIDERS_UNAVAILABLE' ||
+      /google_http_(?:429|5\d\d)|AbortError|TimeoutError/i.test(String(error));
+    console.error('[distancia] calculo_falhou', {
+      requestId,
+      category: providerUnavailable ? 'provedor_indisponivel' : 'endereco_nao_confirmado',
+      error: String(error),
+    });
+    if (providerUnavailable) {
+      res.setHeader('Retry-After', '10');
+      return res.status(503).json({
+        error: 'O servico de calculo do frete esta temporariamente indisponivel. Tente novamente.',
+      });
+    }
     return res.status(422).json({
       error: 'Nao conseguimos confirmar esse endereco em Londrina. Confira rua, numero e bairro ou fale com a lanchonete.',
     });
