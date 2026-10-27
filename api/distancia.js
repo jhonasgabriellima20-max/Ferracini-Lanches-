@@ -120,8 +120,8 @@ module.exports = async function handler(req, res) {
     });
   } catch (error) {
     const mensagem = String(error);
-    const falhaProvedor = /(?:google|photon|osrm)_http_(?:401|403|408|429|5\\d\\d)|aborterror|timeout|timed out|fetch failed|econnreset|enotfound/i.test(mensagem) ||
-      /(?:google|photon|osrm)_http_(?:401|403|408|429|5\\d\\d)|aborterror|timeout|fetch failed/i.test(String(error.googleFailure || ''));
+    const falhaProvedor = /(?:google|photon|osrm)_http_(?:401|403|408|429|5[0-9][0-9])|aborterror|timeout|timed out|fetch failed|econnreset|enotfound/i.test(mensagem) ||
+      /(?:google|photon|osrm)_http_(?:401|403|408|429|5[0-9][0-9])|aborterror|timeout|fetch failed/i.test(String(error.googleFailure || ''));
     const status = falhaProvedor ? 503 : 422;
     console.error('[distancia] calculo_falhou', { requestId, status, error: mensagem, googleFailure: String(error.googleFailure || '') });
     if (status === 503) res.setHeader('Retry-After', '15');
