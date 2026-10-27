@@ -5,6 +5,7 @@
  */
 
 const { calcularDistanciaEndereco, normalizarEndereco, normalizar } = require('../lib/delivery-distance');
+const { assinarCotacao } = require('../lib/delivery-quote');
 
 const MAX_BODY_BYTES = 8 * 1024;
 const RATE_WINDOW_MS = 60 * 1000;
@@ -115,11 +116,19 @@ module.exports = async function handler(req, res) {
     return res.status(200).json({
       distanciaKm: resultado.distanciaKm,
       provider: resultado.provider,
+      cotacaoFrete: assinarCotacao(endereco, resultado.distanciaKm),
     });
   } catch (error) {
-    console.error('[distancia] calculo_falhou', { requestId, error: String(error) });
-    return res.status(422).json({
-      error: 'Nao conseguimos confirmar esse endereco em Londrina. Confira rua, numero e bairro ou fale com a lanchonete.',
+    const mensagem = String(error);
+    const falhaProvedor = /(?:google|photon|osrm)_http_(?:401|403|408|429|5\\d\\d)|aborterror|timeout|timed out|fetch failed|econnreset|enotfound/i.test(mensagem) ||
+      /(?:google|photon|osrm)_http_(?:401|403|408|429|5\\d\\d)|aborterror|timeout|fetch failed/i.test(String(error.googleFailure || ''));
+    const status = falhaProvedor ? 503 : 422;
+    console.error('[distancia] calculo_falhou', { requestId, status, error: mensagem, googleFailure: String(error.googleFailure || '') });
+    if (status === 503) res.setHeader('Retry-After', '15');
+    return res.status(status).json({
+      error: status === 503
+        ? 'O calculo de entrega esta temporariamente indisponivel. Tente novamente em instantes.'
+        : 'Nao conseguimos confirmar esse endereco em Londrina. Confira rua, numero e bairro ou fale com a lanchonete.',
     });
   }
 };
