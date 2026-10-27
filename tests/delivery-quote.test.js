@@ -52,6 +52,7 @@ async function post(end) {
     assert.equal(validarCotacao(primeira.body.cotacaoFrete, endereco, 5.66), true);
     assert.equal(validarCotacao(primeira.body.cotacaoFrete, endereco, 4.83), false);
     assert.equal(validarCotacao(primeira.body.cotacaoFrete, { ...endereco, numero: '99' }, 5.66), false);
+    assert.equal(validarCotacao(primeira.body.cotacaoFrete, { ...endereco, rua: 'Avenida do Canario' }, 5.66), false);
     assert.equal(validarCotacao(primeira.body.cotacaoFrete + 'x', endereco, 5.66), false);
 
     const segunda = await post({ ...endereco, rua: '  Rua do Canário ' });
@@ -65,6 +66,14 @@ async function post(end) {
     const outro = await post({ ...endereco, cidade: 'Curitiba' });
     assert.equal(outro.statusCode, 422);
     assert.equal(googleCalls, 1, 'fora de Londrina nao consulta Google');
+
+    const [simultaneaA, simultaneaB] = await Promise.all([
+      calcularDistanciaEndereco({ ...endereco, numero: '202' }),
+      calcularDistanciaEndereco({ ...endereco, numero: '202' }),
+    ]);
+    assert.equal(simultaneaA.distanciaKm, 4.83);
+    assert.equal(simultaneaB.distanciaKm, 4.83);
+    assert.equal(googleCalls, 2, 'consultas simultaneas do mesmo endereco devem compartilhar a rota');
 
     global.fetch = async url => resposta(503, { error: 'provider unavailable' });
     const semProvedor = await post({ ...endereco, numero: '101' });
