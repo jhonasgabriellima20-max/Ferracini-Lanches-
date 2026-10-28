@@ -188,7 +188,11 @@ function validarItem(raw, catalogo = CATALOGO){
   const adicionaisRaw = Array.isArray(raw?.adicionais) ? raw.adicionais : [];
   const produto = Object.hasOwn(catalogo.produtos, nome) ? catalogo.produtos[nome] : null;
 
-  if(!produto || quantidade === null || precoUnitarioCentavos !== produto.precoCentavos ||
+  const tipoHamburguer = raw?.tipoHamburguer;
+  if(produto?.temHamburguer && !['industrializado', 'artesanal'].includes(tipoHamburguer)) return null;
+  if(!produto?.temHamburguer && tipoHamburguer) return null;
+  const acrescimoHamburguer = tipoHamburguer === 'artesanal' ? 900 : 0;
+  if(!produto || quantidade === null || precoUnitarioCentavos !== produto.precoCentavos + acrescimoHamburguer ||
      adicionaisRaw.length > 20 || (!produto.aceitaAdicionais && adicionaisRaw.length > 0)){
     return null;
   }
@@ -208,7 +212,8 @@ function validarItem(raw, catalogo = CATALOGO){
   }
 
   return {
-    nome,
+    nome: tipoHamburguer ? `${nome} — ${tipoHamburguer}` : nome,
+    ...(tipoHamburguer ? { tipoHamburguer } : {}),
     quantidade,
     precoUnitarioCentavos,
     adicionais,
