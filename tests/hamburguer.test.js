@@ -23,3 +23,7 @@ const updated=orderCatalog([{nome:'Novo X',categoria:'x',precoCentavos:2000,ingr
 assert.equal(updated.produtos['Novo X'].temHamburguer,true);
 assert.equal(context.validarItem({nome:'Simples Burguer',quantidade:1,precoUnitarioCentavos:2700,tipoHamburguer:'artesanal'},updated).precoUnitarioCentavos,2700);
 console.log('OK: escolha obrigatória, sete lanches, +R$9, preços personalizados e identificação na comanda.');
+
+const custom=orderCatalog([{nome:'X-Bacon normal',categoria:'x',precoCentavos:3000,ingredientes:[]},{nome:'PROMOÇÂO 4 X-SALADA 1 GUARATUBA .',categoria:'x',precoCentavos:8000,ingredientes:['hamburguer']}]);
+assert.equal(context.validarItem({nome:'X-Bacon normal',quantidade:1,precoUnitarioCentavos:3900,tipoHamburguer:'artesanal'},custom).precoUnitarioCentavos,3900);
+assert.equal(context.validarItem({nome:'PROMOÇÂO 4 X-SALADA 1 GUARATUBA .',quantidade:1,precoUnitarioCentavos:11600,tipoHamburguer:'artesanal'},custom).precoUnitarioCentavos,11600);

@@ -985,8 +985,9 @@ async function carregarDisponibilidade({ silencioso = true, force = false } = {}
 
 
 const tiposHamburguer = Object.create(null);
-function temHamburguer(produto){ return (produto.ingredientes || []).includes('hamburguer'); }
-function valorHamburguer(item){ return item.tipoHamburguer === 'artesanal' ? 9 : 0; }
+function temHamburguer(produto){ return (produto.ingredientes || []).includes('hamburguer') || produto.nome === 'X-Bacon normal'; }
+function diferencaHamburguer(nome){ return nome === 'PROMOÇÂO 4 X-SALADA 1 GUARATUBA .' ? 36 : 9; }
+function valorHamburguer(item){ return item.tipoHamburguer === 'artesanal' ? diferencaHamburguer(item.nomeProduto) : 0; }
 function nomeComHamburguer(nome, item){ return item.tipoHamburguer ? `${nome} — ${item.tipoHamburguer}` : nome; }
 function precoUnitario(item){
   const addonsTotal = (item.adicionais || []).reduce((s, a) => s + a.preco, 0);
@@ -1007,7 +1008,7 @@ function setQty(nome, preco, qty){
     }
   } else {
     const atual = cart[nome] || { preco, adicionais: [], observacao: "" };
-    cart[nome] = { ...atual, qty, preco, tipoHamburguer: tiposHamburguer[nome] };
+    cart[nome] = { ...atual, qty, preco, nomeProduto: nome, tipoHamburguer: tiposHamburguer[nome] };
   }
 
   document.querySelectorAll(`.qty-stepper[data-name="${CSS.escape(nome)}"] .qty-value`)
@@ -1108,11 +1109,11 @@ function productCardHTML(p){
       ${vendavel && temHamburguer(p) ? `<div class="burger-types" role="group" aria-label="Escolha o hambúrguer (obrigatório)">
         ${['industrializado', 'artesanal'].map(tipo => `<label style="display:flex;align-items:center;gap:8px;min-height:44px">
           <input type="radio" class="burger-type" name="burger-${escapeHTML(p.nome)}" value="${tipo}" ${tiposHamburguer[p.nome] === tipo ? 'checked' : ''}>
-          ${tipo === 'artesanal' ? 'Artesanal' : 'Industrializado'} — ${fmtPreco(p.preco + (tipo === 'artesanal' ? 9 : 0))}
+          ${tipo === 'artesanal' ? 'Artesanal' : 'Industrializado'} — ${fmtPreco(p.preco + (tipo === 'artesanal' ? diferencaHamburguer(p.nome) : 0))}
         </label>`).join('')}
       </div>` : ''}
       <div class="product-foot">
-        <span class="price">${precoDefinido ? fmtPreco(p.preco + (tiposHamburguer[p.nome] === 'artesanal' ? 9 : 0)) : 'Preço a definir'}</span>
+        <span class="price">${precoDefinido ? fmtPreco(p.preco + (tiposHamburguer[p.nome] === 'artesanal' ? diferencaHamburguer(p.nome) : 0)) : 'Preço a definir'}</span>
         ${vendavel ? `
         <div class="qty-stepper" data-name="${escapeHTML(p.nome)}" data-price="${p.preco}">
           <button type="button" class="qty-btn minus" aria-label="Diminuir quantidade">−</button>
