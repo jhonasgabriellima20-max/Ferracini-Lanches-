@@ -923,12 +923,19 @@ async function carregarDisponibilidade({ silencioso = true, force = false } = {}
 }
 
 
+const tiposHamburguer = Object.create(null);
+function temHamburguer(produto){ return (produto.ingredientes || []).includes('hamburguer') || produto.nome === 'X-Bacon normal'; }
+function diferencaHamburguer(nome){ return nome === 'PROMOÇÂO 4 X-SALADA 1 GUARATUBA .' ? 36 : 9; }
+function valorHamburguer(item){ return item.tipoHamburguer === 'artesanal' ? diferencaHamburguer(item.nomeProduto) : 0; }
+function nomeComHamburguer(nome, item){ return item.tipoHamburguer ? `${nome} — ${item.tipoHamburguer}` : nome; }
 function precoUnitario(item){
   const addonsTotal = (item.adicionais || []).reduce((s, a) => s + a.preco, 0);
-  return item.preco + addonsTotal;
+  return item.preco + valorHamburguer(item) + addonsTotal;
 }
 
 function setQty(nome, preco, qty){
+  const produto = CONFIG.produtos.find(p => p.nome === nome);
+  if(qty > 0 && produto && temHamburguer(produto) && !tiposHamburguer[nome]) return;
   qty = Math.max(0, qty);
   if(qty === 0){
     delete cart[nome];
@@ -940,7 +947,7 @@ function setQty(nome, preco, qty){
     }
   } else {
     const atual = cart[nome] || { preco, adicionais: [], observacao: "" };
-    cart[nome] = { ...atual, qty, preco };
+    cart[nome] = { ...atual, qty, preco, nomeProduto: nome, tipoHamburguer: tiposHamburguer[nome] };
   }
 
   document.querySelectorAll(`.qty-stepper[data-name="${CSS.escape(nome)}"] .qty-value`)
@@ -1025,13 +1032,19 @@ function productCardHTML(p){
     <div class="product-card ${disponivel ? '' : 'is-unavailable'}" data-name="${escapeHTML(p.nome)}" data-available="${vendavel ? '1' : '0'}">
       <h3>${escapeHTML(p.nome)}</h3>
       ${p.descricao ? `<p class="desc">${escapeHTML(p.descricao)}</p>` : ''}
+      ${vendavel && temHamburguer(p) ? `<div class="burger-types" role="group" aria-label="Escolha o hambúrguer (obrigatório)">
+        ${['industrializado', 'artesanal'].map(tipo => `<label style="display:flex;align-items:center;gap:8px;min-height:44px">
+          <input type="radio" class="burger-type" name="burger-${escapeHTML(p.nome)}" value="${tipo}" ${tiposHamburguer[p.nome] === tipo ? 'checked' : ''}>
+          ${tipo === 'artesanal' ? 'Artesanal' : 'Industrializado'} — ${fmtPreco(p.preco + (tipo === 'artesanal' ? diferencaHamburguer(p.nome) : 0))}
+        </label>`).join('')}
+      </div>` : ''}
       <div class="product-foot">
-        <span class="price">${precoDefinido ? fmtPreco(p.preco) : 'Preço a definir'}</span>
+        <span class="price">${precoDefinido ? fmtPreco(p.preco + (tiposHamburguer[p.nome] === 'artesanal' ? diferencaHamburguer(p.nome) : 0)) : 'Preço a definir'}</span>
         ${vendavel ? `
         <div class="qty-stepper" data-name="${escapeHTML(p.nome)}" data-price="${p.preco}">
           <button type="button" class="qty-btn minus" aria-label="Diminuir quantidade">−</button>
           <span class="qty-value">${cart[p.nome]?.qty || 0}</span>
-          <button type="button" class="qty-btn plus" aria-label="Aumentar quantidade">+</button>
+          <button type="button" class="qty-btn plus" ${temHamburguer(p) && !tiposHamburguer[p.nome] ? 'disabled title="Escolha o hambúrguer"' : ''} aria-label="Aumentar quantidade">+</button>
         </div>` : statusProduto}
       </div>
       ${vendavel ? `<div class="card-extra ${cart[p.nome]?.qty > 0 ? 'open' : ''}">
@@ -1134,6 +1147,14 @@ menuGridEl.addEventListener('click', (e) => {
 });
 
 menuGridEl.addEventListener('change', (e) => {
+  if(e.target.classList.contains('burger-type')){
+    const nome = e.target.closest('.product-card').dataset.name;
+    tiposHamburguer[nome] = e.target.value;
+    if(cart[nome]) cart[nome].tipoHamburguer = e.target.value;
+    renderMenu();
+    updateCartBar();
+    return;
+  }
   if(!e.target.classList.contains('addon-check')) return;
   const card = e.target.closest('.product-card');
   const nome = card.dataset.name;
@@ -1372,7 +1393,7 @@ function cartLinesHTML(items){
     return `
       <div class="cart-line">
         <div class="cart-line-info">
-          <h4>${v.qty}x ${nome}</h4>
+          <h4>${v.qty}x ${escapeHTML(nomeComHamburguer(nome, v))}</h4>
           <div class="cart-line-meta">
             ${addons ? `+ ${addons}<br>` : ''}
             ${v.observacao ? `Obs: ${escapeHTML(v.observacao)}` : ''}
@@ -1495,7 +1516,7 @@ function montarMensagemPedido(comanda = '', criadoEm = ''){
   const linhasProdutos = items.map(([produto, v]) => {
     const addons = (v.adicionais || []).map(a => `  + ${a.nome}`).join('\n');
     const obs = v.observacao ? `  Obs: ${v.observacao}` : '';
-    return [`${v.qty}x ${produto} — ${fmtPreco(v.qty * precoUnitario(v))}`, addons, obs].filter(Boolean).join('\n');
+    return [`${v.qty}x ${nomeComHamburguer(produto, v)} — ${fmtPreco(v.qty * precoUnitario(v))}`, addons, obs].filter(Boolean).join('\n');
   }).join('\n');
 
   let blocoEntrega;
@@ -1578,7 +1599,8 @@ function montarPayloadPedido(clientRequestId){
     itens: items.map(([nome, item]) => ({
       nome,
       quantidade: item.qty,
-      precoUnitarioCentavos: Math.round(item.preco * 100),
+      tipoHamburguer: item.tipoHamburguer,
+      precoUnitarioCentavos: Math.round((item.preco + valorHamburguer(item)) * 100),
       adicionais: (item.adicionais || []).map(adicional => ({
         nome: adicional.nome,
         precoCentavos: Math.round(adicional.preco * 100),
