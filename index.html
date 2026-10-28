@@ -1109,7 +1109,7 @@ function productCardHTML(p){
       ${vendavel && temHamburguer(p) ? `<div class="burger-types" role="group" aria-label="Escolha o hambúrguer (obrigatório)">
         ${['industrializado', 'artesanal'].map(tipo => `<label style="display:flex;align-items:center;gap:8px;min-height:44px">
           <input type="radio" class="burger-type" name="burger-${escapeHTML(p.nome)}" value="${tipo}" ${tiposHamburguer[p.nome] === tipo ? 'checked' : ''}>
-          ${tipo === 'artesanal' ? 'Artesanal' : 'Industrializado'} — ${fmtPreco(p.preco + (tipo === 'artesanal' ? diferencaHamburguer(p.nome) : 0))}
+          ${tipo === 'artesanal' ? 'Hambúrguer artesanal' : 'Hambúrguer industrializado'} — ${fmtPreco(p.preco + (tipo === 'artesanal' ? diferencaHamburguer(p.nome) : 0))}
         </label>`).join('')}
       </div>` : ''}
       <div class="product-foot">
