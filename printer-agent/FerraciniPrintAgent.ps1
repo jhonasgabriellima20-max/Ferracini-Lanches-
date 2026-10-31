@@ -265,9 +265,19 @@ function Format-Receipt($Pedido, [int]$Width, [bool]$UseEmojis = $true) {
 
   if ($tipo -ne 'mesa') {
   $pag = [string]$Pedido.pagamento.metodo
-  if ([string]$Pedido.pagamento.fluxo -eq 'mercadopago' -and $Pedido.pagamento.verified -eq $true -and [string]$Pedido.pagamento.status -eq 'approved' -and $Pedido.pagamento.mpOrderId -and $pag -in @('credito','debito')) {
-    $lines.Add((Receipt-Label '💳' 'PAGO PELO SITE - MERCADO PAGO' $UseEmojis))
-    $lines.Add('Pagamento confirmado. Nao cobrar novamente.')
+  # Pedidos feitos pelo Mercado Pago nunca pedem maquina na entrega.
+  # A fila do servidor so libera comprovantes apos aprovacao verificada;
+  # mesmo em caso de dados inconsistentes, nao confundir a loja com cobranca presencial.
+  $pagamentoOnline = [string]$Pedido.pagamento.fluxo -eq 'mercadopago'
+  $onlineAprovado = $Pedido.pagamento.verified -eq $true -and [string]$Pedido.pagamento.status -eq 'approved' -and -not [string]::IsNullOrWhiteSpace([string]$Pedido.pagamento.mpOrderId)
+  if ($pagamentoOnline) {
+    if ($onlineAprovado) {
+      $lines.Add((Receipt-Label '💳' 'PAGO PELO SITE - MERCADO PAGO' $UseEmojis))
+      $lines.Add('Pagamento confirmado. Nao cobrar novamente.')
+    } else {
+      $lines.Add((Receipt-Label '⚠️' 'PAGAMENTO ONLINE - VERIFICAR STATUS' $UseEmojis))
+      $lines.Add('Nao cobrar com maquina sem verificar o pagamento.')
+    }
   } elseif ($pag -eq 'dinheiro') {
     $lines.Add((Receipt-Label '💳' 'PAGAMENTO: DINHEIRO' $UseEmojis))
     if ($Pedido.pagamento.precisaTroco -and $Pedido.pagamento.trocoParaCentavos) {
@@ -519,6 +529,18 @@ function Print-Test {
   }
   $pedidoEntrega.totalCentavos = 12500
   $pedidoEntrega.pagamento = [pscustomobject]@{ metodo = 'dinheiro'; precisaTroco = $false }
+
+  # Verifica o texto de um pagamento online sem gastar papel extra.
+  $pedidoOnline = $pedidoEntrega | ConvertTo-Json -Depth 12 | ConvertFrom-Json
+  $pedidoOnline.pagamento = [pscustomobject]@{
+    metodo = 'credito'; fluxo = 'mercadopago'; status = 'approved'
+    verified = $true; mpOrderId = 'mp-pagamento-ficticio'
+  }
+  $textoOnline = Format-Receipt $pedidoOnline $width $false
+  if ($textoOnline -notmatch 'PAGO PELO SITE - MERCADO PAGO' -or
+      $textoOnline -match 'Maquina na entrega|Pagamento na retirada|Levar maquina') {
+    throw 'Falha ao validar comanda paga: instrucao de maquina indevida.'
+  }
 
   $textEntrega = 'TESTE FICTICIO - NAO E PEDIDO REAL' + [Environment]::NewLine +
                  (Format-Receipt $pedidoEntrega $width $useEmojis)
