@@ -42,24 +42,21 @@ const queued=()=>[...storage.entries()].filter(([p])=>p.startsWith('pedidos/fila
   assert.equal(mp.enabled(),false);
   assert.equal((await call(config)).body.enabled,false);
   assert.equal((await call(payment)).statusCode,503,'disabled endpoint cannot create a charge');
-  for(const fluxo of [undefined,'presencial','mercadopago']){
-    const before=storage.size;
-    const blocked=await call(pedidos,draft('credit-disabled-'+String(fluxo),{metodo:'credito',...(fluxo?{fluxo}:{})}));
-    assert.equal(blocked.statusCode,503,'delivery/pickup never fall back to manual when integration is disabled');
-    assert.equal(storage.size,before);
+  for(const metodo of ['pix','dinheiro','debito','credito']){
+    const before=queued().length;
+    const body=draft('manual-restored-'+metodo,{metodo});
+    const result=await call(pedidos,body);
+    assert.equal(result.statusCode,201);
+    assert.equal(result.body.pedido.status,'pendente');
+    assert.equal(queued().length,before+1);
+    const repeat=await call(pedidos,body);
+    assert.equal(repeat.body.pedido.id,result.body.pedido.id);
+    assert.equal(queued().length,before+1,'retries must not duplicate receipts');
   }
-  for(const atendimento of [
-    {tipo:'retirada'},
-    {tipo:'mesa',mesa:4},
-    {tipo:'entrega',distanciaKm:3,taxaEntregaCentavos:900,taxaServicoCentavos:300,
-      endereco:{rua:'Rua Teste',numero:'1',bairro:'Centro',cidade:'Londrina',cep:'86010000'}},
-  ]){
-    const before=storage.size;
-    const pix=await call(pedidos,draft('removed-pix-'+atendimento.tipo,{metodo:'pix'},atendimento));
-    assert.equal(pix.statusCode,400);
-    assert.equal(pix.body.error,'Forma de pagamento inválida.');
-    assert.equal(storage.size,before,'Pix cannot reserve or enqueue an order');
-  }
+  const before=storage.size;
+  const stale=await call(pedidos,draft('stale-online-browser',{metodo:'credito',fluxo:'mercadopago'}));
+  assert.equal(stale.statusCode,400);
+  assert.equal(storage.size,before,'stale online pages must refresh, never silently charge or enqueue');
   process.env.MP_CARD_CHECKOUT_ENABLED='true';
   for(const metodo of ['credito','debito']){
     const before=storage.size;
@@ -81,8 +78,8 @@ const queued=()=>[...storage.entries()].filter(([p])=>p.startsWith('pedidos/fila
     assert.equal(mesa.body.pedido.status,'pendente');
   }
   const initialQueued=queued().length;
-  assert.equal(initialQueued,3);
-  assert.ok(queued().every(([,order])=>order.atendimento.tipo==='mesa'));
+  assert.equal(initialQueued,7);
+  assert.equal(queued().filter(([,order])=>order.atendimento.tipo==='mesa').length,3);
   process.env.MP_ACCESS_TOKEN='TEST-token';
   process.env.MP_PUBLIC_KEY='TEST-public';
   process.env.MP_WEBHOOK_SECRET='test-webhook-secret';

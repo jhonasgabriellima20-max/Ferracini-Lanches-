@@ -5,10 +5,10 @@ const path = require('node:path');
 for (const page of ['index.html','mesa.html']) {
   const html = fs.readFileSync(path.join(__dirname,'..',page),'utf8');
   assert.match(html, /id="btnEnviarPedido"[\s\S]{0,120}Confirmar pedido/);
-  assert.match(html, /id="orderFloatBtn"/);
-  assert.match(html, /id="orderTabbarBtn"/);
-  assert.doesNotMatch(html, /https?:\/\/(?:wa\.me|(?:api\.|www\.)?whatsapp\.com)\b/i);
-  assert.doesNotMatch(html, /linkWhatsappCopia|CONFIG\.whatsapp|linkWhatsApp|montarMensagemPedido/);
+  assert.match(html, /id="(?:order|wa)FloatBtn"/);
+  assert.match(html, /id="(?:order|wa)TabbarBtn"/);
+
+
   assert.match(html, /const clientRequestId = clientRequestIdAtual \|\| criarIdPedido\(\);/);
   assert.match(html, /clientRequestIdAtual = clientRequestId;/);
   assert.match(html, /await registrarPedidoNoSistema\(payload\)/);

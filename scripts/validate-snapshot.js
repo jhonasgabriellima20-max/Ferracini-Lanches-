@@ -42,10 +42,10 @@ function checkHtml(file, isMesa){
     if(!ok) fail(`${file}: ${label}`);
   }
 
-  if(/(?:https?:\/\/)?(?:wa\.me|(?:api|web)\.whatsapp\.com)|whatsapp:\/\//i.test(html) || html.includes('CONFIG.whatsapp')) fail(`${file}: contato pelo WhatsApp deve estar removido`);
+  if(!isMesa && !html.includes('Copiar chave Pix')) fail(`${file}: Pix manual ausente`);
   if(!html.includes('armazenamentoDegradado')) fail(`${file}: contingência rápida do armazenamento ausente`);
   if(html.includes('registroFallbackWhatsapp') || html.includes('window.location.assign(destinoWhatsApp)')) fail(`${file}: WhatsApp nao pode confirmar pedidos automaticamente`);
-  if(html.includes('id="linkWhatsappCopia"')) fail(`${file}: cópia pelo WhatsApp deve estar removida`);
+
   if(!html.includes('Confirmar pedido')) fail(`${file}: confirmação explícita ausente`);
   if(!html.includes('controller.abort(), 20000')) fail(`${file}: timeout de confirmação deve ser 20 segundos`);
   if(html.includes('controller.abort(), 12000')) fail(`${file}: timeout antigo de 12 segundos ainda presente`);
@@ -224,11 +224,11 @@ for(const file of ['api/comanda.js', 'api/distancia.js', 'api/disponibilidade.js
 
 if(fs.existsSync('index.html')){
   const html = fs.readFileSync('index.html', 'utf8');
-  if(!html.includes("const PAYMENT_LABELS = { credito: 'Crédito', debito: 'Débito' };")){
-    fail('index.html: crédito e débito online precisam existir nas opções de pagamento');
+  if(!html.includes("const PAYMENT_LABELS = { pix: 'Pix', dinheiro: 'Dinheiro', debito: 'Débito', credito: 'Crédito' };")){
+    fail('index.html: Pix, dinheiro, débito e crédito precisam existir');
   }
-  if(!html.includes("return ['credito', 'debito'];")){
-    fail('index.html: retirada e entrega devem oferecer somente crédito e débito online');
+  if(!html.includes("return ['pix', 'dinheiro', 'debito', 'credito'];")){
+    fail('index.html: retirada e entrega devem oferecer os pagamentos manuais');
   }
 }
 

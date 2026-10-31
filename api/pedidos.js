@@ -304,7 +304,7 @@ function validarPayload(raw, catalogo = CATALOGO){
   const metodo = tipo === 'mesa' && !raw.pagamento?.metodo ? 'no_local' : texto(raw.pagamento?.metodo, 20);
   // "cartao" permanece aceito por compatibilidade com páginas antigas ainda abertas
   // no navegador. A interface nova envia "credito" ou "debito".
-  if(!(tipo === 'mesa' && metodo === 'no_local') && !['dinheiro', 'credito', 'debito', 'cartao'].includes(metodo)) throw new Error('Forma de pagamento inválida.');
+  if(!(tipo === 'mesa' && metodo === 'no_local') && !['pix', 'dinheiro', 'credito', 'debito', 'cartao'].includes(metodo)) throw new Error('Forma de pagamento inválida.');
   const pagamento = {
     metodo,
     precisaTroco: metodo === 'dinheiro' && raw.pagamento?.precisaTroco === true,
@@ -505,7 +505,7 @@ async function confirmarPedido(id){
 
   // A historical official receipt may still be read/acknowledged, but an old
   // unconfirmed presencial reservation must never bypass the online-only rule.
-  if(pedido.atendimento?.tipo !== 'mesa' && pedido.pagamento?.fluxo !== 'mercadopago'){
+  if(process.env.MP_CARD_CHECKOUT_ENABLED === 'true' && pedido.atendimento?.tipo !== 'mesa' && pedido.pagamento?.fluxo !== 'mercadopago'){
     throw Object.assign(new Error('Esta tentativa anterior não foi confirmada. Refaça o pedido e pague pelo site.'),{code:'PAYMENT_REQUIRED'});
   }
 
@@ -621,9 +621,9 @@ module.exports = async function handler(req, res){
       if(!CATALOGO.produtos || !CATALOGO.adicionais) throw new Error('Catálogo base indisponível.');
       const catalogo = await require('./disponibilidade').readOrderCatalog();
       const payloadBase = validarPayload(body, catalogo);
-      const onlineRequired = payloadBase.atendimento.tipo !== 'mesa';
+      const onlineRequired = process.env.MP_CARD_CHECKOUT_ENABLED === 'true' && payloadBase.atendimento.tipo !== 'mesa';
       if(!onlineRequired && body?.pagamento?.fluxo === 'mercadopago'){
-        return res.status(400).json({error:'Pedidos de mesa seguem o pagamento no local.'});
+        return res.status(400).json({error:'O pagamento automático foi desativado. Atualize o site para escolher Pix, dinheiro, débito ou crédito.'});
       }
       if(onlineRequired){
         if(!['credito','debito'].includes(payloadBase.pagamento.metodo)){
@@ -662,8 +662,8 @@ module.exports = async function handler(req, res){
           pagamentoObrigatorio:true,duplicado:registro.duplicado,impressaoAtiva:false,
         });
       }
-      // Apenas mesa e consultas de comandas históricas chegam ao fluxo direto.
-      // Entrega/retirada online continuam reservadas até a aprovação verificada.
+      // Pagamento manual libera a comanda ao confirmar; reservas online antigas
+      // continuam sujeitas à aprovação verificada acima.
       const confirmado = await confirmarPedido(registro.pedido.id);
       return res.status(registro.duplicado ? 200 : 201).json({
         pedido: {
