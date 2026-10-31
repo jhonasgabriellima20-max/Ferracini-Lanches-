@@ -739,13 +739,9 @@ const CONFIG = {
 
   entrega: {
     // Valor cobrado por km rodado — configuração central, fácil de alterar.
-    valorPorKm: 3.00,
-    // Taxa de serviço adicional, definida pela distância da entrega.
-    taxaServico: {
-      ate5Km: 3.00,
-      ate10Km: 6.00,
-      acima10Km: 10.00,
-    },
+    valorPorKm: 2.00,
+    // Taxa de serviço fixa, independentemente da distância.
+    taxaServico: 3.00,
     // URL de uma função de backend (ex: Vercel/Netlify/Cloud Function) que
     // recebe { origem, destino } e devolve { distanciaKm } calculado via
     // Google Maps Routes API ou Mapbox no SERVIDOR (nunca no navegador,
@@ -1304,9 +1300,7 @@ function paymentOptionsForMethod(){
 }
 function taxaServicoPorDistancia(distanciaKm){
   if(!Number.isFinite(distanciaKm) || distanciaKm <= 0) return 0;
-  if(distanciaKm <= 5) return CONFIG.entrega.taxaServico.ate5Km;
-  if(distanciaKm <= 10) return CONFIG.entrega.taxaServico.ate10Km;
-  return CONFIG.entrega.taxaServico.acima10Km;
+  return CONFIG.entrega.taxaServico;
 }
 function totalPedidoCentavos(){
   const subtotalCentavos = Math.round(cartTotals().subtotal * 100);

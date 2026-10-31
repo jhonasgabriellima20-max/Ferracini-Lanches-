@@ -42,7 +42,7 @@ test('páginas antigas e reservas presenciais não liberam novas comandas sem pa
     }
     const queue=()=>[...records.keys()].filter(path=>path.startsWith('pedidos/fila/'));
     const reservations=()=>[...records.keys()].filter(path=>path.startsWith('pedidos/reservas/'));
-    const entrega={tipo:'entrega',distanciaKm:3,taxaEntregaCentavos:900,taxaServicoCentavos:300,
+    const entrega={tipo:'entrega',distanciaKm:3,taxaEntregaCentavos:600,taxaServicoCentavos:300,
       endereco:{rua:'Rua Teste',numero:'1',bairro:'Centro',cidade:'Londrina',cep:'86010000'}};
     for(const atendimento of [{tipo:'retirada'},entrega])for(const metodo of ['dinheiro','cartao']){
       const before=records.size;

@@ -41,14 +41,12 @@ function inteiro(value, min, max){
 
 function taxaServicoCentavosPorDistancia(distanciaKm){
   if(!Number.isFinite(distanciaKm) || distanciaKm <= 0) return null;
-  if(distanciaKm <= 5) return 300;
-  if(distanciaKm <= 10) return 600;
-  return 1000;
+  return 300;
 }
 
 function taxaEntregaCentavosPorDistancia(distanciaKm){
   if(!Number.isFinite(distanciaKm) || distanciaKm <= 0) return null;
-  return Math.ceil((distanciaKm * 3.00) - 1e-9) * 100;
+  return Math.ceil((distanciaKm * 2.00) - 1e-9) * 100;
 }
 
 function isNotFound(err){
