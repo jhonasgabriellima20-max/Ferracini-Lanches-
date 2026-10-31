@@ -6,11 +6,19 @@
     "node": "22.x"
   },
   "dependencies": {
+    "@neondatabase/serverless": "^1.0.2",
     "@vercel/functions": "^3.9.8",
-    "@vercel/oidc": "^3.8.8",
-    "@neondatabase/serverless": "^1.0.2"
+    "@vercel/oidc": "^3.8.8"
   },
   "scripts": {
-    "test:tempo": "node tests/tempo-interno.test.js"
+    "test": "node --test tests/*.test.js",
+    "validate": "node scripts/validate-snapshot.js",
+    "check:payments": "node scripts/validate-payments-config.js",
+    "test:tempo": "node tests/tempo-interno.test.js",
+    "test:browser": "node --test tests/browser/*.test.js"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "0.5.11",
+    "playwright": "1.64.1"
   }
 }

@@ -2,8 +2,9 @@ const crypto = require('crypto');
 const { readJson, listBlobs } = require('../lib/postgres-storage');
 
 const TIME_ZONE = 'America/Sao_Paulo';
-const FILA_DIR = 'pedidos/fila';
-const AGUARDANDO_DIR = 'pedidos/aguardando';
+const STORAGE_NAMESPACE = process.env.VERCEL_ENV === 'preview' ? 'mp-preview/' : '';
+const FILA_DIR = STORAGE_NAMESPACE + 'pedidos/fila';
+const AGUARDANDO_DIR = STORAGE_NAMESPACE + 'pedidos/aguardando';
 const AUTH_WINDOW_MS = 15 * 60 * 1000;
 const AUTH_MAX_FAILURES = 5;
 const failedLogins = globalThis.__ferraciniPainelPedidosFailures || new Map();

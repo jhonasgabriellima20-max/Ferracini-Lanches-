@@ -1,6 +1,20 @@
 // Fila de impressao exclusiva: sem impacto no POST de pedidos.
 const crypto = require('crypto');
 const { neon } = require('@neondatabase/serverless');
+// Always enforce the online payment guard, including when checkout is disabled.
+// Legacy/manual and table orders retain their existing processing rules.
+const PAYMENT_FILTER = "AND (COALESCE(value->'pagamento'->>'fluxo', '') <> 'mercadopago' OR (" +
+  "value->'pagamento'->>'status' = 'approved' AND " +
+  "value->'pagamento'->>'verified' = 'true' AND " +
+  "COALESCE(value->'pagamento'->>'mpOrderId', '') <> '' AND NOT EXISTS (" +
+  "SELECT 1 FROM public.ferracini_store AS blocked WHERE blocked.pathname = " +
+  "'pedidos/pagamento-bloqueado/' || (queued.value->>'id') || '.json') AND EXISTS (" +
+  "SELECT 1 FROM public.ferracini_store AS confirmation WHERE confirmation.pathname = " +
+  "'pedidos/aguardando/' || (queued.value->>'data') || '/' || (queued.value->>'id') || '.json' " +
+  "AND confirmation.value->'pagamento'->>'status' = 'approved' " +
+  "AND confirmation.value->'pagamento'->>'verified' = 'true' " +
+  "AND confirmation.value->'pagamento'->>'mpOrderId' = queued.value->'pagamento'->>'mpOrderId'" +
+  "))) ";
 
 function authorized(req) {
   const expected = process.env.PRINT_AGENT_TOKEN || '';
@@ -36,6 +50,9 @@ module.exports = async function handler(req, res) {
     return res.status(405).json({ error: 'Metodo nao permitido.' });
   }
   if (!authorized(req)) return res.status(401).json({ error: 'Agente nao autorizado.' });
+  if (process.env.VERCEL_ENV === 'preview') {
+    return res.status(403).json({ error: 'Preview isolado: impressão de produção bloqueada.' });
+  }
   const env = environment();
   if (!env) return res.status(503).json({ error: 'Fila de impressao ainda nao ativada.' });
 
@@ -46,9 +63,9 @@ module.exports = async function handler(req, res) {
         ? Math.min(50, requested) : 25;
       // Filtra no PostgreSQL e evita reler os primeiros 100 pedidos do dia.
       const rows = await env.sql.query(
-        "SELECT pathname, value FROM public.ferracini_store " +
+        "SELECT pathname, value FROM public.ferracini_store AS queued " +
         "WHERE pathname LIKE 'pedidos/fila/%' AND created_at >= $1 " +
-        "AND value->>'status' = 'pendente' " +
+        "AND value->>'status' = 'pendente' " + PAYMENT_FILTER +
         "ORDER BY created_at ASC, pathname ASC LIMIT $2",
         [env.cutoff, limit]
       );
@@ -76,13 +93,14 @@ module.exports = async function handler(req, res) {
     const attemptsIncrement = status === 'imprimindo' ? 1 : 0;
     const printerError = String(data.erro || '').replace(/[\u0000-\u001f\u007f]/g, ' ').slice(0, 280);
     const rows = await env.sql.query(
-      "UPDATE public.ferracini_store SET " +
+      "UPDATE public.ferracini_store AS queued SET " +
       "value = value || jsonb_build_object('status', $1::text, 'atualizadoEm', $2::text, " +
       "'tentativasImpressao', COALESCE((value->>'tentativasImpressao')::integer, 0) + $3::integer) " +
       "|| CASE WHEN $1::text = 'impresso' THEN jsonb_build_object('impressoEm', $2::text) " +
       "WHEN $1::text = 'falhou' THEN jsonb_build_object('erroImpressao', $4::text) " +
       "ELSE '{}'::jsonb END, updated_at = now() " +
-      "WHERE pathname = $5 AND created_at >= $6 AND value->>'status' = $7 RETURNING pathname",
+      "WHERE pathname = $5 AND created_at >= $6 AND value->>'status' = $7 " +
+      (status === 'imprimindo' ? PAYMENT_FILTER : '') + "RETURNING pathname",
       [status, timestamp, attemptsIncrement, printerError, pathname, env.cutoff, from]
     );
     if (rows.length === 0) {

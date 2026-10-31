@@ -265,7 +265,10 @@ function Format-Receipt($Pedido, [int]$Width, [bool]$UseEmojis = $true) {
 
   if ($tipo -ne 'mesa') {
   $pag = [string]$Pedido.pagamento.metodo
-  if ($pag -eq 'dinheiro') {
+  if ([string]$Pedido.pagamento.fluxo -eq 'mercadopago' -and $Pedido.pagamento.verified -eq $true -and [string]$Pedido.pagamento.status -eq 'approved' -and $Pedido.pagamento.mpOrderId -and $pag -in @('credito','debito')) {
+    $lines.Add((Receipt-Label '💳' 'PAGO PELO SITE - MERCADO PAGO' $UseEmojis))
+    $lines.Add('Pagamento confirmado. Nao cobrar novamente.')
+  } elseif ($pag -eq 'dinheiro') {
     $lines.Add((Receipt-Label '💳' 'PAGAMENTO: DINHEIRO' $UseEmojis))
     if ($Pedido.pagamento.precisaTroco -and $Pedido.pagamento.trocoParaCentavos) {
       $lines.Add('Troco para: ' + (Money $Pedido.pagamento.trocoParaCentavos))
@@ -419,7 +422,7 @@ public static class FerraciniReceiptPrinter
         string[] highlights = { "FERRACINI LANCHES", "COMANDA ", "TESTE DE",
             "DATA:", "HORARIO DO PEDIDO:", "ATENDIMENTO:", "COMER NO LOCAL",
             "CLIENTE", "NOME:", "ENDERECO", "ITENS DO PEDIDO", "Subtotal:",
-            "Taxa de entrega:", "Taxa de servico:", "PAGAMENTO:" };
+            "Taxa de entrega:", "Taxa de servico:", "PAGAMENTO:", "PAGO PELO SITE" };
         foreach (string h in highlights)
             if (text.IndexOf(h, StringComparison.OrdinalIgnoreCase) >= 0) return true;
         return System.Text.RegularExpressions.Regex.IsMatch(text, @"\b\d+x\s+");

@@ -4,11 +4,11 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const {createRequire} = require('node:module');
 const {addItem,orderCatalog} = require('../lib/custom-catalog');
-const storagePath = require.resolve('../lib/blob-storage');
+const storagePath = require.resolve('../lib/postgres-storage');
 let saved;
 require.cache[storagePath] = {id:storagePath,filename:storagePath,loaded:true,exports:{
   readJson:async()=>({value:saved,mode:'test'}),
-  writeJson:async(_,value)=>{saved=structuredClone(value);return {mode:'test'};},isAuthError:()=>false
+  writeJson:async(_,value)=>{saved=structuredClone(value);return {mode:'test'};},isStorageUnavailable:()=>false
 }};
 process.env.ADMIN_PASSWORD='test-only';
 const handler=require('../api/disponibilidade');
@@ -57,15 +57,17 @@ test('site e mesa integram itens novos, adicionais, bloqueios e escape HTML',()=
   const context={document:{getElementById:()=>({})},console};vm.createContext(context);
   vm.runInContext(script.slice(start,end)+`\nthis.testApi={aplicarItensNovos,produtoDisponivel,adicionalDisponivel,CONFIG,ADICIONAIS_PADRAO,disponibilidade,escapeHTML};`,context);
   const api=context.testApi;
+  const baseCount=Object.keys(require('../api/catalogo.json').produtos).length;
+  assert.equal(api.CONFIG.produtos.length,baseCount);
   api.aplicarItensNovos([{id:'novo_a',nome:'Creme novo',categoria:'adicional',precoCentavos:550},{id:'novo_x',nome:'X "Novo"',categoria:'x',precoCentavos:2900,descricao:'Queijo & pão',ingredientes:['frango']},{id:'novo_b',nome:'Suco novo',categoria:'bebidas',precoCentavos:900}]);
-  assert.equal(api.CONFIG.produtos.length,30-1); // 27 base + 2 new products
+  assert.equal(api.CONFIG.produtos.length,baseCount+2);
   const lanche=api.CONFIG.produtos.find(i=>i.nome==='X "Novo"');
   assert.equal(lanche.adicionais.at(-1).preco,5.5);assert.equal(api.CONFIG.produtos[0].adicionais.at(-1).nome,'Creme novo');
   assert.equal(api.CONFIG.produtos.at(-1).adicionais.length,0);
   api.disponibilidade.ingredientes.frango=false;assert.equal(api.produtoDisponivel(lanche),false);
   api.disponibilidade.ingredientes.novo_a=false;assert.equal(api.adicionalDisponivel(lanche.adicionais.at(-1)),false);
   assert.equal(api.escapeHTML('X "Novo"'),'X &quot;Novo&quot;');
-  api.aplicarItensNovos([]);assert.equal(api.CONFIG.produtos.length,27);assert.equal(api.ADICIONAIS_PADRAO.length,17);
+  api.aplicarItensNovos([]);assert.equal(api.CONFIG.produtos.length,baseCount);assert.equal(api.ADICIONAIS_PADRAO.length,17);
  }
 });
 

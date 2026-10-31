@@ -20,9 +20,12 @@ jobs:
       - name: Configure Node
         uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: 22
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci
       - name: Validate snapshot
-        run: node scripts/validate-snapshot.js
+        run: npm run validate
       - name: Test automatic order receipt
         run: node tests/comanda-confirmacao.test.js
       - name: Test monthly order history
@@ -33,12 +36,12 @@ jobs:
         run: node tests/checkout-sem-fantasma.test.js
       - name: Check thermal receipt layout
         run: node tests/print-layout.test.js
+      - name: Test payments, catalog and real queue SQL
+        run: npm test
+      - name: Install Chromium for checkout tests
+        run: npx playwright install --with-deps chromium
+      - name: Test checkout in Chromium
+        run: npm run test:browser
       - name: Check API syntax
         run: |
-          node --check api/comanda.js
-          node --check api/fila-impressao.js
-          node --check api/distancia.js
-          node --check api/disponibilidade.js
-          node --check api/painel-pedidos.js
-          node --check api/pedidos.js
-          node --check lib/delivery-distance.js
+          for file in api/*.js lib/*.js scripts/*.js; do node --check "$file" || exit; done

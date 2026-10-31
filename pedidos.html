@@ -73,6 +73,8 @@ function tipoAtendimento(p){
 }
 
 function pagamento(p){
+  if(p.pagamento?.fluxo==='mercadopago' && p.pagamento?.verified===true && p.pagamento?.status==='approved' && p.pagamento?.mpOrderId && ['credito','debito'].includes(p.pagamento?.metodo)) return 'PAGO PELO SITE · Mercado Pago · '+(p.pagamento.metodo==='credito'?'Crédito':'Débito');
+  if(p.pagamento?.fluxo==='mercadopago') return p.pagamento?.status==='rejected' ? 'Mercado Pago · pagamento bloqueado ou estornado; conferir extrato' : 'Mercado Pago · aguardando aprovação; não cobrar novamente sem conferir';
   if(p.pagamento?.metodo === 'no_local') return 'Pagamento a combinar no local';
   if(p.pagamento?.metodo === 'dinheiro'){
     if(p.pagamento?.precisaTroco) return `Dinheiro · troco para ${dinheiro(p.pagamento.trocoParaCentavos)}`;

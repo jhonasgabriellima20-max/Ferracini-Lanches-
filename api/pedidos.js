@@ -5,10 +5,12 @@ const { calcularTempoInternoLanches, calcularFilaTempoInterno, listarPedidosRece
 const { isStorageUnavailable: isDatabaseUnavailable, readJson, writeJson, listBlobs } = require('../lib/postgres-storage');
 
 const TIME_ZONE = 'America/Sao_Paulo';
-const COUNTER_PATH = 'config/pedidos-sequencia.json';
-const RESERVA_DIR = 'pedidos/reservas';
-const FILA_DIR = 'pedidos/fila';
-const AGUARDANDO_DIR = 'pedidos/aguardando';
+// Preview reservations and counters must never reach the live kitchen.
+const STORAGE_NAMESPACE = process.env.VERCEL_ENV === 'preview' ? 'mp-preview/' : '';
+const COUNTER_PATH = STORAGE_NAMESPACE + 'config/pedidos-sequencia.json';
+const RESERVA_DIR = STORAGE_NAMESPACE + 'pedidos/reservas';
+const FILA_DIR = STORAGE_NAMESPACE + 'pedidos/fila';
+const AGUARDANDO_DIR = STORAGE_NAMESPACE + 'pedidos/aguardando';
 const MAX_BODY_BYTES = 64 * 1024;
 const MAX_ROUTE_KM = 35;
 const MAX_DISTANCE_DELTA_KM = 0.35;
@@ -412,8 +414,12 @@ async function criarPedido(payload){
   const data = dataOperacao();
   const id = hashId(payload.clientRequestId);
   const pathname = `${AGUARDANDO_DIR}/${data}/${id}.json`;
-  const existente = await lerJson(pathname);
-  if(existente) return { pedido: existente, duplicado: true };
+  const mp = require('../lib/mp-checkout');
+  const previous = await mp.findOrder(id);
+  if(previous){
+    await mp.ensureOrderIndex(previous.order, previous.path);
+    return { pedido: previous.order, pathname: previous.path, duplicado: true };
+  }
   const agora = new Date().toISOString();
   const pedido = {
     id,
@@ -421,30 +427,39 @@ async function criarPedido(payload){
     data,
     criadoEm: agora,
     atualizadoEm: agora,
-    status: 'aguardando_whatsapp',
+    status: payload.pagamento?.fluxo === 'mercadopago' ? 'aguardando_pagamento' : 'aguardando_whatsapp',
     tentativasImpressao: 0,
     ...payload,
   };
   try{ await gravarJson(pathname, pedido, false); }
   catch(err){
     if(!isConflict(err)) throw err;
-    return { pedido: await lerJson(pathname), duplicado: true };
+    const existente = await lerJson(pathname);
+    await mp.ensureOrderIndex(existente, pathname);
+    return { pedido: existente, duplicado: true };
   }
+  await mp.ensureOrderIndex(pedido, pathname);
   return { pedido, pathname, duplicado: false };
 }
 
 async function confirmarPedido(id){
   if(!/^[a-f0-9]{64}$/.test(id)) throw new Error('Referência inválida.');
-  let data = dataOperacao();
-  let pathname = `${AGUARDANDO_DIR}/${data}/${id}.json`;
-  let pedido = await lerJson(pathname);
-  if(!pedido){
-    const anterior = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    data = new Intl.DateTimeFormat('en-CA', {timeZone: TIME_ZONE, year:'numeric', month:'2-digit', day:'2-digit'}).format(anterior);
-    pathname = `${AGUARDANDO_DIR}/${data}/${id}.json`;
-    pedido = await lerJson(pathname);
-  }
+  const found = await require('../lib/mp-checkout').findOrder(id);
+  let pedido = found?.order;
+  const pathname = found?.path;
   if(!pedido) throw new Error('Tentativa não encontrada hoje.');
+  const data = pedido.data;
+  if(pedido.pagamento?.fluxo === 'mercadopago' &&
+     await lerJson(`${STORAGE_NAMESPACE}pedidos/pagamento-bloqueado/${id}.json`)){
+    throw new Error('Pagamento bloqueado. Consulte a loja.');
+  }
+  // Only server-verified online payments can receive a number or enter the queue.
+  // This guard remains effective after disabling checkout during a rollback.
+  if(pedido.pagamento?.fluxo === 'mercadopago' &&
+     (pedido.pagamento.status !== 'approved' || pedido.pagamento.verified !== true ||
+      !pedido.pagamento.mpOrderId)){
+    throw new Error('Comanda aguardando pagamento aprovado.');
+  }
   if(pedido.confirmadoPath){
     const confirmado = await lerJson(pedido.confirmadoPath);
     if(confirmado) return confirmado;
@@ -503,7 +518,8 @@ async function listarPedidos(req){
 
 async function atualizarPedido(raw){
   const pathname = texto(raw?.pathname, 500);
-  if(!/^pedidos\/fila\/\d{4}-\d{2}-\d{2}\/[a-zA-Z0-9._-]+\.json$/.test(pathname)){
+  const localPath = pathname.startsWith(STORAGE_NAMESPACE) ? pathname.slice(STORAGE_NAMESPACE.length) : '';
+  if(!/^pedidos\/fila\/\d{4}-\d{2}-\d{2}\/[a-zA-Z0-9._-]+\.json$/.test(localPath)){
     throw new Error('Pedido inválido.');
   }
   const status = texto(raw?.status, 30);
@@ -512,6 +528,14 @@ async function atualizarPedido(raw){
   }
   const pedido = await lerJson(pathname);
   if(!pedido) throw new Error('Pedido não encontrado.');
+  if(pedido.pagamento?.fluxo === 'mercadopago' &&
+     await lerJson(`${STORAGE_NAMESPACE}pedidos/pagamento-bloqueado/${pedido.id}.json`)){
+    throw new Error('Pagamento bloqueado. Consulte a loja.');
+  }
+  if(pedido.pagamento?.fluxo === 'mercadopago' &&
+     (pedido.pagamento.status !== 'approved' || pedido.pagamento.verified !== true || !pedido.pagamento.mpOrderId)){
+    throw new Error('Comanda aguardando pagamento aprovado.');
+  }
   pedido.status = status;
   pedido.atualizadoEm = new Date().toISOString();
   if(status === 'imprimindo' || status === 'falhou'){
@@ -591,7 +615,32 @@ module.exports = async function handler(req, res){
       }
       const payloadValidado = await validarEntregaNoServidor(payloadBase);
       const payload = await aplicarEstimativaInteligente(payloadValidado);
+      const onlineRequested = process.env.MP_CARD_CHECKOUT_ENABLED === 'true' && payload.atendimento.tipo !== 'mesa';
+      if(onlineRequested){
+        if(!require('../lib/mp-checkout').enabled()){
+          return res.status(503).json({error:'Pagamento online indisponível. Nenhuma cobrança ou comanda foi criada.',pedidoConfirmado:false});
+        }
+        if(!['credito','debito'].includes(payload.pagamento.metodo)){
+          return res.status(400).json({error:'Escolha crédito ou débito para pagar pelo site.'});
+        }
+        payload.pagamento = {metodo:payload.pagamento.metodo,fluxo:'mercadopago',status:'pending',verified:false};
+      }
       const registro = await criarPedido(payload);
+      if(registro.pedido.pagamento?.fluxo === 'mercadopago'){
+        const pending = registro.pedido;
+        if(pending.pagamento.status === 'approved' && pending.pagamento.verified === true && pending.pagamento.mpOrderId){
+          const confirmado = await confirmarPedido(pending.id);
+          return res.status(200).json({pedido:{
+            id:confirmado.id,referencia:confirmado.referencia,numero:confirmado.numero,
+            criadoEm:confirmado.criadoEm,status:confirmado.status,pagamento:{status:'approved'},
+          },duplicado:true,pagamentoObrigatorio:true});
+        }
+        return res.status(registro.duplicado ? 200 : 201).json({
+          pedido:{id:pending.id,referencia:pending.referencia,criadoEm:pending.criadoEm,
+            totalCentavos:pending.totalCentavos,status:'aguardando_pagamento',pagamento:{metodo:pending.pagamento.metodo}},
+          pagamentoObrigatorio:true,duplicado:registro.duplicado,impressaoAtiva:false,
+        });
+      }
       // O clique em confirmar pedido já torna a comanda oficial no sistema.
       // O WhatsApp é apenas uma cópia/apoio e não bloqueia a fila de impressão.
       const confirmado = await confirmarPedido(registro.pedido.id);
