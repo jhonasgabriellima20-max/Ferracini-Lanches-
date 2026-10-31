@@ -114,22 +114,22 @@ async function call(handler, request){
   assert.equal(manualAgain.statusCode, 405);
   assert.equal([...storage.keys()].filter(k => k.startsWith('pedidos/fila/')).length, 1);
 
-  const retirada = await call(pedidosHandler, req('POST', {
+  const segundaMesa = await call(pedidosHandler, req('POST', {
     ...body,
-    clientRequestId: 'teste-retirada-1234567890',
-    origem: 'site',
-    atendimento: { tipo: 'retirada' },
+    clientRequestId: 'teste-segunda-mesa-1234567890',
+    origem: 'mesa',
+    atendimento: { tipo: 'mesa', mesa: 2 },
     pagamento: { metodo: 'dinheiro' },
   }));
-  assert.equal(retirada.statusCode, 201);
-  assert.equal(retirada.body.pedido.numero, '02');
-  assert.equal(retirada.body.pedido.estimativaMinutos, null);
+  assert.equal(segundaMesa.statusCode, 201);
+  assert.equal(segundaMesa.body.pedido.numero, '02');
+  assert.equal(segundaMesa.body.pedido.estimativaMinutos, null);
 
   const finalPanel = await call(painelHandler, req('GET', {}, auth, '/api/painel-pedidos'));
   assert.equal(finalPanel.body.pedidos.length, 2);
-  const pedidoRetirada = finalPanel.body.pedidos.find(p => p.atendimento.tipo === 'retirada');
-  assert.equal(pedidoRetirada.atendimento.taxaServicoCentavos, 300);
-  assert.equal(pedidoRetirada.totalCentavos, 1500);
+  const pedidoMesa = finalPanel.body.pedidos.find(p => p.atendimento.mesa === 2);
+  assert.equal(pedidoMesa.atendimento.taxaServicoCentavos, 300);
+  assert.equal(pedidoMesa.totalCentavos, 1500);
   assert.equal(finalPanel.body.aguardando.length, 0);
 
   // Se o banco estiver indisponivel, nunca devolver numero inventado ou status 202.

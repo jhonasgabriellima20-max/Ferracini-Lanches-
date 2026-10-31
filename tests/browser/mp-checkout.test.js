@@ -90,7 +90,9 @@ async function harness({ enabled = true, requested = enabled, payment = { status
       counts.reservation++;
       state.reservationBodies.push(request.postDataJSON());
       const body=state.reservationBodies.at(-1);
-      const online=enabled && body.pagamento?.fluxo==='mercadopago';
+      const online=body.atendimento.tipo!=='mesa';
+      if(online && !enabled)return json({error:'Pagamento online indisponível.'},503);
+      if(online && !['credito','debito'].includes(body.pagamento?.metodo))return json({error:'Pagamento pelo site obrigatório.'},400);
       const total=body.itens.reduce((sum,item)=>sum+item.quantidade*(item.precoUnitarioCentavos+(item.adicionais||[]).reduce((n,a)=>n+a.precoCentavos,0)),0)+(body.atendimento.taxaEntregaCentavos||0)+(body.atendimento.taxaServicoCentavos||0);
       return json(online ? { pagamentoObrigatorio: true, impressaoAtiva: false, pedido: {
         id, referencia: 'TESTE12345', criadoEm: createdAt, totalCentavos: total,
@@ -109,13 +111,22 @@ async function harness({ enabled = true, requested = enabled, payment = { status
   });
   await page.goto(base + pagePath, { waitUntil: 'domcontentloaded' });
   await page.locator('.qty-stepper[data-name="Dog Simples"] .plus').waitFor();
+  await assertNoWhatsappContact(page);
   return { context, page, counts, state, errors, dialogs };
+}
+
+async function assertNoWhatsappContact(page){
+  const contactTargets=await page.locator('a[href]').evaluateAll(nodes=>nodes.map(node=>node.getAttribute('href')).filter(href=>/wa\.me|whatsapp\.com|whatsapp:/i.test(href)));
+  assert.deepEqual(contactTargets,[],'no WhatsApp contact URL may remain');
+  const contactLabels=await page.locator('a,button').evaluateAll(nodes=>nodes.map(node=>node.textContent).filter(label=>/whatsapp/i.test(label)));
+  assert.deepEqual(contactLabels,[],'no WhatsApp contact or copy action may remain');
+  assert.equal(await page.locator('#linkWhatsappCopia').count(),0);
 }
 
 async function openCheckout(h,{product='Dog Simples',burger,delivery='retirada'}={}) {
   if(burger)await h.page.locator('.product-card[data-name="'+product+'"] input.burger-type[value="'+burger+'"]').check();
   await h.page.locator('.qty-stepper[data-name="'+product+'"] .plus').click();
-  await h.page.locator('#waTabbarBtn').click();
+  await h.page.locator('#orderTabbarBtn').click();
   await h.page.locator('#checkoutOverlay.open').waitFor();
   await h.page.locator(delivery==='entrega'?'#btnEntrega':'#btnRetirada').click();
   await h.page.locator('#clienteNome').fill('Cliente de Teste');
@@ -123,25 +134,27 @@ async function openCheckout(h,{product='Dog Simples',burger,delivery='retirada'}
 }
 async function reserve(h, method = 'credito') {
   await openCheckout(h);
-  assert.deepEqual(await h.page.locator('input[name="payment"]').evaluateAll(nodes => nodes.map(node => node.value)), ['dinheiro', 'debito', 'credito']);
+  assert.deepEqual(await h.page.locator('input[name="payment"]').evaluateAll(nodes => nodes.map(node => node.value)), ['credito', 'debito']);
   await h.page.locator('input[name="payment"][value="' + method + '"]').check();
-  assert.equal(await h.page.locator('input[name="paymentFlow"][value="presencial"]').isChecked(),true);
-  await h.page.locator('input[name="paymentFlow"][value="online"]').check();
+  assert.equal(await h.page.locator('input[name="paymentFlow"]').count(),0);
   await h.page.locator('#btnEnviarPedido').click();
   await h.page.locator('#mockProviderPay').waitFor();
   assert.equal(await h.page.locator('#checkoutConfirm').isVisible(), false);
   assert.equal(h.counts.reservation, 1);
   assert.equal(h.counts.payment, 0);
+  assert.equal(h.state.reservationBodies[0].pagamento.fluxo,'mercadopago');
 }
 
-test('flag desativada preserva pagamento manual e confirmação existente', async () => {
+test('flag desativada bloqueia entrega e retirada sem criar reserva ou cobrança', async () => {
   const h = await harness({ enabled: false });
   try {
     await openCheckout(h);
-    assert.deepEqual(await h.page.locator('input[name="payment"]').evaluateAll(nodes => nodes.map(node => node.value)), ['dinheiro', 'debito', 'credito']);
+    assert.deepEqual(await h.page.locator('input[name="payment"]').evaluateAll(nodes => nodes.map(node => node.value)), ['credito', 'debito']);
     await h.page.locator('#btnEnviarPedido').click();
-    await h.page.locator('#checkoutConfirm').waitFor({ state: 'visible' });
-    assert.match(await h.page.locator('#checkoutConfirm').innerText(), /Comanda 42 confirmada/);
+    await h.page.locator('#checkoutErrorBox .checkout-error').waitFor();
+    assert.match(await h.page.locator('#checkoutErrorBox').innerText(), /pagamento online.*indisponível/i);
+    assert.equal(await h.page.locator('#checkoutConfirm').isVisible(),false);
+    assert.equal(h.counts.reservation, 0);
     assert.equal(h.counts.payment, 0); assert.equal(h.counts.sdk, 0);
     assert.deepEqual(h.errors, []);
   } finally { await h.context.close(); }
@@ -151,7 +164,7 @@ test('mesa sem Pix confirma no local sem formulário ou cobrança online', async
   const h = await harness({pagePath:'/mesa.html?mesa=5'});
   try {
     await h.page.locator('.qty-stepper[data-name="Dog Simples"] .plus').click();
-    await h.page.locator('#waTabbarBtn').click();
+    await h.page.locator('#orderTabbarBtn').click();
     await h.page.locator('#checkoutOverlay.open').waitFor();
     await h.page.locator('#clienteNome').fill('Cliente da Mesa');
     assert.deepEqual(await h.page.locator('input[name="payment"]').evaluateAll(nodes=>nodes.map(node=>node.value)),['dinheiro']);
@@ -163,6 +176,7 @@ test('mesa sem Pix confirma no local sem formulário ou cobrança online', async
     assert.equal(payload.atendimento.mesa,5);
     assert.equal(payload.pagamento.metodo,'dinheiro');
     assert.equal(payload.pagamento.fluxo,undefined);
+    await assertNoWhatsappContact(h.page);
     assert.equal(h.counts.payment,0);
     assert.equal(h.counts.sdk,0);
     assert.deepEqual(h.errors,[]);
@@ -177,6 +191,7 @@ test('reserva não confirma; aprovação do provedor libera confirmação e limp
     await h.page.locator('#mockProviderPay').click();
     await h.page.locator('#checkoutConfirm').waitFor({ state: 'visible' });
     assert.match(await h.page.locator('#checkoutConfirm').innerText(), /Comanda 42 confirmada/);
+    await assertNoWhatsappContact(h.page);
     assert.equal(h.counts.payment, 1);
     assert.equal(h.state.paymentBodies[0].id, id);
     assert.equal(h.state.paymentBodies[0].form.payment_type_id, 'credit_card');
@@ -186,44 +201,51 @@ test('reserva não confirma; aprovação do provedor libera confirmação e limp
   } finally { await h.context.close(); }
 });
 
-test('configuração online incompleta preserva compra e modalidades presenciais', async () => {
+test('configuração online incompleta não oferece alternativa presencial', async () => {
   const h=await harness({enabled:false,requested:true});
   try{
     await openCheckout(h);
-    await h.page.locator('input[name="payment"][value="credito"]').check();
-    assert.equal(await h.page.locator('input[name="paymentFlow"][value="presencial"]').isChecked(),true);
-    assert.equal(await h.page.locator('input[name="paymentFlow"][value="online"]').count(),0);
+    assert.equal(await h.page.locator('input[name="paymentFlow"]').count(),0);
+    assert.equal(await h.page.locator('input[name="payment"][value="dinheiro"]').count(),0);
     await h.page.locator('#btnEnviarPedido').click();
-    await h.page.locator('#checkoutConfirm').waitFor({state:'visible'});
-    assert.equal(h.state.reservationBodies[0].pagamento.fluxo,undefined);
+    await h.page.locator('#checkoutErrorBox .checkout-error').waitFor();
+    assert.match(await h.page.locator('#paymentRequiredNotice').innerText(),/indisponível/);
+    assert.equal(await h.page.locator('#checkoutConfirm').isVisible(),false);
+    assert.equal(h.counts.reservation,0);
     assert.equal(h.counts.payment,0);assert.equal(h.counts.sdk,0);assert.deepEqual(h.errors,[]);
   }finally{await h.context.close();}
 });
 
-test('pagamento online disponível mantém cartão presencial como escolha padrão',async()=>{
+test('crédito padrão reserva pagamento online automaticamente sem liberar comanda',async()=>{
   const h=await harness();
   try{
     await openCheckout(h);
-    await h.page.locator('input[name="payment"][value="credito"]').check();
-    assert.equal(await h.page.locator('input[name="paymentFlow"][value="presencial"]').isChecked(),true);
+    assert.equal(await h.page.locator('input[name="payment"][value="credito"]').isChecked(),true);
+    assert.equal(await h.page.locator('input[name="paymentFlow"]').count(),0);
     await h.page.locator('#btnEnviarPedido').click();
-    await h.page.locator('#checkoutConfirm').waitFor({state:'visible'});
-    assert.equal(h.state.reservationBodies[0].pagamento.fluxo,undefined);
+    await h.page.locator('#mockProviderPay').waitFor();
+    assert.equal(h.state.reservationBodies[0].pagamento.fluxo,'mercadopago');
     assert.equal(h.state.reservationBodies[0].pagamento.metodo,'credito');
-    assert.equal(h.counts.payment,0);assert.equal(h.counts.sdk,0);assert.deepEqual(h.errors,[]);
+    assert.equal(await h.page.locator('#checkoutConfirm').isVisible(),false);
+    assert.equal(h.counts.payment,0);assert.equal(h.counts.sdk,1);assert.deepEqual(h.errors,[]);
   }finally{await h.context.close();}
 });
 
-test('pagamento online disponível preserva dinheiro sem iniciar formulário ou cobrança',async()=>{
+test('checkout principal não oferece dinheiro, Pix ou maquininha',async()=>{
   const h=await harness();
   try{
     await openCheckout(h);
-    await h.page.locator('input[name="payment"][value="dinheiro"]').check();
+    const options=await h.page.locator('input[name="payment"]').evaluateAll(nodes=>nodes.map(node=>node.value));
+    assert.deepEqual(options,['credito','debito']);
+    assert.equal(await h.page.locator('input[name="paymentFlow"]').count(),0);
+    assert.doesNotMatch(await h.page.locator('#paymentOptions').innerText(),/maquininha|dinheiro|pix/i);
+    assert.match(await h.page.locator('#paymentRequiredNotice').innerText(),/aprova/i);
     await h.page.locator('#btnEnviarPedido').click();
-    await h.page.locator('#checkoutConfirm').waitFor({state:'visible'});
-    assert.equal(h.state.reservationBodies[0].pagamento.metodo,'dinheiro');
-    assert.equal(h.state.reservationBodies[0].pagamento.fluxo,undefined);
-    assert.equal(h.counts.payment,0);assert.equal(h.counts.sdk,0);assert.deepEqual(h.errors,[]);
+    await h.page.locator('#mockProviderPay').waitFor();
+    assert.equal(h.state.reservationBodies[0].pagamento.fluxo,'mercadopago');
+    assert.equal(h.counts.payment,0);
+    assert.equal(await h.page.locator('#checkoutConfirm').isVisible(),false);
+    assert.deepEqual(h.errors,[]);
   }finally{await h.context.close();}
 });
 
@@ -292,7 +314,7 @@ test('pendência sobrevive ao reload e recupera aprovação sem nova reserva ou 
     await h.page.locator('#mpRecoveryButton').click();
     await h.page.locator('#checkoutConfirm').waitFor({ state: 'visible' });
     assert.equal(h.counts.reservation, 1); assert.equal(h.counts.payment, 1);
-    assert.equal(await h.page.locator('#linkWhatsappCopia').isVisible(), false);
+    assert.equal(await h.page.locator('#linkWhatsappCopia').count(), 0);
     assert.deepEqual(h.errors, []);
   } finally { await h.context.close(); }
 });
@@ -336,7 +358,6 @@ test('SDK indisponível oferece recarga sem iniciar cobrança nem confirmar pedi
   try {
     await openCheckout(h);
     await h.page.locator('input[name="payment"][value="credito"]').check();
-    await h.page.locator('input[name="paymentFlow"][value="online"]').check();
     await h.page.locator('#btnEnviarPedido').click();
     await h.page.locator('#mpRetryCard').waitFor({ state: 'visible' });
     assert.match(await h.page.locator('#mpPaymentStatus').innerText(), /não carregou/);
@@ -380,7 +401,6 @@ test('checkout online conserva artesanal +R$9, frete R$3/km e cotação assinada
     await h.page.locator('#btnCalcularFrete').click();
     await h.page.waitForFunction(()=>document.querySelector('#freteBox').textContent.includes('5.0 km'));
     await h.page.locator('input[name="payment"][value="credito"]').check();
-    await h.page.locator('input[name="paymentFlow"][value="online"]').check();
     await h.page.locator('#btnEnviarPedido').click();
     await h.page.locator('#mockProviderPay').waitFor();
     const body=h.state.reservationBodies[0];
@@ -404,7 +424,8 @@ test('corrigir rejeição conhecida mantém escolha online e não muda para cobr
     await h.page.locator('#mpRetryCard').waitFor({state:'visible'});
     h.page.removeAllListeners('dialog');h.page.on('dialog',dialog=>dialog.accept());
     await h.page.locator('#mpRetryCard').click();
-    assert.equal(await h.page.locator('input[name="paymentFlow"][value="online"]').isChecked(),true);
+    assert.equal(await h.page.locator('input[name="paymentFlow"]').count(),0);
+    assert.equal(await h.page.locator('input[name="payment"][value="credito"]').isChecked(),true);
     assert.equal(h.counts.reservation,1);assert.equal(h.counts.payment,1);
     await h.page.locator('#btnEnviarPedido').click();
     await h.page.locator('#mockProviderPay').waitFor();

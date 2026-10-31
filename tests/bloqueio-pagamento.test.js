@@ -29,7 +29,7 @@ const payment=require('../api/mp-pagamento');
 const mp=require('../lib/mp-checkout');
 async function call(handler,body={}) {
   const response={statusCode:200,setHeader(){},status(n){this.statusCode=n;return this;},json(data){this.body=data;return this;}};
-  await handler({method:handler===config?'GET':'POST',body,query:{},headers:{origin:'https://ferracinilanches.com.br','content-type':'application/json',host:'ferracinilanches.com.br'}},response);
+  await handler({method:handler===config?'GET':'POST',body,query:{},headers:{origin:'https://ferracinilanches.com.br','content-type':'application/json',host:'ferracinilanches.com.br','x-real-ip':body.clientRequestId||'fixture'}},response);
   return response;
 }
 const draft=(id,pagamento={metodo:'dinheiro'},atendimento={tipo:'retirada'})=>({
@@ -42,13 +42,12 @@ const queued=()=>[...storage.entries()].filter(([p])=>p.startsWith('pedidos/fila
   assert.equal(mp.enabled(),false);
   assert.equal((await call(config)).body.enabled,false);
   assert.equal((await call(payment)).statusCode,503,'disabled endpoint cannot create a charge');
-  const legacy=await call(pedidos,draft('legacy-checkout-with-flag-off'));
-  assert.equal(legacy.statusCode,201,'preparing disabled integration preserves current order flow');
-  assert.equal(legacy.body.pedido.status,'pendente');
-  assert.equal(queued().length,1);
-  const optedOut=await call(pedidos,draft('online-request-flag-off',{metodo:'credito',fluxo:'mercadopago'}));
-  assert.equal(optedOut.statusCode,503,'a requested online charge never silently falls back to presencial');
-  assert.equal(queued().length,1);
+  for(const fluxo of [undefined,'presencial','mercadopago']){
+    const before=storage.size;
+    const blocked=await call(pedidos,draft('credit-disabled-'+String(fluxo),{metodo:'credito',...(fluxo?{fluxo}:{})}));
+    assert.equal(blocked.statusCode,503,'delivery/pickup never fall back to manual when integration is disabled');
+    assert.equal(storage.size,before);
+  }
   for(const atendimento of [
     {tipo:'retirada'},
     {tipo:'mesa',mesa:4},
@@ -57,44 +56,49 @@ const queued=()=>[...storage.entries()].filter(([p])=>p.startsWith('pedidos/fila
   ]){
     const before=storage.size;
     const pix=await call(pedidos,draft('removed-pix-'+atendimento.tipo,{metodo:'pix'},atendimento));
-    assert.equal(pix.statusCode,400,'Pix is no longer accepted for new '+atendimento.tipo+' orders');
+    assert.equal(pix.statusCode,400);
     assert.equal(pix.body.error,'Forma de pagamento inválida.');
-    assert.equal(storage.size,before,'a removed Pix method cannot reserve, number or enqueue an order');
+    assert.equal(storage.size,before,'Pix cannot reserve or enqueue an order');
   }
-
   process.env.MP_CARD_CHECKOUT_ENABLED='true';
-  for(const metodo of ['credito','debito','dinheiro']){
-    const presencial=await call(pedidos,draft('presencial-enabled-without-keys-'+metodo,{metodo}));
-    assert.equal(presencial.statusCode,201,metodo+' remains available without online opt-in');
-    assert.equal(presencial.body.pedido.status,'pendente');
+  for(const metodo of ['credito','debito']){
+    const before=storage.size;
+    const blocked=await call(pedidos,draft('enabled-without-keys-'+metodo,{metodo}));
+    assert.equal(blocked.statusCode,503,'online required with incomplete credentials fails closed');
+    assert.equal(storage.size,before);
   }
-  assert.equal(queued().length,4);
-  assert.ok(queued().every(([,order])=>order.pagamento.fluxo!=='mercadopago'),'the server cannot convert presencial to online implicitly');
-  const blocked=await call(pedidos,draft('enabled-without-credentials',{metodo:'credito',fluxo:'mercadopago'}));
-  assert.equal(blocked.statusCode,503,'explicit online opt-in with incomplete credentials fails closed');
-  assert.equal(queued().length,4,'missing credentials never release an online order');
-  const mesaPayload=draft('mesa-with-online-enabled',undefined,{tipo:'mesa',mesa:4});
-  delete mesaPayload.pagamento;
-  const mesa=await call(pedidos,mesaPayload);
-  assert.equal(mesa.statusCode,201,'mesa retains payment at the restaurant');
-  assert.equal(queued().length,5);
-  assert.equal(queued().find(([,order])=>order.id===mesa.body.pedido.id)[1].pagamento.metodo,'no_local');
-
+  for(const metodo of ['dinheiro','cartao']){
+    const before=storage.size;
+    const blocked=await call(pedidos,draft('manual-method-rejected-'+metodo,{metodo}));
+    assert.equal(blocked.statusCode,400,'manual pickup payment is no longer offered');
+    assert.equal(storage.size,before);
+  }
+  for(const pagamento of [undefined,{metodo:'dinheiro'},{metodo:'credito'}]){
+    const mesaBody=draft('mesa-local-'+(pagamento?.metodo||'no-local'),pagamento,{tipo:'mesa',mesa:4});
+    if(!pagamento)delete mesaBody.pagamento;
+    const mesa=await call(pedidos,mesaBody);
+    assert.equal(mesa.statusCode,201,'mesa retains payment at restaurant without MP configuration');
+    assert.equal(mesa.body.pedido.status,'pendente');
+  }
+  const initialQueued=queued().length;
+  assert.equal(initialQueued,3);
+  assert.ok(queued().every(([,order])=>order.atendimento.tipo==='mesa'));
   process.env.MP_ACCESS_TOKEN='TEST-token';
   process.env.MP_PUBLIC_KEY='TEST-public';
   process.env.MP_WEBHOOK_SECRET='test-webhook-secret';
   assert.equal(mp.enabled(),true);
-  const pending=await call(pedidos,draft('online-opt-in-configured',{metodo:'credito',fluxo:'mercadopago'}));
-  assert.equal(pending.statusCode,201);
-  assert.equal(pending.body.pedido.status,'aguardando_pagamento');
-  assert.equal(queued().length,5,'an opted-in online order remains outside the kitchen before approval');
-  const configuredPresencial=await call(pedidos,draft('presencial-configured',{metodo:'credito'}));
-  assert.equal(configuredPresencial.statusCode,201);
-  assert.equal(queued().length,6,'configured online capability does not remove card payment presencial');
+  for(const fluxo of [undefined,'presencial','mercadopago']){
+    const pending=await call(pedidos,draft('online-required-'+String(fluxo),{metodo:'credito',...(fluxo?{fluxo}:{})}));
+    assert.equal(pending.statusCode,201);
+    assert.equal(pending.body.pedido.status,'aguardando_pagamento');
+    assert.equal(pending.body.pagamentoObrigatorio,true);
+    assert.equal(pending.body.impressaoAtiva,false);
+    const stored=[...storage.values()].find(value=>value.id===pending.body.pedido.id&&value.atendimento);
+    assert.equal(stored.pagamento.fluxo,'mercadopago','server ignores a missing or modified browser flow tag');
+    assert.equal(stored.pagamento.verified,false);
+    assert.equal(queued().length,initialQueued,'no credit reservation reaches the kitchen before approval');
+  }
   const mesaOnline=await call(pedidos,draft('mesa-cannot-opt-in-online',{metodo:'credito',fluxo:'mercadopago'},{tipo:'mesa',mesa:4}));
-  assert.equal(mesaOnline.statusCode,400,'mesa cannot be charged online by changing the browser payload');
-  const pixOnline=await call(pedidos,draft('pix-cannot-opt-in-online',{metodo:'pix',fluxo:'mercadopago'}));
-  assert.equal(pixOnline.statusCode,400,'this card integration does not introduce Pix automatic');
-  assert.equal(queued().length,6);
-  console.log('OK: Pix removido; presencial e mesa preservados; só opt-in online exige integração e aguarda aprovação');
+  assert.equal(mesaOnline.statusCode,400);
+  console.log('OK: entrega/retirada só online; configuração inválida bloqueia; mesa segue no local');
 })().catch(error=>{console.error(error);process.exitCode=1;});

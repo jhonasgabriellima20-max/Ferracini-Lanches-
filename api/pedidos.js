@@ -503,6 +503,12 @@ async function confirmarPedido(id){
     return existenteFila;
   }
 
+  // A historical official receipt may still be read/acknowledged, but an old
+  // unconfirmed presencial reservation must never bypass the online-only rule.
+  if(pedido.atendimento?.tipo !== 'mesa' && pedido.pagamento?.fluxo !== 'mercadopago'){
+    throw Object.assign(new Error('Esta tentativa anterior não foi confirmada. Refaça o pedido e pague pelo site.'),{code:'PAYMENT_REQUIRED'});
+  }
+
   const sequencia = await proximoNumero(data);
   const agora = new Date().toISOString();
   const confirmado = { ...pedido, numero: sequencia.codigo, numeroSequencial: sequencia.numero,
@@ -615,6 +621,21 @@ module.exports = async function handler(req, res){
       if(!CATALOGO.produtos || !CATALOGO.adicionais) throw new Error('Catálogo base indisponível.');
       const catalogo = await require('./disponibilidade').readOrderCatalog();
       const payloadBase = validarPayload(body, catalogo);
+      const onlineRequired = payloadBase.atendimento.tipo !== 'mesa';
+      if(!onlineRequired && body?.pagamento?.fluxo === 'mercadopago'){
+        return res.status(400).json({error:'Pedidos de mesa seguem o pagamento no local.'});
+      }
+      if(onlineRequired){
+        if(!['credito','debito'].includes(payloadBase.pagamento.metodo)){
+          return res.status(400).json({error:'Entrega e retirada exigem crédito ou débito pago pelo site.',pedidoConfirmado:false});
+        }
+        if(!require('../lib/mp-checkout').enabled()){
+          return res.status(503).json({error:'Pagamento online indisponível. Nenhuma cobrança ou comanda foi criada.',pedidoConfirmado:false});
+        }
+        // Server-owned policy: an old page or edited payload cannot request
+        // presencial processing by omitting/changing the browser's flow tag.
+        payloadBase.pagamento = {metodo:payloadBase.pagamento.metodo,fluxo:'mercadopago',status:'pending',verified:false};
+      }
       if(payloadBase.atendimento.tipo === 'entrega' || payloadBase.atendimento.tipo === 'retirada'){
         const canais = await require('./disponibilidade').readServiceAvailability();
         if(canais[payloadBase.atendimento.tipo] === false){
@@ -625,21 +646,6 @@ module.exports = async function handler(req, res){
       }
       const payloadValidado = await validarEntregaNoServidor(payloadBase);
       const payload = await aplicarEstimativaInteligente(payloadValidado);
-      // Online payment is an explicit customer choice; existing presencial
-      // methods and mesa orders retain their rules when the integration is on.
-      const onlineRequested = body?.pagamento?.fluxo === 'mercadopago';
-      if(onlineRequested){
-        if(payload.atendimento.tipo === 'mesa'){
-          return res.status(400).json({error:'Pedidos de mesa seguem o pagamento no local.'});
-        }
-        if(!require('../lib/mp-checkout').enabled()){
-          return res.status(503).json({error:'Pagamento online indisponível. Nenhuma cobrança ou comanda foi criada.',pedidoConfirmado:false});
-        }
-        if(!['credito','debito'].includes(payload.pagamento.metodo)){
-          return res.status(400).json({error:'Escolha crédito ou débito para pagar pelo site.'});
-        }
-        payload.pagamento = {metodo:payload.pagamento.metodo,fluxo:'mercadopago',status:'pending',verified:false};
-      }
       const registro = await criarPedido(payload);
       if(registro.pedido.pagamento?.fluxo === 'mercadopago'){
         const pending = registro.pedido;
@@ -656,8 +662,8 @@ module.exports = async function handler(req, res){
           pagamentoObrigatorio:true,duplicado:registro.duplicado,impressaoAtiva:false,
         });
       }
-      // O clique em confirmar pedido já torna a comanda oficial no sistema.
-      // O WhatsApp é apenas uma cópia/apoio e não bloqueia a fila de impressão.
+      // Apenas mesa e consultas de comandas históricas chegam ao fluxo direto.
+      // Entrega/retirada online continuam reservadas até a aprovação verificada.
       const confirmado = await confirmarPedido(registro.pedido.id);
       return res.status(registro.duplicado ? 200 : 201).json({
         pedido: {
@@ -675,6 +681,7 @@ module.exports = async function handler(req, res){
       });
     }catch(err){
       const message = err instanceof SyntaxError ? 'JSON inválido.' : (err?.message || 'Não foi possível registrar o pedido.');
+      if(err?.code === 'PAYMENT_REQUIRED') return res.status(409).json({error:message,pedidoConfirmado:false});
       const erroDoCliente = err instanceof SyntaxError || [
         'Pedido inválido.',
         'Identificador do pedido inválido.',

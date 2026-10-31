@@ -69,26 +69,27 @@ test('migração usa SQL real, é atômica, preserva índices e recupera pedidos
         };
         return originalLoad.apply(this,arguments);
       };
-      const oldEnvironment=process.env.VERCEL_ENV;
-      const oldFlag=process.env.MP_CARD_CHECKOUT_ENABLED;
-      delete process.env.VERCEL_ENV;process.env.MP_CARD_CHECKOUT_ENABLED='false';
+      const environmentNames=['VERCEL_ENV','MP_CARD_CHECKOUT_ENABLED','MP_ACCESS_TOKEN','MP_PUBLIC_KEY','MP_WEBHOOK_SECRET'];
+      const previousEnvironment=Object.fromEntries(environmentNames.map(name=>[name,process.env[name]]));
+      delete process.env.VERCEL_ENV;
+      Object.assign(process.env,{MP_CARD_CHECKOUT_ENABLED:'true',MP_ACCESS_TOKEN:'TEST-backfill-token',MP_PUBLIC_KEY:'TEST-backfill-public',MP_WEBHOOK_SECRET:'backfill-test-secret'});
       try{
         const handler=require('../api/pedidos');
         const response={statusCode:200,setHeader(){},status(code){this.statusCode=code;return this;},json(body){this.body=body;return this;}};
         await handler({method:'POST',query:{},headers:{origin:'https://ferracinilanches.com.br','content-type':'application/json'},body:{
           clientRequestId:old.value.clientRequestId,cliente:old.value.cliente,itens:old.value.itens,
-          atendimento:{tipo:'retirada'},pagamento:{metodo:'dinheiro'},
+          atendimento:{tipo:'retirada'},pagamento:{metodo:'credito',fluxo:'mercadopago'},
         }},response);
         assert.equal(response.statusCode,200);
         assert.equal(response.body.duplicado,true);
         assert.equal(response.body.pedido.id,old.id);
         assert.equal(response.body.pedido.numero,'07');
+        assert.equal((await storage.readJson(old.queuePath)).value.pagamento.metodo,'dinheiro','consulta de comanda histórica não transforma pagamento antigo em nova cobrança');
         assert.equal(Number((await db.query("SELECT count(*) AS n FROM public.ferracini_store WHERE pathname LIKE 'pedidos/fila/%'")).rows[0].n),1);
         assert.equal(Number((await db.query("SELECT count(*) AS n FROM public.ferracini_store WHERE pathname LIKE 'pedidos/aguardando/%'")).rows[0].n),1);
       }finally{
         Module._load=originalLoad;
-        if(oldEnvironment===undefined)delete process.env.VERCEL_ENV;else process.env.VERCEL_ENV=oldEnvironment;
-        if(oldFlag===undefined)delete process.env.MP_CARD_CHECKOUT_ENABLED;else process.env.MP_CARD_CHECKOUT_ENABLED=oldFlag;
+        for(const name of environmentNames){if(previousEnvironment[name]===undefined)delete process.env[name];else process.env[name]=previousEnvironment[name];}
       }
     });
 

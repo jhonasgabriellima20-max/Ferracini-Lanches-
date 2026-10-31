@@ -338,7 +338,7 @@
   footer .footer-bottom{ margin-top:22px; font-size:12.5px; color:var(--ink-faint); }
 
   /* PEDIDO FLUTUANTE + BARRA MOBILE */
-  .wa-float{
+  .order-float{
     position:fixed; right:24px; bottom:28px; z-index:90;
     display:none; align-items:center; gap:10px;
     background:#25D366; color:#0c1a12; padding:15px 24px; border-radius:999px;
@@ -346,8 +346,8 @@
     box-shadow:0 10px 30px -8px rgba(37,211,102,0.55);
     transition:transform .15s ease;
   }
-  .wa-float:hover{ transform:translateY(-3px); }
-  @media (min-width:760px){ .wa-float{ display:inline-flex; } }
+  .order-float:hover{ transform:translateY(-3px); }
+  @media (min-width:760px){ .order-float{ display:inline-flex; } }
 
   .mobile-tabbar{
     position:fixed; bottom:0; left:0; right:0; z-index:90;
@@ -588,10 +588,10 @@
   </div>
 </footer>
 
-<a class="wa-float" id="waFloatBtn" href="javascript:void(0)">🍔 Ver cardápio</a>
+<a class="order-float" id="orderFloatBtn" href="javascript:void(0)">🍔 Ver cardápio</a>
 
 <nav class="mobile-tabbar">
-  <a id="waTabbarBtn" href="javascript:void(0)">🍔 Ver cardápio</a>
+  <a id="orderTabbarBtn" href="javascript:void(0)">🍔 Ver cardápio</a>
 </nav>
 
 <!-- CHECKOUT -->
@@ -698,7 +698,6 @@
     </button>
 
     <div class="checkout-confirm" id="checkoutConfirm" style="display:none;" role="status" aria-live="polite"></div>
-    <a id="linkWhatsappCopia" class="btn btn-primary btn-block" style="display:none;margin-top:12px;text-align:center;text-decoration:none;" target="_blank" rel="noopener noreferrer">Enviar cópia no WhatsApp (opcional)</a>
   </div>
 </div>
 
@@ -730,7 +729,6 @@ const ADICIONAIS_PADRAO = [
 ];
 
 const CONFIG = {
-  whatsapp: "5543998075190",
 
   // Dados da loja — usados como origem no cálculo de distância da entrega.
   loja: {
@@ -1061,8 +1059,8 @@ function tempoRetiradaMinutos(){
 
 function updateCartBar(){
   const { totalQty, subtotal } = cartTotals();
-  const floatBtn = document.getElementById('waFloatBtn');
-  const tabBtn = document.getElementById('waTabbarBtn');
+  const floatBtn = document.getElementById('orderFloatBtn');
+  const tabBtn = document.getElementById('orderTabbarBtn');
   const cartBadge = document.getElementById('cartBadge');
 
   cartBadge.style.display = totalQty > 0 ? 'flex' : 'none';
@@ -1265,8 +1263,7 @@ const checkoutConfirmEl = document.getElementById('checkoutConfirm');
 const btnEnviarPedidoEl = document.getElementById('btnEnviarPedido');
 
 let deliveryMethod = 'entrega'; // 'retirada' | 'entrega'
-let paymentMethod = 'dinheiro';
-let paymentOnline = false;
+let paymentMethod = 'credito';
 let mpCardEnabled=false, mpRequested=false, mpPublicKey=null, mpBrickController=null, mpScriptPromise=null, mpOrderPending=null;
 let mpBrickAttempt=0, mpClientReports=0, mpPaymentBusy=false, mpRecovering=false;
 const MP_PENDING_KEY='ferracini-pagamento-pendente-v1';
@@ -1320,12 +1317,12 @@ function aplicarDisponibilidadeAtendimento(){
   if(enderecoBlockEl) enderecoBlockEl.style.display = deliveryMethod === 'entrega' ? 'block' : 'none';
 }
 
-const PAYMENT_LABELS = { dinheiro: 'Dinheiro', debito: 'Débito', credito: 'Crédito' };
+const PAYMENT_LABELS = { credito: 'Crédito', debito: 'Débito' };
 function paymentOptionsForMethod(){
-  return ['dinheiro', 'debito', 'credito'];
+  return ['credito', 'debito'];
 }
 function pagamentoOnlineSelecionado(){
-  return paymentOnline && deliveryMethod!=='mesa' && ['credito','debito'].includes(paymentMethod);
+  return deliveryMethod!=='mesa' && ['credito','debito'].includes(paymentMethod);
 }
 function taxaServicoPorDistancia(distanciaKm){
   if(!Number.isFinite(distanciaKm) || distanciaKm <= 0) return 0;
@@ -1357,11 +1354,7 @@ function erroTroco(){
 }
 function descricaoPagamento(){
   if(deliveryMethod === 'mesa') return 'Pagamento a combinar no local';
-  const localPagamento = deliveryMethod === 'entrega' ? 'na entrega' : (deliveryMethod === 'mesa' ? 'no local' : 'na retirada');
-  if(paymentMethod === 'credito') return pagamentoOnlineSelecionado() ? 'Crédito — pagamento online Mercado Pago' : `Crédito — pagamento ${localPagamento}`;
-  if(paymentMethod === 'debito') return pagamentoOnlineSelecionado() ? 'Débito — pagamento online Mercado Pago' : `Débito — pagamento ${localPagamento}`;
-  if(!precisaTroco) return 'Dinheiro — sem troco';
-  return `Dinheiro — troco para ${fmtPreco(valorTrocoCentavos()/100)}\nTroco a devolver: ${fmtPreco((valorTrocoCentavos()-totalPedidoCentavos())/100)}`;
+  return paymentMethod === 'debito' ? 'Débito — pagamento online Mercado Pago' : 'Crédito — pagamento online Mercado Pago';
 }
 function atualizarResumoTroco(){
   const el = document.getElementById('resumoTroco');
@@ -1375,49 +1368,19 @@ function renderPaymentOptions(){
     document.getElementById('paymentOptions').innerHTML = '';
     return;
   }
-  const cartao = ['credito','debito'].includes(paymentMethod);
-  if(!cartao || !mpCardEnabled) paymentOnline=false;
-  const localPagamento = deliveryMethod==='entrega'?'na entrega':'na retirada';
-  const fluxoCartao = cartao ? `<div style="margin-top:12px">
-    <label class="payment-option ${!paymentOnline?'active':''}"><input type="radio" name="paymentFlow" value="presencial" ${!paymentOnline?'checked':''}><span>Pagar ${localPagamento} com a maquininha</span></label>
-    ${mpCardEnabled ? `<label class="payment-option ${paymentOnline?'active':''}"><input type="radio" name="paymentFlow" value="online" ${paymentOnline?'checked':''}><span>Pagar agora pelo site com Mercado Pago</span></label>` : '<div style="font-size:13px;margin-top:8px;color:var(--ink-dim)">Pagamento online indisponível no momento. O pagamento presencial continua disponível.</div>'}
-  </div>` : '';
+  const aviso = mpCardEnabled
+    ? 'Pagamento pelo site com Mercado Pago. A comanda só será liberada após a aprovação do pagamento.'
+    : 'Pagamento online indisponível no momento. Tente novamente em instantes.';
   document.getElementById('paymentOptions').innerHTML = paymentOptionsForMethod().map(id => `
     <label class="payment-option ${paymentMethod===id?'active':''}" data-id="${id}">
       <input type="radio" name="payment" value="${id}" ${paymentMethod===id?'checked':''}>
       <span>${PAYMENT_LABELS[id]}</span>
-    </label>`).join('') + fluxoCartao + (paymentMethod === 'dinheiro' ? `
-    <div class="field" style="margin-top:14px">
-      <label for="precisaTroco">Precisa de troco?</label>
-      <select id="precisaTroco" style="width:100%;padding:12px;border-radius:8px"><option value="nao">Não, vou pagar o valor exato</option><option value="sim">Sim</option></select>
-    </div>
-    <div class="field" id="campoTroco" ${precisaTroco?'':'hidden'}>
-      <label for="trocoPara">Troco para quanto? (R$)</label>
-      <input id="trocoPara" type="text" inputmode="decimal" placeholder="Ex.: 50,00" maxlength="12">
-    </div><div id="resumoTroco" role="status" aria-live="polite" style="font-size:13px;margin-top:8px"></div>` : '');
+    </label>`).join('') + `<div id="paymentRequiredNotice" role="status" style="font-size:13px;margin-top:12px">${aviso}</div>`;
   document.querySelectorAll('input[name="payment"]').forEach(el => el.addEventListener('change', () => {
     paymentMethod = el.value;
-    paymentOnline = false;
     renderPaymentOptions();
     renderCheckout();
   }));
-  document.querySelectorAll('input[name="paymentFlow"]').forEach(el=>el.addEventListener('change',()=>{
-    paymentOnline=el.value==='online' && mpCardEnabled;
-    renderPaymentOptions();renderCheckout();
-  }));
-  if(paymentMethod === 'dinheiro'){
-    const precisa = document.getElementById('precisaTroco');
-    const valor = document.getElementById('trocoPara');
-    precisa.value = precisaTroco ? 'sim' : 'nao';
-    valor.value = trocoPara;
-    precisa.addEventListener('change', () => {
-      precisaTroco = precisa.value === 'sim';
-      document.getElementById('campoTroco').hidden = !precisaTroco;
-      atualizarResumoTroco();
-    });
-    valor.addEventListener('input', () => { trocoPara = valor.value; atualizarResumoTroco(); });
-    atualizarResumoTroco();
-  }
 }
 
 function resetFrete(){
@@ -1830,13 +1793,11 @@ async function abrirCheckout(){
   deliveryMethod = metodoInicial;
   aplicarDisponibilidadeAtendimento();
   resetFrete();
-  paymentMethod = 'dinheiro';
-  paymentOnline = false;
+  paymentMethod = 'credito';
   precisaTroco = false;
   trocoPara = '';
   checkoutErrorBoxEl.innerHTML = '';
   checkoutConfirmEl.style.display = 'none';
-  document.getElementById('linkWhatsappCopia').style.display = 'none';
   btnEnviarPedidoEl.style.display = 'block';
   btnEnviarPedidoEl.disabled = false;
   btnEnviarPedidoEl.textContent = 'Confirmar pedido';
@@ -1864,11 +1825,11 @@ document.querySelectorAll('a.go-cardapio').forEach(a => {
   a.addEventListener('click', irParaCardapio);
 });
 
-document.getElementById('waFloatBtn').addEventListener('click', (e) => {
+document.getElementById('orderFloatBtn').addEventListener('click', (e) => {
   e.preventDefault();
   if(cartTotals().totalQty > 0){ abrirCheckout(); } else { irParaCardapio(); }
 });
-document.getElementById('waTabbarBtn').addEventListener('click', (e) => {
+document.getElementById('orderTabbarBtn').addEventListener('click', (e) => {
   e.preventDefault();
   if(cartTotals().totalQty > 0){ abrirCheckout(); } else { irParaCardapio(); }
 });
@@ -1881,74 +1842,6 @@ document.getElementById('cartHeaderBtn').addEventListener('click', () => {
 });
 
 
-
-function linkWhatsApp(mensagem){
-  return `https://wa.me/${CONFIG.whatsapp}?text=${encodeURIComponent(mensagem)}`;
-}
-
-function horarioPedidoWhatsApp(criadoEm = ''){
-  const data = criadoEm ? new Date(criadoEm) : new Date();
-  const segura = Number.isNaN(data.getTime()) ? new Date() : data;
-  return new Intl.DateTimeFormat('pt-BR', {
-    timeZone: 'America/Sao_Paulo',
-    hour: '2-digit',
-    minute: '2-digit'
-  }).format(segura);
-}
-
-function montarMensagemPedido(comanda = '', criadoEm = '', estimativaPedido = null){
-  const { items, subtotal } = cartTotals();
-  const nome = document.getElementById('clienteNome').value.trim();
-  const telefone = document.getElementById('clienteTelefone').value.trim();
-  const taxaEntrega = (deliveryMethod === 'entrega' && frete.status === 'ok') ? frete.valor : 0;
-  const taxaServico = (deliveryMethod === 'retirada' || deliveryMethod === 'mesa')
-  ? CONFIG.retirada.taxaServico
-  : ((deliveryMethod === 'entrega' && frete.status === 'ok') ? taxaServicoPorDistancia(frete.distanciaKm) : 0);
-  const total = subtotal + taxaEntrega + taxaServico;
-
-  const linhasProdutos = items.map(([produto, v]) => {
-    const addons = (v.adicionais || []).map(a => `  + ${a.nome}`).join('\n');
-    const obs = v.observacao ? `  Obs: ${v.observacao}` : '';
-    return [`${v.qty}x ${nomeComHamburguer(produto, v)} — ${fmtPreco(v.qty * precoUnitario(v))}`, addons, obs].filter(Boolean).join('\n');
-  }).join('\n');
-
-  let blocoEntrega;
-  if(deliveryMethod === 'entrega'){
-    const rua = document.getElementById('endRua').value.trim();
-    const numero = document.getElementById('endNumero').value.trim();
-    const complemento = document.getElementById('endComplemento').value.trim();
-    const bairro = document.getElementById('endBairro').value.trim();
-    const cidade = document.getElementById('endCidade').value.trim();
-    const cep = somenteDigitos(document.getElementById('endCep').value);
-    const cepLinha = cep.length === 8 ? `\nCEP: ${formatarCep(cep)}` : '';
-    blocoEntrega = `🚚 ENTREGA\n${rua}, ${numero}${complemento ? ' - ' + complemento : ''}\n${bairro} — ${cidade}${cepLinha}\n\n📍 Distância: ${frete.distanciaKm.toFixed(1)} km\n🚚 Taxa de entrega: ${fmtPreco(frete.valor)}\n🧾 Taxa de serviço: ${fmtPreco(taxaServico)}`;
-  } else {
-    blocoEntrega = deliveryMethod === 'mesa' ? `🍽️ COMER NO LOCAL — MESA ${document.getElementById('numeroMesa').value}` : '🏪 RETIRADA NO LOCAL';
-  }
-
-  const blocoPagamento = `💳 PAGAMENTO\n${descricaoPagamento()}`;
-
-  const blocoValores = deliveryMethod === 'entrega'
-    ? `💰 TOTAL\nProdutos: ${fmtPreco(subtotal)}\nEntrega: ${fmtPreco(taxaEntrega)}\nTaxa de serviço: ${fmtPreco(taxaServico)}\nTOTAL: ${fmtPreco(total)}`
-    : `💰 TOTAL\nProdutos: ${fmtPreco(subtotal)}\nTaxa de serviço: ${fmtPreco(taxaServico)}\nTOTAL: ${fmtPreco(total)}`;
-
-  return [
-    '📋 CÓPIA DO PEDIDO REGISTRADO',
-    comanda ? `✅ COMANDA ${comanda} — já registrada no site` : '',
-    '⚠️ CÓPIA INFORMATIVA. NÃO GERAR OUTRA COMANDA.',
-    `🕐 HORÁRIO DO PEDIDO: ${horarioPedidoWhatsApp(criadoEm)}`,
-    '',
-    `👤 CLIENTE\n${nome}\n${telefone}`,
-    '',
-    `🍔 PEDIDO\n${linhasProdutos}`,
-    '',
-    blocoEntrega,
-    '',
-    blocoPagamento,
-    '',
-    blocoValores,
-  ].join('\n');
-}
 
 function criarIdPedido(){
   if(globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
@@ -2072,7 +1965,7 @@ function validarCheckout(){
   }
 
   if(deliveryMethod !== 'mesa' && !paymentOptionsForMethod().includes(paymentMethod)) erros.push('Escolha a forma de pagamento.');
-  if(pagamentoOnlineSelecionado() && !mpCardEnabled) erros.push('O pagamento online está indisponível. Escolha pagamento presencial ou tente novamente mais tarde.');
+  if(pagamentoOnlineSelecionado() && !mpCardEnabled) erros.push('O pagamento online está indisponível. Tente novamente mais tarde; nenhuma comanda foi liberada.');
   if(erroTroco()) erros.push(erroTroco());
   return erros;
 }
@@ -2126,7 +2019,7 @@ btnEnviarPedidoEl.addEventListener('click', async () => {
   btnEnviarPedidoEl.textContent = 'Preparando pedido...';
 
   // O clique do cliente em Confirmar pedido registra a compra no sistema.
-  // Abrir WhatsApp ou abandonar o checkout nunca insere pedido na fila.
+  // Abandonar o checkout nunca confirma um pagamento nem insere pedido na fila.
   const clientRequestId = clientRequestIdAtual || criarIdPedido();
   clientRequestIdAtual = clientRequestId;
   const payload = montarPayloadPedido(clientRequestId);
@@ -2171,20 +2064,11 @@ function finalizarCheckoutConfirmado(registro){
   bloquearDadosCheckoutMP(false);
   // Uma mensagem de sucesso exige resposta confirmada pelo servidor.
   const numeroComanda = registro.pedido.numero || registro.pedido.referencia;
-  const linkCopia = document.getElementById('linkWhatsappCopia');
-  const estimativaPedido = deliveryMethod === 'entrega'
-    ? (registro.pedido.estimativaMinutos || (frete.estimativa && frete.estimativa !== 'indisponivel' ? frete.estimativa : null))
-    : null;
-  if(!mpRecovering && !onlinePayment){
-    linkCopia.href = linkWhatsApp(montarMensagemPedido(numeroComanda, registro.pedido.criadoEm, estimativaPedido));
-    linkCopia.style.display = 'block';
-  }else{linkCopia.style.display='none';}
   mpRecovering=false;
   checkoutConfirmEl.innerHTML =
     '✅ <strong>Comanda ' + escapeHTML(numeroComanda) + ' confirmada no sistema!</strong>' +
     '<div style="margin-top:8px">Seu pedido foi registrado para atendimento pela loja. ' +
-    'Não é preciso mandar mensagem nem esperar alguém aceitar. ' +
-    (onlinePayment ? 'Pagamento aprovado pelo Mercado Pago.</div>' : 'Se desejar, envie uma cópia pelo WhatsApp no botão abaixo.</div>');
+    (onlinePayment ? 'Pagamento aprovado pelo Mercado Pago.</div>' : 'Sua comanda está registrada para atendimento.</div>');
   checkoutConfirmEl.style.display = 'block';
   checkoutErrorBoxEl.innerHTML = '';
   btnEnviarPedidoEl.disabled = true;
@@ -2318,7 +2202,7 @@ async function recuperarPagamentoMP(){
   const order=mpOrderPending;mpRecovering=true;
   document.getElementById('mpRecoveryNotice').hidden=true;
   checkoutOverlayEl.classList.add('open');checkoutConfirmEl.style.display='none';checkoutErrorBoxEl.innerHTML='';
-  document.getElementById('linkWhatsappCopia').style.display='none';document.getElementById('mpBrickSection').hidden=false;
+  document.getElementById('mpBrickSection').hidden=false;
   btnEnviarPedidoEl.style.display='none';bloquearDadosCheckoutMP(true);configurarConsultaMP(order);renderCheckout();
   document.getElementById('mpPaymentStatus').textContent='Consultando seu pagamento...';
   try{

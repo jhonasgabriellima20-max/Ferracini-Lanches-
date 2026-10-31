@@ -3,7 +3,7 @@ const assert=require('node:assert/strict');
 const crypto=require('node:crypto');
 const Module=require('node:module');
 
-test('idempotência presencial atravessa meia-noite e expedientes sem repetir comanda',async()=>{
+test('idempotência de mesa atravessa meia-noite e expedientes sem repetir comanda',async()=>{
   const storage=new Map(),reads=[];
   const fakeStorage={
     isStorageUnavailable:()=>false,
@@ -36,7 +36,7 @@ test('idempotência presencial atravessa meia-noite e expedientes sem repetir co
     const indexed=require('../lib/order-reservations');
     const body=clientRequestId=>({clientRequestId,cliente:{nome:'Cliente Teste',telefone:'43999999999'},
       itens:[{nome:'Dog Simples',quantidade:1,precoUnitarioCentavos:1200,adicionais:[]}],
-      atendimento:{tipo:'retirada'},pagamento:{metodo:'dinheiro'}});
+      atendimento:{tipo:'mesa',mesa:3},pagamento:{metodo:'dinheiro'}});
     async function call(clientRequestId){
       const res={statusCode:200,setHeader(){},status(code){this.statusCode=code;return this;},json(data){this.body=data;return this;}};
       await pedidos({method:'POST',body:body(clientRequestId),query:{},headers:{'content-type':'application/json',origin:'https://ferracinilanches.com.br','x-real-ip':clientRequestId}},res);

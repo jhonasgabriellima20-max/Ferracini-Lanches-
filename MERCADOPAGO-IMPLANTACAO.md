@@ -8,7 +8,8 @@ Este pacote incorpora a integração de cartão ao `main` `1f4fb57c951bfb0a7c7f5
 - Escolha industrializado/artesanal, com acréscimo de R$ 9,00 por lanche e R$ 36,00 no combo de quatro.
 - Categorias, adicionais, observações, disponibilidade, fechamento, histórico e layout da comanda.
 - Numeração diária por expediente: o dia muda às 06h de São Paulo, sem reiniciar à meia-noite.
-- Dinheiro e cartões presenciais permanecem. Crédito/débito são presenciais por padrão; quando a integração estiver configurada, o cliente pode escolher explicitamente pagar pelo site. O servidor só exige aprovação online para pedidos com esse fluxo. Mesa continua com pagamento no local. Por solicitação do responsável, Pix foi retirado das opções do site principal e da página de mesa; pedidos históricos continuam com sua identificação original.
+- Entrega e retirada exigem crédito ou débito pago pelo site; não há dinheiro, Pix ou maquininha nessas modalidades. O servidor impõe o fluxo Mercado Pago mesmo se uma página antiga omitir ou adulterar o campo de pagamento. Somente a aprovação verificada libera uma nova comanda. Mesa continua com pagamento no local, sem cobrança online obrigatória. Por solicitação do responsável, Pix foi retirado também da página de mesa; pedidos históricos continuam com sua identificação original.
+- Não há links, botões ou cópia do pedido pelo WhatsApp no site principal, na página de mesa ou no painel de pedidos. Os botões de carrinho e a confirmação no sistema permanecem, e o telefone do cliente continua como informação do pedido/comanda.
 
 ## Correções da auditoria
 
@@ -41,7 +42,7 @@ Conferir os bindings existentes na Vercel antes de cadastrar valores. Não coloc
 
 | Variável | Finalidade |
 | --- | --- |
-| `MP_CARD_CHECKOUT_ENABLED` | Ausente/`false` desativa novas cobranças online, mantendo o fluxo presencial. Habilitar `true` primeiro somente no Preview autorizado. |
+| `MP_CARD_CHECKOUT_ENABLED` | Ausente/`false` bloqueia novos pedidos de entrega/retirada, sem alternativa presencial. Mesa continua local. Habilitar `true` primeiro somente no Preview autorizado. |
 | `MP_PUBLIC_KEY` | Chave pública da aplicação Mercado Pago. |
 | `MP_ACCESS_TOKEN` | Token privado da mesma aplicação/conta recebedora. |
 | `MP_WEBHOOK_SECRET` | Segredo do webhook do ambiente correspondente; obrigatório para ativar fora de Preview. |
@@ -78,7 +79,7 @@ A aplicação valida o namespace inteiro e insere índices em uma única instru�
 
 1. Revisar o diff sobre o `main` atual e manter o deployment anterior identificável.
 2. Simular e aplicar a migração de índices no banco de teste correspondente, resolvendo qualquer bloqueio. Criar Preview autorizado, com credenciais de teste. Seus pedidos, índices, contadores e histórico usam `mp-preview/`; a fila física recusa o Preview.
-3. Testar crédito e débito aprovados, pendência, recusa, cancelamento/estorno, autenticação bancária, duas abas, duplo clique, resposta perdida, recarga, correção de `property_value` e webhook repetido. Conferir adicionais, artesanal, combo, marmitex/doces/sobremesas, serviço e cotação assinada do frete. Verificar presencial e mesa sem exigência indevida de pagamento online.
+3. Testar crédito e débito aprovados, pendência, recusa, cancelamento/estorno, autenticação bancária, duas abas, duplo clique, resposta perdida, recarga, correção de `property_value` e webhook repetido. Conferir adicionais, artesanal, combo, marmitex/doces/sobremesas, serviço e cotação assinada do frete. Verificar que dinheiro/maquininha/página antiga não liberam novos pedidos de entrega/retirada e que mesa segue sem cobrança online obrigatória.
 4. Conferir uma única comanda após aprovação, nenhuma antes, e nenhum novo POST após resultado incerto. Testar desligar a flag durante pendência sem perder a conciliação.
 5. A produção depende de autorização específica após essas verificações e da migração do histórico no banco correto, com pedidos antigos pausados/drenados. Não enviar diretamente a `main`: o projeto pode publicar automaticamente a partir do GitHub.
 6. No Windows, caso seja necessário atualizar a identificação de pagamento no recibo, fazer backup e substituir apenas `FerraciniPrintAgent.ps1`, preservando configuração, token, atalhos e logs. Não instalar o agente físico no Linux da nuvem.
