@@ -690,6 +690,7 @@
       <a id="mpBankAuthentication" class="btn btn-primary btn-block" hidden target="_blank" rel="noopener noreferrer" style="margin-top:14px">Autenticar pagamento no banco</a>
       <button type="button" id="mpEditOrder" class="btn btn-ghost btn-block" hidden style="margin-top:14px;color:#181818">Alterar pedido antes de pagar</button>
       <button type="button" id="mpCheckStatus" class="btn btn-primary btn-block" hidden style="margin-top:14px">Consultar pagamento</button>
+      <button type="button" id="mpReturnToSite" class="btn btn-ghost btn-block" style="margin-top:12px;color:#181818">Voltar ao site</button>
     </div>
     <div id="checkoutErrorBox"></div>
 
@@ -1806,6 +1807,13 @@ async function abrirCheckout(){
   checkoutOverlayEl.classList.add('open');
 }
 
+function voltarAoSiteMP(){
+  checkoutOverlayEl.classList.remove('open');
+  const aviso=document.getElementById('mpRecoveryNotice');
+  if(aviso)aviso.hidden=true;
+  irParaCardapio();
+}
+
 function fecharCheckout(){
   if(mpOrderPending){checkoutOverlayEl.classList.remove('open');document.getElementById('mpRecoveryNotice').hidden=false;return;}
   desmontarCartaoMP();
@@ -2054,6 +2062,8 @@ btnEnviarPedidoEl.addEventListener('click', async () => {
 function finalizarCheckoutConfirmado(registro){
   if(!registro?.pedido || (!registro.pedido.numero && !registro.pedido.referencia)) return;
   const onlinePayment=Boolean(mpOrderPending);
+  // Pagamentos online só são confirmados após a verificação do servidor.
+  if(onlinePayment && (registro.pedido.pagamento?.status!=='approved' || registro.pedido.pagamento?.verified!==true)) return;
   const clearCart=!onlinePayment || (!mpRecovering && mpOrderPending.cartSnapshot===JSON.stringify(cart));
   checkoutOverlayEl.classList.add('open');
   desmontarCartaoMP();
@@ -2074,8 +2084,14 @@ function finalizarCheckoutConfirmado(registro){
   btnEnviarPedidoEl.disabled = true;
   btnEnviarPedidoEl.style.display = 'none';
   clientRequestIdAtual = null;
-  if(clearCart)Object.keys(cart).forEach(nome => delete cart[nome]);
+  if(clearCart || onlinePayment)Object.keys(cart).forEach(nome => delete cart[nome]);
   updateCartBar();
+  if(onlinePayment){
+    // Após aprovação confirmada, mostrar a mensagem no próprio cardápio.
+    document.getElementById('mpSuccessNumber').textContent=String(numeroComanda);
+    document.getElementById('mpSuccessNotice').hidden=false;
+    voltarAoSiteMP();
+  }
 }
 
 function salvarPagamentoPendenteMP(order){
@@ -2285,9 +2301,18 @@ setInterval(atualizarStatusHorarioPedidos, 60 * 1000);
 <div id="mpRecoveryNotice" hidden role="status" style="position:fixed;bottom:85px;left:12px;right:12px;z-index:2000;max-width:580px;margin:auto;padding:14px;border-radius:12px;background:#fff;color:#171717;box-shadow:0 4px 24px #0005">
   <strong>Você tem um pagamento em acompanhamento.</strong>
   <button type="button" id="mpRecoveryButton" class="btn btn-primary btn-block" style="margin-top:8px">Consultar meu pagamento</button>
+  <button type="button" id="mpRecoveryBackToSite" class="btn btn-ghost btn-block" style="margin-top:8px;padding:12px;color:#181818">Voltar ao site</button>
+</div>
+<div id="mpSuccessNotice" hidden role="status" aria-live="polite" style="position:fixed;top:80px;left:12px;right:12px;z-index:210;max-width:580px;margin:auto;padding:18px;border-radius:12px;background:#fff;color:#161616;box-shadow:0 5px 30px #0005;border:2px solid #23884c;">
+  <strong style="display:block;font-size:19px;">✅ Pagamento aprovado!</strong>
+  <p style="margin:10px 0 14px;">✅ Comanda nº <strong id="mpSuccessNumber"></strong> liberada para a loja.</p>
+  <button type="button" id="mpSuccessDismiss" class="btn btn-primary btn-block" style="padding:12px">Continuar no cardápio</button>
 </div>
 <script>
 document.getElementById('mpRecoveryButton').addEventListener('click',recuperarPagamentoMP);
+document.getElementById('mpReturnToSite').addEventListener('click',voltarAoSiteMP);
+document.getElementById('mpRecoveryBackToSite').addEventListener('click',voltarAoSiteMP);
+document.getElementById('mpSuccessDismiss').addEventListener('click',()=>{document.getElementById('mpSuccessNotice').hidden=true;});
 restaurarPagamentoPendenteMP();
 </script>
 </body>
