@@ -8,7 +8,7 @@ Este pacote incorpora a integração de cartão ao `main` `1f4fb57c951bfb0a7c7f5
 - Escolha industrializado/artesanal, com acréscimo de R$ 9,00 por lanche e R$ 36,00 no combo de quatro.
 - Categorias, adicionais, observações, disponibilidade, fechamento, histórico e layout da comanda.
 - Numeração diária por expediente: o dia muda às 06h de São Paulo, sem reiniciar à meia-noite.
-- As opções presenciais existentes permanecem. Crédito/débito são presenciais por padrão; quando a integração estiver configurada, o cliente pode escolher explicitamente pagar pelo site. O servidor só exige aprovação online para pedidos com esse fluxo. Mesa continua com pagamento no local. Esta mudança não implementa Pix automático nem acrescenta modalidades novas de Pix.
+- Dinheiro e cartões presenciais permanecem. Crédito/débito são presenciais por padrão; quando a integração estiver configurada, o cliente pode escolher explicitamente pagar pelo site. O servidor só exige aprovação online para pedidos com esse fluxo. Mesa continua com pagamento no local. Por solicitação do responsável, Pix foi retirado das opções do site principal e da página de mesa; pedidos históricos continuam com sua identificação original.
 
 ## Correções da auditoria
 

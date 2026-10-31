@@ -49,23 +49,35 @@ const queued=()=>[...storage.entries()].filter(([p])=>p.startsWith('pedidos/fila
   const optedOut=await call(pedidos,draft('online-request-flag-off',{metodo:'credito',fluxo:'mercadopago'}));
   assert.equal(optedOut.statusCode,503,'a requested online charge never silently falls back to presencial');
   assert.equal(queued().length,1);
+  for(const atendimento of [
+    {tipo:'retirada'},
+    {tipo:'mesa',mesa:4},
+    {tipo:'entrega',distanciaKm:3,taxaEntregaCentavos:900,taxaServicoCentavos:300,
+      endereco:{rua:'Rua Teste',numero:'1',bairro:'Centro',cidade:'Londrina',cep:'86010000'}},
+  ]){
+    const before=storage.size;
+    const pix=await call(pedidos,draft('removed-pix-'+atendimento.tipo,{metodo:'pix'},atendimento));
+    assert.equal(pix.statusCode,400,'Pix is no longer accepted for new '+atendimento.tipo+' orders');
+    assert.equal(pix.body.error,'Forma de pagamento inválida.');
+    assert.equal(storage.size,before,'a removed Pix method cannot reserve, number or enqueue an order');
+  }
 
   process.env.MP_CARD_CHECKOUT_ENABLED='true';
-  for(const metodo of ['credito','debito','dinheiro','pix']){
+  for(const metodo of ['credito','debito','dinheiro']){
     const presencial=await call(pedidos,draft('presencial-enabled-without-keys-'+metodo,{metodo}));
     assert.equal(presencial.statusCode,201,metodo+' remains available without online opt-in');
     assert.equal(presencial.body.pedido.status,'pendente');
   }
-  assert.equal(queued().length,5);
+  assert.equal(queued().length,4);
   assert.ok(queued().every(([,order])=>order.pagamento.fluxo!=='mercadopago'),'the server cannot convert presencial to online implicitly');
   const blocked=await call(pedidos,draft('enabled-without-credentials',{metodo:'credito',fluxo:'mercadopago'}));
   assert.equal(blocked.statusCode,503,'explicit online opt-in with incomplete credentials fails closed');
-  assert.equal(queued().length,5,'missing credentials never release an online order');
+  assert.equal(queued().length,4,'missing credentials never release an online order');
   const mesaPayload=draft('mesa-with-online-enabled',undefined,{tipo:'mesa',mesa:4});
   delete mesaPayload.pagamento;
   const mesa=await call(pedidos,mesaPayload);
   assert.equal(mesa.statusCode,201,'mesa retains payment at the restaurant');
-  assert.equal(queued().length,6);
+  assert.equal(queued().length,5);
   assert.equal(queued().find(([,order])=>order.id===mesa.body.pedido.id)[1].pagamento.metodo,'no_local');
 
   process.env.MP_ACCESS_TOKEN='TEST-token';
@@ -75,14 +87,14 @@ const queued=()=>[...storage.entries()].filter(([p])=>p.startsWith('pedidos/fila
   const pending=await call(pedidos,draft('online-opt-in-configured',{metodo:'credito',fluxo:'mercadopago'}));
   assert.equal(pending.statusCode,201);
   assert.equal(pending.body.pedido.status,'aguardando_pagamento');
-  assert.equal(queued().length,6,'an opted-in online order remains outside the kitchen before approval');
+  assert.equal(queued().length,5,'an opted-in online order remains outside the kitchen before approval');
   const configuredPresencial=await call(pedidos,draft('presencial-configured',{metodo:'credito'}));
   assert.equal(configuredPresencial.statusCode,201);
-  assert.equal(queued().length,7,'configured online capability does not remove card payment presencial');
+  assert.equal(queued().length,6,'configured online capability does not remove card payment presencial');
   const mesaOnline=await call(pedidos,draft('mesa-cannot-opt-in-online',{metodo:'credito',fluxo:'mercadopago'},{tipo:'mesa',mesa:4}));
   assert.equal(mesaOnline.statusCode,400,'mesa cannot be charged online by changing the browser payload');
   const pixOnline=await call(pedidos,draft('pix-cannot-opt-in-online',{metodo:'pix',fluxo:'mercadopago'}));
   assert.equal(pixOnline.statusCode,400,'this card integration does not introduce Pix automatic');
-  assert.equal(queued().length,7);
-  console.log('OK: presencial e mesa preservados; só opt-in online exige integração e aguarda aprovação');
+  assert.equal(queued().length,6);
+  console.log('OK: Pix removido; presencial e mesa preservados; só opt-in online exige integração e aguarda aprovação');
 })().catch(error=>{console.error(error);process.exitCode=1;});

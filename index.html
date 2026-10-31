@@ -731,10 +731,6 @@ const ADICIONAIS_PADRAO = [
 
 const CONFIG = {
   whatsapp: "5543998075190",
-  pix: {
-    tipo: "CPF",
-    chave: "078.746.889-45",
-  },
 
   // Dados da loja — usados como origem no cálculo de distância da entrega.
   loja: {
@@ -1269,7 +1265,7 @@ const checkoutConfirmEl = document.getElementById('checkoutConfirm');
 const btnEnviarPedidoEl = document.getElementById('btnEnviarPedido');
 
 let deliveryMethod = 'entrega'; // 'retirada' | 'entrega'
-let paymentMethod = 'pix';
+let paymentMethod = 'dinheiro';
 let paymentOnline = false;
 let mpCardEnabled=false, mpRequested=false, mpPublicKey=null, mpBrickController=null, mpScriptPromise=null, mpOrderPending=null;
 let mpBrickAttempt=0, mpClientReports=0, mpPaymentBusy=false, mpRecovering=false;
@@ -1324,9 +1320,9 @@ function aplicarDisponibilidadeAtendimento(){
   if(enderecoBlockEl) enderecoBlockEl.style.display = deliveryMethod === 'entrega' ? 'block' : 'none';
 }
 
-const PAYMENT_LABELS = { pix: 'Pix', dinheiro: 'Dinheiro', debito: 'Débito', credito: 'Crédito' };
+const PAYMENT_LABELS = { dinheiro: 'Dinheiro', debito: 'Débito', credito: 'Crédito' };
 function paymentOptionsForMethod(){
-  return ['pix', 'dinheiro', 'debito', 'credito'];
+  return ['dinheiro', 'debito', 'credito'];
 }
 function pagamentoOnlineSelecionado(){
   return paymentOnline && deliveryMethod!=='mesa' && ['credito','debito'].includes(paymentMethod);
@@ -1361,7 +1357,6 @@ function erroTroco(){
 }
 function descricaoPagamento(){
   if(deliveryMethod === 'mesa') return 'Pagamento a combinar no local';
-  if(paymentMethod === 'pix') return `Pix manual — chave ${CONFIG.pix.tipo}: ${CONFIG.pix.chave}\nEnviar o comprovante pelo WhatsApp`;
   const localPagamento = deliveryMethod === 'entrega' ? 'na entrega' : (deliveryMethod === 'mesa' ? 'no local' : 'na retirada');
   if(paymentMethod === 'credito') return pagamentoOnlineSelecionado() ? 'Crédito — pagamento online Mercado Pago' : `Crédito — pagamento ${localPagamento}`;
   if(paymentMethod === 'debito') return pagamentoOnlineSelecionado() ? 'Débito — pagamento online Mercado Pago' : `Débito — pagamento ${localPagamento}`;
@@ -1387,18 +1382,11 @@ function renderPaymentOptions(){
     <label class="payment-option ${!paymentOnline?'active':''}"><input type="radio" name="paymentFlow" value="presencial" ${!paymentOnline?'checked':''}><span>Pagar ${localPagamento} com a maquininha</span></label>
     ${mpCardEnabled ? `<label class="payment-option ${paymentOnline?'active':''}"><input type="radio" name="paymentFlow" value="online" ${paymentOnline?'checked':''}><span>Pagar agora pelo site com Mercado Pago</span></label>` : '<div style="font-size:13px;margin-top:8px;color:var(--ink-dim)">Pagamento online indisponível no momento. O pagamento presencial continua disponível.</div>'}
   </div>` : '';
-  const avisoPix = paymentMethod === 'pix' ? `
-    <div style="margin-top:14px;padding:14px;border:1px solid rgba(255,255,255,.12);border-radius:10px;background:rgba(255,255,255,.04)">
-      <div style="font-weight:800;margin-bottom:6px">Chave Pix (${CONFIG.pix.tipo})</div>
-      <div style="font-size:18px;font-weight:800;letter-spacing:.3px">${CONFIG.pix.chave}</div>
-      <button type="button" class="btn btn-ghost" id="copiarChavePix" style="margin-top:10px;padding:10px 14px">Copiar chave Pix</button>
-      <div style="font-size:13px;margin-top:9px;color:var(--ink-dim)">Após pagar, envie o comprovante junto com o pedido no WhatsApp.</div>
-    </div>` : '';
   document.getElementById('paymentOptions').innerHTML = paymentOptionsForMethod().map(id => `
     <label class="payment-option ${paymentMethod===id?'active':''}" data-id="${id}">
       <input type="radio" name="payment" value="${id}" ${paymentMethod===id?'checked':''}>
       <span>${PAYMENT_LABELS[id]}</span>
-    </label>`).join('') + fluxoCartao + avisoPix + (paymentMethod === 'dinheiro' ? `
+    </label>`).join('') + fluxoCartao + (paymentMethod === 'dinheiro' ? `
     <div class="field" style="margin-top:14px">
       <label for="precisaTroco">Precisa de troco?</label>
       <select id="precisaTroco" style="width:100%;padding:12px;border-radius:8px"><option value="nao">Não, vou pagar o valor exato</option><option value="sim">Sim</option></select>
@@ -1417,14 +1405,6 @@ function renderPaymentOptions(){
     paymentOnline=el.value==='online' && mpCardEnabled;
     renderPaymentOptions();renderCheckout();
   }));
-  document.getElementById('copiarChavePix')?.addEventListener('click', async () => {
-    try{
-      await navigator.clipboard.writeText(CONFIG.pix.chave);
-      document.getElementById('copiarChavePix').textContent = 'Chave copiada!';
-    }catch{
-      window.prompt('Copie a chave Pix:', CONFIG.pix.chave);
-    }
-  });
   if(paymentMethod === 'dinheiro'){
     const precisa = document.getElementById('precisaTroco');
     const valor = document.getElementById('trocoPara');
@@ -1850,7 +1830,7 @@ async function abrirCheckout(){
   deliveryMethod = metodoInicial;
   aplicarDisponibilidadeAtendimento();
   resetFrete();
-  paymentMethod = 'pix';
+  paymentMethod = 'dinheiro';
   paymentOnline = false;
   precisaTroco = false;
   trocoPara = '';

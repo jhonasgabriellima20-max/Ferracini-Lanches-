@@ -39,12 +39,12 @@ const mockSDK = `window.MercadoPago = class {
 before(async () => {
   server = http.createServer((req, res) => {
     const pathname = new URL(req.url, 'http://local').pathname;
-    if(pathname === '/') {
+    if(pathname === '/' || pathname === '/mesa.html') {
       for(const rule of config.headers || []) if(rule.source === '/(.*)' || rule.source === '/') {
         for(const header of rule.headers) res.setHeader(header.key, header.value);
       }
       res.setHeader('Content-Type', 'text/html; charset=utf-8');
-      return res.end(fs.readFileSync(path.join(root, 'index.html')));
+      return res.end(fs.readFileSync(path.join(root, pathname === '/mesa.html' ? 'mesa.html' : 'index.html')));
     }
     if(/^\/assets\/[a-zA-Z0-9_.-]+$/.test(pathname)) {
       const file = path.join(root, pathname);
@@ -66,7 +66,7 @@ after(async () => {
   if(server) await new Promise(resolve => server.close(resolve));
 });
 
-async function harness({ enabled = true, requested = enabled, payment = { status: 'approved', pedido: confirmed }, paymentCode = 200, status = { status: 'pending' }, sdkFailure = false } = {}) {
+async function harness({ enabled = true, requested = enabled, payment = { status: 'approved', pedido: confirmed }, paymentCode = 200, status = { status: 'pending' }, sdkFailure = false, pagePath = '/' } = {}) {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
   const page = await context.newPage();
   page.setDefaultTimeout(8000);
@@ -107,7 +107,7 @@ async function harness({ enabled = true, requested = enabled, payment = { status
     if(url.pathname === '/api/mp-diagnostico') return route.fulfill({ status: 204 });
     return route.continue();
   });
-  await page.goto(base, { waitUntil: 'domcontentloaded' });
+  await page.goto(base + pagePath, { waitUntil: 'domcontentloaded' });
   await page.locator('.qty-stepper[data-name="Dog Simples"] .plus').waitFor();
   return { context, page, counts, state, errors, dialogs };
 }
@@ -123,7 +123,7 @@ async function openCheckout(h,{product='Dog Simples',burger,delivery='retirada'}
 }
 async function reserve(h, method = 'credito') {
   await openCheckout(h);
-  assert.deepEqual(await h.page.locator('input[name="payment"]').evaluateAll(nodes => nodes.map(node => node.value)), ['pix', 'dinheiro', 'debito', 'credito']);
+  assert.deepEqual(await h.page.locator('input[name="payment"]').evaluateAll(nodes => nodes.map(node => node.value)), ['dinheiro', 'debito', 'credito']);
   await h.page.locator('input[name="payment"][value="' + method + '"]').check();
   assert.equal(await h.page.locator('input[name="paymentFlow"][value="presencial"]').isChecked(),true);
   await h.page.locator('input[name="paymentFlow"][value="online"]').check();
@@ -138,13 +138,35 @@ test('flag desativada preserva pagamento manual e confirmação existente', asyn
   const h = await harness({ enabled: false });
   try {
     await openCheckout(h);
-    assert.deepEqual(await h.page.locator('input[name="payment"]').evaluateAll(nodes => nodes.map(node => node.value)), ['pix', 'dinheiro', 'debito', 'credito']);
+    assert.deepEqual(await h.page.locator('input[name="payment"]').evaluateAll(nodes => nodes.map(node => node.value)), ['dinheiro', 'debito', 'credito']);
     await h.page.locator('#btnEnviarPedido').click();
     await h.page.locator('#checkoutConfirm').waitFor({ state: 'visible' });
     assert.match(await h.page.locator('#checkoutConfirm').innerText(), /Comanda 42 confirmada/);
     assert.equal(h.counts.payment, 0); assert.equal(h.counts.sdk, 0);
     assert.deepEqual(h.errors, []);
   } finally { await h.context.close(); }
+});
+
+test('mesa sem Pix confirma no local sem formulário ou cobrança online', async () => {
+  const h = await harness({pagePath:'/mesa.html?mesa=5'});
+  try {
+    await h.page.locator('.qty-stepper[data-name="Dog Simples"] .plus').click();
+    await h.page.locator('#waTabbarBtn').click();
+    await h.page.locator('#checkoutOverlay.open').waitFor();
+    await h.page.locator('#clienteNome').fill('Cliente da Mesa');
+    assert.deepEqual(await h.page.locator('input[name="payment"]').evaluateAll(nodes=>nodes.map(node=>node.value)),['dinheiro']);
+    assert.equal(await h.page.locator('#copiarChavePix').count(),0);
+    await h.page.locator('#btnEnviarPedido').click();
+    await h.page.locator('#checkoutConfirm').waitFor({state:'visible'});
+    const payload=h.state.reservationBodies[0];
+    assert.equal(payload.atendimento.tipo,'mesa');
+    assert.equal(payload.atendimento.mesa,5);
+    assert.equal(payload.pagamento.metodo,'dinheiro');
+    assert.equal(payload.pagamento.fluxo,undefined);
+    assert.equal(h.counts.payment,0);
+    assert.equal(h.counts.sdk,0);
+    assert.deepEqual(h.errors,[]);
+  } finally {await h.context.close();}
 });
 
 test('reserva não confirma; aprovação do provedor libera confirmação e limpa tentativa', async () => {

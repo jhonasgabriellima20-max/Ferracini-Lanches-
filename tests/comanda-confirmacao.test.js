@@ -119,7 +119,7 @@ async function call(handler, request){
     clientRequestId: 'teste-retirada-1234567890',
     origem: 'site',
     atendimento: { tipo: 'retirada' },
-    pagamento: { metodo: 'pix' },
+    pagamento: { metodo: 'dinheiro' },
   }));
   assert.equal(retirada.statusCode, 201);
   assert.equal(retirada.body.pedido.numero, '02');

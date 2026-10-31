@@ -304,7 +304,7 @@ function validarPayload(raw, catalogo = CATALOGO){
   const metodo = tipo === 'mesa' && !raw.pagamento?.metodo ? 'no_local' : texto(raw.pagamento?.metodo, 20);
   // "cartao" permanece aceito por compatibilidade com páginas antigas ainda abertas
   // no navegador. A interface nova envia "credito" ou "debito".
-  if(!(tipo === 'mesa' && metodo === 'no_local') && !['pix', 'dinheiro', 'credito', 'debito', 'cartao'].includes(metodo)) throw new Error('Forma de pagamento inválida.');
+  if(!(tipo === 'mesa' && metodo === 'no_local') && !['dinheiro', 'credito', 'debito', 'cartao'].includes(metodo)) throw new Error('Forma de pagamento inválida.');
   const pagamento = {
     metodo,
     precisaTroco: metodo === 'dinheiro' && raw.pagamento?.precisaTroco === true,
