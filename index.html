@@ -749,7 +749,7 @@ const CONFIG = {
 
   entrega: {
     // Valor cobrado por km rodado — configuração central, fácil de alterar.
-    valorPorKm: 2.30,
+    valorPorKm: 3.00,
     // Taxa de serviço adicional, definida pela distância da entrega.
     taxaServico: {
       ate5Km: 3.00,
@@ -994,12 +994,19 @@ async function carregarDisponibilidade({ silencioso = true, force = false } = {}
 }
 
 
+const tiposHamburguer = Object.create(null);
+function temHamburguer(produto){ return (produto.ingredientes || []).includes('hamburguer') || produto.nome === 'X-Bacon normal'; }
+function diferencaHamburguer(nome){ return nome === 'PROMOÇÂO 4 X-SALADA 1 GUARATUBA .' ? 36 : 9; }
+function valorHamburguer(item){ return item.tipoHamburguer === 'artesanal' ? diferencaHamburguer(item.nomeProduto) : 0; }
+function nomeComHamburguer(nome, item){ return item.tipoHamburguer ? `${nome} — ${item.tipoHamburguer}` : nome; }
 function precoUnitario(item){
   const addonsTotal = (item.adicionais || []).reduce((s, a) => s + a.preco, 0);
-  return item.preco + addonsTotal;
+  return item.preco + valorHamburguer(item) + addonsTotal;
 }
 
 function setQty(nome, preco, qty){
+  const produto = CONFIG.produtos.find(p => p.nome === nome);
+  if(qty > 0 && produto && temHamburguer(produto) && !tiposHamburguer[nome]) return;
   qty = Math.max(0, qty);
   if(qty === 0){
     delete cart[nome];
@@ -1011,7 +1018,7 @@ function setQty(nome, preco, qty){
     }
   } else {
     const atual = cart[nome] || { preco, adicionais: [], observacao: "" };
-    cart[nome] = { ...atual, qty, preco };
+    cart[nome] = { ...atual, qty, preco, nomeProduto: nome, tipoHamburguer: tiposHamburguer[nome] };
   }
 
   document.querySelectorAll(`.qty-stepper[data-name="${CSS.escape(nome)}"] .qty-value`)
@@ -1109,13 +1116,19 @@ function productCardHTML(p){
     <div class="product-card ${disponivel ? '' : 'is-unavailable'}" data-name="${escapeHTML(p.nome)}" data-available="${vendavel ? '1' : '0'}">
       <h3>${escapeHTML(p.nome)}</h3>
       ${p.descricao ? `<p class="desc">${escapeHTML(p.descricao)}</p>` : ''}
+      ${vendavel && temHamburguer(p) ? `<div class="burger-types" role="group" aria-label="Escolha o hambúrguer (obrigatório)">
+        ${['industrializado', 'artesanal'].map(tipo => `<label style="display:flex;align-items:center;gap:8px;min-height:44px">
+          <input type="radio" class="burger-type" name="burger-${escapeHTML(p.nome)}" value="${tipo}" ${tiposHamburguer[p.nome] === tipo ? 'checked' : ''}>
+          ${tipo === 'artesanal' ? 'Hambúrguer artesanal' : 'Hambúrguer industrializado'} — ${fmtPreco(p.preco + (tipo === 'artesanal' ? diferencaHamburguer(p.nome) : 0))}
+        </label>`).join('')}
+      </div>` : ''}
       <div class="product-foot">
-        <span class="price">${precoDefinido ? fmtPreco(p.preco) : 'Preço a definir'}</span>
+        <span class="price">${precoDefinido ? fmtPreco(p.preco + (tiposHamburguer[p.nome] === 'artesanal' ? diferencaHamburguer(p.nome) : 0)) : 'Preço a definir'}</span>
         ${vendavel ? `
         <div class="qty-stepper" data-name="${escapeHTML(p.nome)}" data-price="${p.preco}">
           <button type="button" class="qty-btn minus" aria-label="Diminuir quantidade">−</button>
           <span class="qty-value">${cart[p.nome]?.qty || 0}</span>
-          <button type="button" class="qty-btn plus" aria-label="Aumentar quantidade">+</button>
+          <button type="button" class="qty-btn plus" ${temHamburguer(p) && !tiposHamburguer[p.nome] ? 'disabled title="Escolha o hambúrguer"' : ''} aria-label="Aumentar quantidade">+</button>
         </div>` : statusProduto}
       </div>
       ${vendavel ? `<div class="card-extra ${cart[p.nome]?.qty > 0 ? 'open' : ''}">
@@ -1223,6 +1236,14 @@ menuGridEl.addEventListener('click', (e) => {
 });
 
 menuGridEl.addEventListener('change', (e) => {
+  if(e.target.classList.contains('burger-type')){
+    const nome = e.target.closest('.product-card').dataset.name;
+    tiposHamburguer[nome] = e.target.value;
+    if(cart[nome]) cart[nome].tipoHamburguer = e.target.value;
+    renderMenu();
+    updateCartBar();
+    return;
+  }
   if(!e.target.classList.contains('addon-check')) return;
   const card = e.target.closest('.product-card');
   const nome = card.dataset.name;
@@ -1249,6 +1270,7 @@ const btnEnviarPedidoEl = document.getElementById('btnEnviarPedido');
 
 let deliveryMethod = 'entrega'; // 'retirada' | 'entrega'
 let paymentMethod = 'pix';
+let paymentOnline = false;
 let mpCardEnabled=false, mpRequested=false, mpPublicKey=null, mpBrickController=null, mpScriptPromise=null, mpOrderPending=null;
 let mpBrickAttempt=0, mpClientReports=0, mpPaymentBusy=false, mpRecovering=false;
 const MP_PENDING_KEY='ferracini-pagamento-pendente-v1';
@@ -1261,7 +1283,7 @@ async function atualizarConfiguracaoMP(){
     mpCardEnabled=data.enabled===true && typeof data.publicKey==='string';
     mpPublicKey=mpCardEnabled?data.publicKey:null;
     return true;
-  }catch{ return false; }
+  }catch{mpCardEnabled=false;mpPublicKey=null;return false;}
 }
 atualizarConfiguracaoMP();
 let precisaTroco = false;
@@ -1304,8 +1326,10 @@ function aplicarDisponibilidadeAtendimento(){
 
 const PAYMENT_LABELS = { pix: 'Pix', dinheiro: 'Dinheiro', debito: 'Débito', credito: 'Crédito' };
 function paymentOptionsForMethod(){
-  if(mpCardEnabled && deliveryMethod!=='mesa') return ['credito','debito'];
   return ['pix', 'dinheiro', 'debito', 'credito'];
+}
+function pagamentoOnlineSelecionado(){
+  return paymentOnline && deliveryMethod!=='mesa' && ['credito','debito'].includes(paymentMethod);
 }
 function taxaServicoPorDistancia(distanciaKm){
   if(!Number.isFinite(distanciaKm) || distanciaKm <= 0) return 0;
@@ -1339,8 +1363,8 @@ function descricaoPagamento(){
   if(deliveryMethod === 'mesa') return 'Pagamento a combinar no local';
   if(paymentMethod === 'pix') return `Pix manual — chave ${CONFIG.pix.tipo}: ${CONFIG.pix.chave}\nEnviar o comprovante pelo WhatsApp`;
   const localPagamento = deliveryMethod === 'entrega' ? 'na entrega' : (deliveryMethod === 'mesa' ? 'no local' : 'na retirada');
-  if(paymentMethod === 'credito') return mpCardEnabled ? 'Crédito — pagamento online Mercado Pago' : `Crédito — pagamento ${localPagamento}`;
-  if(paymentMethod === 'debito') return mpCardEnabled ? 'Débito — pagamento online Mercado Pago' : `Débito — pagamento ${localPagamento}`;
+  if(paymentMethod === 'credito') return pagamentoOnlineSelecionado() ? 'Crédito — pagamento online Mercado Pago' : `Crédito — pagamento ${localPagamento}`;
+  if(paymentMethod === 'debito') return pagamentoOnlineSelecionado() ? 'Débito — pagamento online Mercado Pago' : `Débito — pagamento ${localPagamento}`;
   if(!precisaTroco) return 'Dinheiro — sem troco';
   return `Dinheiro — troco para ${fmtPreco(valorTrocoCentavos()/100)}\nTroco a devolver: ${fmtPreco((valorTrocoCentavos()-totalPedidoCentavos())/100)}`;
 }
@@ -1356,6 +1380,13 @@ function renderPaymentOptions(){
     document.getElementById('paymentOptions').innerHTML = '';
     return;
   }
+  const cartao = ['credito','debito'].includes(paymentMethod);
+  if(!cartao || !mpCardEnabled) paymentOnline=false;
+  const localPagamento = deliveryMethod==='entrega'?'na entrega':'na retirada';
+  const fluxoCartao = cartao ? `<div style="margin-top:12px">
+    <label class="payment-option ${!paymentOnline?'active':''}"><input type="radio" name="paymentFlow" value="presencial" ${!paymentOnline?'checked':''}><span>Pagar ${localPagamento} com a maquininha</span></label>
+    ${mpCardEnabled ? `<label class="payment-option ${paymentOnline?'active':''}"><input type="radio" name="paymentFlow" value="online" ${paymentOnline?'checked':''}><span>Pagar agora pelo site com Mercado Pago</span></label>` : '<div style="font-size:13px;margin-top:8px;color:var(--ink-dim)">Pagamento online indisponível no momento. O pagamento presencial continua disponível.</div>'}
+  </div>` : '';
   const avisoPix = paymentMethod === 'pix' ? `
     <div style="margin-top:14px;padding:14px;border:1px solid rgba(255,255,255,.12);border-radius:10px;background:rgba(255,255,255,.04)">
       <div style="font-weight:800;margin-bottom:6px">Chave Pix (${CONFIG.pix.tipo})</div>
@@ -1367,7 +1398,7 @@ function renderPaymentOptions(){
     <label class="payment-option ${paymentMethod===id?'active':''}" data-id="${id}">
       <input type="radio" name="payment" value="${id}" ${paymentMethod===id?'checked':''}>
       <span>${PAYMENT_LABELS[id]}</span>
-    </label>`).join('') + avisoPix + (paymentMethod === 'dinheiro' ? `
+    </label>`).join('') + fluxoCartao + avisoPix + (paymentMethod === 'dinheiro' ? `
     <div class="field" style="margin-top:14px">
       <label for="precisaTroco">Precisa de troco?</label>
       <select id="precisaTroco" style="width:100%;padding:12px;border-radius:8px"><option value="nao">Não, vou pagar o valor exato</option><option value="sim">Sim</option></select>
@@ -1378,8 +1409,13 @@ function renderPaymentOptions(){
     </div><div id="resumoTroco" role="status" aria-live="polite" style="font-size:13px;margin-top:8px"></div>` : '');
   document.querySelectorAll('input[name="payment"]').forEach(el => el.addEventListener('change', () => {
     paymentMethod = el.value;
+    paymentOnline = false;
     renderPaymentOptions();
     renderCheckout();
+  }));
+  document.querySelectorAll('input[name="paymentFlow"]').forEach(el=>el.addEventListener('change',()=>{
+    paymentOnline=el.value==='online' && mpCardEnabled;
+    renderPaymentOptions();renderCheckout();
   }));
   document.getElementById('copiarChavePix')?.addEventListener('click', async () => {
     try{
@@ -1610,7 +1646,7 @@ async function calcularFrete(){
       throw new Error('Endereço não localizado');
     }
     const valor = Math.ceil((data.distanciaKm * CONFIG.entrega.valorPorKm) - 1e-9);
-    frete = { status: 'ok', distanciaKm: data.distanciaKm, valor, estimativa: null };
+    frete = { status: 'ok', distanciaKm: data.distanciaKm, valor, cotacaoFrete: data.cotacaoFrete || null, estimativa: null };
     atualizarPrevisaoEntrega();
     freteBoxEl.className = 'frete-box ok';
     const taxaServico = taxaServicoPorDistancia(data.distanciaKm);
@@ -1657,7 +1693,7 @@ function cartLinesHTML(items){
     return `
       <div class="cart-line">
         <div class="cart-line-info">
-          <h4>${v.qty}x ${nome}</h4>
+          <h4>${v.qty}x ${escapeHTML(nomeComHamburguer(nome, v))}</h4>
           <div class="cart-line-meta">
             ${addons ? `+ ${addons}<br>` : ''}
             ${v.observacao ? `Obs: ${escapeHTML(v.observacao)}` : ''}
@@ -1792,8 +1828,7 @@ function atualizarStatusHorarioPedidos(){
 
 async function abrirCheckout(){
   if(mpOrderPending){ await recuperarPagamentoMP(); return; }
-  if(!await atualizarConfiguracaoMP()){ alert('Não foi possível verificar as formas de pagamento. Tente novamente.'); return; }
-  if(mpRequested&&!mpCardEnabled){alert('O pagamento online está temporariamente indisponível. Tente novamente mais tarde.');return;}
+  await atualizarConfiguracaoMP();
   if(btnEnviarPedidoEl.disabled && btnEnviarPedidoEl.style.display !== 'none') return;
   if(cartTotals().totalQty === 0) return;
   const consulta = await carregarDisponibilidade({ silencioso:true, force:true });
@@ -1815,7 +1850,8 @@ async function abrirCheckout(){
   deliveryMethod = metodoInicial;
   aplicarDisponibilidadeAtendimento();
   resetFrete();
-  paymentMethod = mpCardEnabled ? 'credito' : 'pix';
+  paymentMethod = 'pix';
+  paymentOnline = false;
   precisaTroco = false;
   trocoPara = '';
   checkoutErrorBoxEl.innerHTML = '';
@@ -1893,7 +1929,7 @@ function montarMensagemPedido(comanda = '', criadoEm = '', estimativaPedido = nu
   const linhasProdutos = items.map(([produto, v]) => {
     const addons = (v.adicionais || []).map(a => `  + ${a.nome}`).join('\n');
     const obs = v.observacao ? `  Obs: ${v.observacao}` : '';
-    return [`${v.qty}x ${produto} — ${fmtPreco(v.qty * precoUnitario(v))}`, addons, obs].filter(Boolean).join('\n');
+    return [`${v.qty}x ${nomeComHamburguer(produto, v)} — ${fmtPreco(v.qty * precoUnitario(v))}`, addons, obs].filter(Boolean).join('\n');
   }).join('\n');
 
   let blocoEntrega;
@@ -1961,6 +1997,7 @@ function montarPayloadPedido(clientRequestId){
         cep: formatarCep(somenteDigitos(document.getElementById('endCep').value)),
       },
       distanciaKm: frete.distanciaKm,
+      cotacaoFrete: frete.cotacaoFrete || undefined,
       taxaEntregaCentavos: Math.round(frete.valor * 100),
       taxaServicoCentavos: Math.round(taxaServicoPorDistancia(frete.distanciaKm) * 100),
     };
@@ -1983,7 +2020,8 @@ function montarPayloadPedido(clientRequestId){
     itens: items.map(([nome, item]) => ({
       nome,
       quantidade: item.qty,
-      precoUnitarioCentavos: Math.round(item.preco * 100),
+      tipoHamburguer: item.tipoHamburguer,
+      precoUnitarioCentavos: Math.round((item.preco + valorHamburguer(item)) * 100),
       adicionais: (item.adicionais || []).map(adicional => ({
         nome: adicional.nome,
         precoCentavos: Math.round(adicional.preco * 100),
@@ -1993,6 +2031,7 @@ function montarPayloadPedido(clientRequestId){
     atendimento,
     pagamento: deliveryMethod === 'mesa' ? undefined : {
       metodo: paymentMethod,
+      ...(pagamentoOnlineSelecionado()?{fluxo:'mercadopago'}:{}),
       precisaTroco: paymentMethod === 'dinheiro' && precisaTroco,
       trocoParaCentavos: paymentMethod === 'dinheiro' && precisaTroco ? valorTrocoCentavos() : undefined,
     },
@@ -2053,6 +2092,7 @@ function validarCheckout(){
   }
 
   if(deliveryMethod !== 'mesa' && !paymentOptionsForMethod().includes(paymentMethod)) erros.push('Escolha a forma de pagamento.');
+  if(pagamentoOnlineSelecionado() && !mpCardEnabled) erros.push('O pagamento online está indisponível. Escolha pagamento presencial ou tente novamente mais tarde.');
   if(erroTroco()) erros.push(erroTroco());
   return erros;
 }
@@ -2114,6 +2154,7 @@ btnEnviarPedidoEl.addEventListener('click', async () => {
   try {
     registro = await registrarPedidoNoSistema(payload);
   } catch (err) {
+    if(String(err?.message || '').includes('cotação do frete expirou')) resetFrete();
     console.warn('[checkout] confirmacao_pedido_indisponivel', { erro: String(err) });
     btnEnviarPedidoEl.disabled = false;
     btnEnviarPedidoEl.textContent = 'Confirmar pedido';
@@ -2227,6 +2268,21 @@ function pagamentoRecusadoMP(){
   document.getElementById('mpPaymentStatus').textContent='Pagamento recusado ou cancelado pelo Mercado Pago. Nenhuma comanda foi liberada por esta tentativa.';
   btnEnviarPedidoEl.style.display='block';btnEnviarPedidoEl.disabled=false;btnEnviarPedidoEl.textContent='Tentar com outro cartão';renderCheckout();
 }
+function mostrarRejeicaoValidacaoMP(result){
+  desmontarCartaoMP();
+  document.getElementById('cardPaymentBrick_container').replaceChildren();
+  document.getElementById('mpBankAuthentication').hidden=true;
+  document.getElementById('mpPaymentStatus').textContent=result.error||'O Mercado Pago rejeitou os dados desta tentativa. Nenhuma comanda foi liberada.';
+  const retry=document.getElementById('mpRetryCard');
+  retry.textContent='Corrigir dados e iniciar outra tentativa';retry.hidden=false;
+  retry.onclick=()=>{
+    if(mpPaymentBusy || !window.confirm('O Mercado Pago rejeitou os dados desta tentativa. Confira o extrato antes de iniciar uma nova. Deseja corrigir os dados e tentar novamente?'))return;
+    pagamentoRecusadoMP();
+    document.getElementById('mpBrickSection').hidden=true;
+    if(cartTotals().totalQty===0){checkoutOverlayEl.classList.remove('open');irParaCardapio();}
+    else{renderPaymentOptions();renderCheckout();}
+  };
+}
 function mostrarAutenticacaoBancariaMP(result){
   if(result?.status!=='action_required')return;
   const status=document.getElementById('mpPaymentStatus'),link=document.getElementById('mpBankAuthentication');
@@ -2242,6 +2298,7 @@ async function consultarPagamentoMP(id){
   if(mpOrderPending?.id!==id)return result;
   if(result.status==='approved' && result.pedido){finalizarCheckoutConfirmado({pedido:result.pedido});}
   else if(result.status==='rejected'){pagamentoRecusadoMP();}
+  else if(result.status==='validation_rejected' && result.needsNewOrder===true){mostrarRejeicaoValidacaoMP(result);}
   else if(result.status==='action_required'){mostrarAutenticacaoBancariaMP(result);}
   return result;
 }
@@ -2249,7 +2306,7 @@ async function consultarPagamentoAteConfirmar(id){
   for(let attempt=0;attempt<15 && mpOrderPending?.id===id;attempt++){
     try{
       const result=await consultarPagamentoMP(id);
-      if(['approved','rejected','action_required'].includes(result.status))return;
+      if(['approved','rejected','action_required','validation_rejected'].includes(result.status))return;
     }catch{}
     await new Promise(resolve=>setTimeout(resolve,3000));
   }
@@ -2271,7 +2328,7 @@ function configurarConsultaMP(order){
     if(button.disabled||mpPaymentBusy)return;button.disabled=true;
     try{
       const result=await consultarPagamentoMP(order.id);
-      if(mpOrderPending && !['approved','rejected','action_required'].includes(result.status))document.getElementById('mpPaymentStatus').textContent='Ainda não há aprovação confirmada. Não faça outra cobrança; consulte novamente em instantes.';
+      if(mpOrderPending && !['approved','rejected','action_required','validation_rejected'].includes(result.status))document.getElementById('mpPaymentStatus').textContent='Ainda não há aprovação confirmada. Não faça outra cobrança; consulte novamente em instantes.';
     }catch(error){document.getElementById('mpPaymentStatus').textContent=error.message;}
     finally{button.disabled=false;}
   };
@@ -2286,7 +2343,7 @@ async function recuperarPagamentoMP(){
   document.getElementById('mpPaymentStatus').textContent='Consultando seu pagamento...';
   try{
     const result=await consultarPagamentoMP(order.id);
-    if(!mpOrderPending||result.status==='action_required')return;
+    if(!mpOrderPending||['action_required','validation_rejected'].includes(result.status))return;
     // A saved attempt that reached the provider is never resubmitted by page reload.
     if(result.status==='aguardando_pagamento' && order.submitted!==true && await atualizarConfiguracaoMP() && mpCardEnabled){
       await montarPagamentoCartao(order);return;
@@ -2330,10 +2387,7 @@ async function montarPagamentoCartao(order){
             const response=await fetch('/api/mp-pagamento',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:order.id,form:{token:formData.token,payment_method_id:formData.payment_method_id,payment_type_id:cardType,installments,payer:formData.payer}}),signal:AbortSignal.timeout(25000)});
             const result=await response.json().catch(()=>({}));
             if(!response.ok && result.needsNewOrder===true){
-              desmontarCartaoMP();container.replaceChildren();
-              status.textContent=result.error||'O Mercado Pago rejeitou os dados da tentativa.';
-              retry.textContent='Corrigir dados e iniciar outra tentativa';retry.hidden=false;
-              retry.onclick=()=>{if(!window.confirm('O Mercado Pago rejeitou esta tentativa. Confira o extrato antes de iniciar uma nova. Deseja corrigir os dados e tentar novamente?'))return;pagamentoRecusadoMP();document.getElementById('mpBrickSection').hidden=true;};
+              mostrarRejeicaoValidacaoMP(result);
               return;
             }
             if(!response.ok)throw new Error(result.error||'Não foi possível verificar o pagamento.');

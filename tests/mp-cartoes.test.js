@@ -37,7 +37,7 @@ async function call(body) {
 const draft = {
   clientRequestId:'teste-cartao-1234567',origem:'site',cliente:{nome:'Cliente Teste',telefone:'43999999999'},
   itens:[{nome:'Dog Simples',quantidade:1,precoUnitarioCentavos:1200,adicionais:[]}],
-  atendimento:{tipo:'retirada'},pagamento:{metodo:'credito'},
+  atendimento:{tipo:'retirada'},pagamento:{metodo:'credito',fluxo:'mercadopago'},
 };
 function providerOrder(id) {
   return {
@@ -149,7 +149,7 @@ function providerOrder(id) {
   assert.equal(declined.status,'rejected');
   assert.equal(queued().length,1,'a refused charge does not create a receipt');
   await assert.rejects(()=>pedidos.confirmarPedido(refusedOrder.order.id),/pagamento|aprovad/i);
-  const debit = await call({...draft,clientRequestId:'teste-cartao-debito-invalido',pagamento:{metodo:'debito'}});
+  const debit = await call({...draft,clientRequestId:'teste-cartao-debito-invalido',pagamento:{metodo:'debito',fluxo:'mercadopago'}});
   const debitId = debit.body.pedido.id;
   const invalidDebitForm={token:'local-token-for-debit-card',payment_method_id:'visa',payment_type_id:'debit_card',installments:2,payer:{email:'cliente@dominio.test'}};
   const oldFetch=global.fetch;
@@ -186,11 +186,12 @@ function providerOrder(id) {
     const form={token:'tokenized-card-for-local-test',payment_method_id:'visa',payment_type_id:'credit_card',installments:1,payer:{email:'cliente@dominio.test'}};
     await assert.rejects(()=>mp.submitPayment(uncertainId,form));
     assert.equal(queued().length,1,'uncertain creation does not generate a kitchen order');
-    const recovered = await mp.submitPayment(uncertainId,form);
+    await assert.rejects(()=>mp.submitPayment(uncertainId,form),/mp_attempt_requires_reconciliation/);
+    assert.equal(keys.length,1,'an unknown first reply never creates another provider request');
+    const recovered = await mp.reconcile(await mp.getOrder(networkApproval.id));
     assert.equal(recovered.status,'approved');
     assert.equal(providerCreations,1);
-    assert.equal(keys.length,2);
-    assert.equal(keys[0],keys[1],'retry must not create a second charge');
+    assert.equal(keys.length,1);
     assert.equal(queued().length,2);
     const savedOrder=[...storage.entries()].find(([p,v])=>p.includes('/aguardando/')&&v.id===uncertainId)[1];
     assert.equal(savedOrder.pagamento.mpOrderId,networkApproval.id);

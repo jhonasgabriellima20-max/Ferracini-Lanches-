@@ -1,43 +1,29 @@
-# Pagamento automático Ferracini — pacote preparado
+# Mercado Pago — correções sobre o Ferracini atual
 
-Código preparado na branch local `prepare/mercadopago-20261023`, a partir de `main` em `03c23d0`. A integração anterior foi recuperada do histórico (`4bd1a29`) e adaptada ao cardápio e à comanda atuais. Não foi enviado ao GitHub, publicado na Vercel nem ativado no site. A instalação e a ativação dependem de autorização posterior do responsável.
+Este pacote incorpora a integração de cartão ao `main` `1f4fb57c951bfb0a7c7f5dba61d3dde91f3aa4b4` (28/10/2026), preservando suas regras. Substitui a preparação antiga baseada em `03c23d0`: **não instalar o ZIP antigo de 23/10 como substituição do site atual**. Uma nova versão de `main` exige revisão antes de integrar este pacote. Código preparado e testes locais não significam publicação ou cobrança real validada.
 
-## O que este pacote entrega
+## Comportamento preservado
 
-- Crédito e débito pelo formulário seguro Card Payment Brick do Mercado Pago, com Orders API no servidor. O débito é à vista; o crédito permite as parcelas oferecidas pelo provedor, até 12.
-- O servidor valida produtos, adicionais, preços, frete e taxas antes de reservar o pedido. Os dados completos do cartão ficam nos campos do provedor; o servidor recebe o token temporário e não o grava.
-- Pedido reservado não recebe número nem entra na cozinha. A comanda só é liberada após consulta autenticada ao Mercado Pago confirmar valor integral, modalidade, referência e ID corretos. O webhook valida assinatura HMAC e horário antes de consultar o provedor.
-- Tentativas repetidas usam a mesma referência e chave de idempotência. Respostas incertas ficam em acompanhamento, inclusive após recarregar a página. Não há repetição automática de cobrança.
-- Autenticação bancária, quando exigida, apresenta o link HTTPS recebido do provedor. Só a aprovação posterior libera a comanda.
-- Estornos/cancelamentos notificados geram bloqueio permanente da impressão pendente. Papel já impresso ou trabalho já reivindicado exige conferência da loja. Este pacote não inicia estornos, nem promete impressão física exatamente uma vez.
-- O painel e a comanda identificam pagamento verificado como “PAGO PELO SITE”. Marmitex, doces, sobremesas e o layout atual permanecem.
+- Frete de R$ 3,00/km, cotação assinada vinculada ao endereço e taxas existentes.
+- Escolha industrializado/artesanal, com acréscimo de R$ 9,00 por lanche e R$ 36,00 no combo de quatro.
+- Categorias, adicionais, observações, disponibilidade, fechamento, histórico e layout da comanda.
+- Numeração diária por expediente: o dia muda às 06h de São Paulo, sem reiniciar à meia-noite.
+- As opções presenciais existentes permanecem. Crédito/débito são presenciais por padrão; quando a integração estiver configurada, o cliente pode escolher explicitamente pagar pelo site. O servidor só exige aprovação online para pedidos com esse fluxo. Mesa continua com pagamento no local. Esta mudança não implementa Pix automático nem acrescenta modalidades novas de Pix.
 
-`MP_CARD_CHECKOUT_ENABLED` ausente ou `false` conserva o fluxo manual atual. Quando `true`, entrega e retirada passam a exigir crédito/débito online; Pix manual e dinheiro não são oferecidos nessas modalidades. Mesa continua no fluxo atual de pagamento no local. Não foi implementado Pix automático.
+## Correções da auditoria
 
-Desligar a flag bloqueia novas cobranças; consulta e webhook de pagamentos já iniciados continuam funcionando enquanto o token e o segredo necessários estiverem disponíveis. Não remova as credenciais para interromper apenas novas vendas.
+1. O servidor recalcula o pedido, reserva seu identificador e mantém pagamentos online fora da cozinha até consultar a Orders API e verificar referência, modalidade e valor integral.
+2. Uma tentativa de cobrança é registrada por inserção exclusiva. Somente o primeiro processo pode criar a cobrança. Repetições consultam o resultado; não sobrescrevem a reserva nem fazem novo POST ao provedor. A chave de idempotência continua determinística.
+3. Tentativa, ID do provedor e rejeição conhecida usam registros imutáveis. Não contêm token do cartão, e-mail ou documento do pagador. O formulário seguro é do Mercado Pago.
+4. Rejeições de validação reconhecidas (como `property_value`) continuam recuperáveis após recarregar a página; uma nova tentativa exige ação explícita. HTTP 409, erro desconhecido e timeout permanecem em conciliação e nunca autorizam automaticamente outra cobrança.
+5. O índice permanente de reservas abrange também pagamentos presenciais, impedindo que o mesmo identificador de um pedido novo nesta versão gere outra comanda em um expediente posterior. Registros online também têm índice próprio para confirmação/estorno tardio.
+6. A rota legada PATCH de pedidos usa as mesmas transições atômicas da fila dedicada. Não permite recolocar `impresso` em `pendente`. O ACK depois de uma reivindicação continua permitido, mesmo que um cancelamento chegue depois, para registrar o trabalho já enviado ao spooler.
+7. Webhooks verificam HMAC e o ID assinado, consultam o provedor e suportam repetição. Cancelamentos e estornos deixam bloqueio permanente que uma resposta antiga não pode remover.
+8. O workflow usa Node 22, instala pelo lockfile e executa todos os testes de pedidos, catálogo, frete, expediente, pagamento, SQL e navegador. As falhas históricas do Actions não foram atribuídas a uma causa sem acesso aos seus logs.
 
-## Configuração necessária para o teste real
+## Instalação e testes do código
 
-Verifique os bindings existentes no projeto Vercel antes de criar variáveis. Os valores não estão neste pacote nem devem ser enviados em chat.
-
-| Variável | Uso |
-| --- | --- |
-| `MP_CARD_CHECKOUT_ENABLED` | Manter `false` até configurar e autorizar o ambiente de teste; `true` habilita novas cobranças. |
-| `MP_PUBLIC_KEY` | Chave pública da mesma aplicação Mercado Pago. |
-| `MP_ACCESS_TOKEN` | Token privado da aplicação/conta que recebe as vendas. |
-| `MP_WEBHOOK_SECRET` | Segredo de assinatura da configuração de Webhooks; obrigatório para ativar fora de Preview. |
-
-Configure no Mercado Pago o evento **Order/Pedidos** (`order`) para a rota `/api/mp-webhook` do domínio HTTPS do ambiente correto. Não use o tópico `payment` nesta integração com Orders. Confirme que chave pública e token pertencem à mesma aplicação e que a conta permite cartões de crédito/débito. Um HTTP 403 do provedor não é corrigido por este pacote.
-
-No Preview, use contas e credenciais de teste adequadas ao Mercado Pago. A URL de Preview não transforma credenciais reais em credenciais de teste. Configure também o segredo do webhook de teste para validar notificações; o Preview permite validar por consulta mesmo sem esse segredo, mas o webhook sempre exige assinatura.
-
-O site já depende do OIDC da Vercel para acessar a função Neon definida em `lib/postgres-storage.js`. Preserve essa integração e os bindings existentes de `ADMIN_PASSWORD`, `PRINT_AGENT_TOKEN`, `PRINT_QUEUE_DATABASE_URL`, `PRINT_QUEUE_START_AT` e, quando utilizado, `GOOGLE_MAPS_API_KEY`. Não altere o instante de ativação da fila nem gere outro token de impressão sem necessidade.
-
-O ambiente de nuvem atual não contém as três variáveis Mercado Pago nem a identidade Vercel/Neon. O painel da Vercel não foi acessado nesta tarefa; podem existir valores lá. A verificação real do provedor, da persistência e da impressora permanece pendente. A rede da nuvem bloqueou o portal de documentação Mercado Pago; as estruturas foram conferidas no SDK oficial `mercadopago/sdk-nodejs`, commit `bf920b9415ba19986b7ffdbf83a5aa21b589a6e0`. Nenhuma verificação TLS foi desativada.
-
-## Verificação reproduzível do código
-
-Use Node 22. Na raiz do repositório:
+Na raiz, com Node 22:
 
 ```bash
 npm ci
@@ -47,26 +33,61 @@ npm run test:browser
 npm run check:payments
 ```
 
-Os testes de navegador usam Chromium existente em `/usr/bin/chromium`, o caminho `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH`, ou o Chromium do Playwright. Caso nenhum esteja instalado, execute `npx playwright install --with-deps chromium`. A suíte inicia seu próprio servidor temporário e simula o SDK e as respostas de pagamento, sem cobranças.
+A suíte de navegador inicia seu próprio servidor e usa Chromium existente em `/usr/bin/chromium`, `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` ou o Chromium do Playwright. Se necessário, execute `npx playwright install --with-deps chromium`. O SDK e as respostas Mercado Pago são simulados; nenhuma dessas suítes cria cobrança. Os testes da fila executam SQL PostgreSQL em memória (PGlite), incluindo cancelamento, assinatura de webhook, concorrência e ACK.
 
-`npm test` inclui testes das regras de cobrança, assinatura, recuperação, rollback, catálogo e da SQL efetivamente executada pela fila usando PostgreSQL em memória (PGlite). Isso não substitui a verificação do Neon real. `npm run check:payments` apenas informa a configuração; a ausência da flag mantém cobranças desligadas. Depois da autorização e da configuração segura, `node scripts/validate-payments-config.js --require-enabled --check-provider` verifica presença das variáveis e faz apenas uma consulta de leitura à conta. Esse comando não cobra nem valida por si só a capacidade de receber cartões.
+## Configuração para Preview real
 
-Nesta preparação, a instalação com `npm ci`, a validação do snapshot, os 17 testes reportados por `npm test` e os 10 testes de navegador passaram, sem testes pulados. O provedor é simulado nessas suítes; nenhuma cobrança real foi realizada. A verificação de configuração habilitada falhou como esperado por ausência de flag/credenciais neste ambiente. O agente PowerShell foi verificado pelo teste de layout, sem execução em Windows ou impressão física.
+Conferir os bindings existentes na Vercel antes de cadastrar valores. Não colocar segredos no código ou em mensagens:
 
-## Instalação, somente quando autorizada
+| Variável | Finalidade |
+| --- | --- |
+| `MP_CARD_CHECKOUT_ENABLED` | Ausente/`false` desativa novas cobranças online, mantendo o fluxo presencial. Habilitar `true` primeiro somente no Preview autorizado. |
+| `MP_PUBLIC_KEY` | Chave pública da aplicação Mercado Pago. |
+| `MP_ACCESS_TOKEN` | Token privado da mesma aplicação/conta recebedora. |
+| `MP_WEBHOOK_SECRET` | Segredo do webhook do ambiente correspondente; obrigatório para ativar fora de Preview. |
 
-1. Confirmar a versão atual de `main` e revisar mudanças que tenham ocorrido depois deste pacote. Preservar o deployment anterior para rollback.
-2. Enviar a branch preparada para revisão e criar um Preview conforme `DEPLOYMENT-SAFETY.md`. Não mesclar diretamente em `main`: a configuração atual da Vercel pode publicar automaticamente um push.
-3. Configurar os bindings de teste e a notificação no Preview; habilitar a flag somente nele. Pedidos, sequência, histórico e estimativa de Preview usam `mp-preview/`; a API física de impressão recusa execução em Preview. Isso não substitui usar credenciais de teste.
-4. Testar no Preview: crédito aprovado, débito aprovado, recusa, pendência, autenticação do banco, formulário em celular e computador, recarga da página, perda de resposta, duplo clique e repetição do webhook. Conferir valor do pedido com produtos adicionais, marmitex, doces/sobremesas, serviço e frete. Confirmar que não há comanda antes da aprovação e que há somente uma depois.
-5. Validar assinatura do webhook e recuperação com a página fechada; desligar a flag durante uma pendência e confirmar que a reconciliação continua. Simular estorno na conta de teste e conferir o bloqueio.
-6. Com autorização de produção e fora do atendimento, configurar as credenciais da conta correta e promover o deployment validado. A flag pode permanecer `false` durante a instalação; ativá-la é uma ação separada.
-7. No Windows, se for desejada a indicação “PAGO PELO SITE” no papel, fazer backup e substituir somente `C:\FerraciniPrintAgent\FerraciniPrintAgent.ps1`. Preservar `config.json`, `token.dat`, arquivos `.cmd` e logs; reiniciar o agente. Conferir fisicamente uma única comanda após aprovação. Não instalar o agente físico no Linux da nuvem.
+Cadastrar no Mercado Pago o evento **Order/Pedidos** (`order`) para `/api/mp-webhook` no domínio HTTPS correspondente. Esta integração usa `/v1/orders`, não o tópico `payment` da antiga tela isolada. O Preview pode usar consulta sem segredo de webhook, mas notificações sempre exigem assinatura válida. A URL de Preview não transforma credenciais reais em credenciais de teste: usar contas, cartões e credenciais de teste confirmados no painel Mercado Pago.
 
-Para interromper novas cobranças, definir a flag como `false` e reaplicar a configuração da Vercel. Manter o código de reconciliação e as credenciais até encerrar pagamentos pendentes. Reverter para um deployment anterior que não contém as rotas Mercado Pago interrompe essas notificações; não faça esse rollback sem conciliar os pagamentos em andamento.
+Preservar a integração OIDC Vercel/Neon e os bindings existentes de `ADMIN_PASSWORD`, `PRINT_AGENT_TOKEN`, `PRINT_QUEUE_DATABASE_URL`, `PRINT_QUEUE_START_AT`, `GOOGLE_MAPS_API_KEY` e, quando configurado, `DELIVERY_QUOTE_SECRET`. Não trocar token/corte da fila sem necessidade. Os valores não foram acessados nem modificados nesta correção. O ambiente atual não fornece credenciais Vercel/Mercado Pago nem conexão com o notebook; por isso, cobrança real, banco remoto, webhook pela internet e papel continuam pendentes de validação.
 
-## Operação e recuperação
+Depois da configuração segura, `node scripts/validate-payments-config.js --require-enabled --check-provider` verifica presença das variáveis e faz apenas leitura da conta. Não cria cobrança nem comprova sozinho que a conta permite crédito/débito.
 
-O navegador guarda somente referência opaca, modalidade, total, identificador da tentativa e indicador de envio, sem dados pessoais/cartão. Resposta incerta oferece consulta, sem nova cobrança automática. Uma tentativa sem ID de provedor não pode ser reenviada depois de 30 minutos; deve ser conciliada no painel Mercado Pago e pelos webhooks, sem gerar outro pedido às cegas. Reservas ainda não enviadas expiram para iniciar pagamento após 30 minutos. A loja não deve apagar registros, índices ou bloqueios de pagamento durante o período de conciliação/estornos.
+## Conciliação e histórico
 
-Pagamentos recusados permitem uma nova tentativa explícita; falha de rede não equivale a recusa. Uma comanda já reivindicada pode ter sido impressa antes de uma notificação de estorno: confira papel, extrato e histórico antes de qualquer ação manual. O acesso à conta, permissões reais do Mercado Pago, OIDC/Neon, confirmação do banco e impressão física só podem ser considerados validados depois dos testes externos acima.
+Uma tentativa incerta **não é reenviada**, mesmo se o primeiro processo tiver parado depois de reservar a tentativa e antes de enviar ao Mercado Pago. Recuperar por consulta, webhook autenticado ou conferência operacional da conta; nunca gerar outro pedido às cegas. Não remover registros de tentativa, vínculos, índices ou bloqueios durante o período de conciliação/estornos.
+
+Reservas ainda não enviadas expiram para iniciar pagamento após 30 minutos. O navegador guarda apenas referência opaca, modalidade, total e indicadores da tentativa, sem dados de cartão/pessoais. Desligar novas cobranças não desliga a consulta ou o webhook de cobranças já iniciadas: mantenha o token e o segredo até encerrá-las.
+
+O índice permanente é criado para novas reservas e para reservas antigas recuperadas pelos índices já existentes ou pela busca recente de três dias. **A migração dos registros anteriores é obrigatória antes de instalar/ativar o fluxo novo**, pois pedidos antigos sem índice não podem ser considerados protegidos contra reenvio tardio.
+
+O script preparado usa o binding existente `PRINT_QUEUE_DATABASE_URL`; `VERCEL_ENV=preview` limita a operação a `mp-preview/`. Primeiro fazer backup e usar a simulação, que apenas lê e apresenta contagens:
+
+```bash
+node scripts/backfill-order-index.js
+```
+
+No ambiente correto, com autorização para a migração, pausar e drenar novos pedidos do aplicativo antigo antes de aplicar. Não desativar pedidos no atendimento sem combinar com a loja. Somente a opção explícita grava os índices:
+
+```bash
+node scripts/backfill-order-index.js --apply
+```
+
+A aplicação valida o namespace inteiro e insere índices em uma única instrução atômica. IDs duplicados, caminhos inválidos e índices conflitantes bloqueiam todas as inserções; o script não escolhe um pedido arbitrariamente nem altera reservas, filas ou índices existentes. A repetição é idempotente. Revisar e resolver qualquer bloqueio antes da instalação, sem apagar o histórico. Nunca rodar a migração com o aplicativo antigo ainda criando pedidos, pois uma nova reserva posterior à leitura poderia ficar sem índice. O pacote não executa essa migração automaticamente, e nenhum banco remoto foi migrado aqui.
+
+## Validação externa e publicação
+
+1. Revisar o diff sobre o `main` atual e manter o deployment anterior identificável.
+2. Simular e aplicar a migração de índices no banco de teste correspondente, resolvendo qualquer bloqueio. Criar Preview autorizado, com credenciais de teste. Seus pedidos, índices, contadores e histórico usam `mp-preview/`; a fila física recusa o Preview.
+3. Testar crédito e débito aprovados, pendência, recusa, cancelamento/estorno, autenticação bancária, duas abas, duplo clique, resposta perdida, recarga, correção de `property_value` e webhook repetido. Conferir adicionais, artesanal, combo, marmitex/doces/sobremesas, serviço e cotação assinada do frete. Verificar presencial e mesa sem exigência indevida de pagamento online.
+4. Conferir uma única comanda após aprovação, nenhuma antes, e nenhum novo POST após resultado incerto. Testar desligar a flag durante pendência sem perder a conciliação.
+5. A produção depende de autorização específica após essas verificações e da migração do histórico no banco correto, com pedidos antigos pausados/drenados. Não enviar diretamente a `main`: o projeto pode publicar automaticamente a partir do GitHub.
+6. No Windows, caso seja necessário atualizar a identificação de pagamento no recibo, fazer backup e substituir apenas `FerraciniPrintAgent.ps1`, preservando configuração, token, atalhos e logs. Não instalar o agente físico no Linux da nuvem.
+7. Conferir papel na Bematech e a recuperação após falha de comunicação. Spooler aceito não garante papel impresso; um trabalho já reivindicado exige conferência antes de qualquer reprocessamento.
+
+Para interromper novas cobranças, desativar a flag e reaplicar a configuração Vercel, mantendo as rotas e credenciais de conciliação até encerrar pendências. Reverter para uma versão antiga sem essas rotas interrompe notificações de pagamentos em andamento.
+
+## Resultado desta preparação
+
+Validação com Node 22.23.4: instalação `npm ci`, snapshot estático, sintaxe e `git diff --check` passaram. `npm test` reportou 32 testes aprovados, sem falhas ou pulados, incluindo 6 da migração em PostgreSQL em memória. `npm run test:browser` reportou 15 cenários aprovados no Chromium, com SDK/API simulados. O diagnóstico confirmou que novas cobranças estão desativadas nesta máquina. Nenhuma cobrança, migração remota ou impressão física foi executada.
+
+As correções e a integração com o `main` atual foram salvas na branch local `prepare/mercadopago-20261031`. Esta preparação não inclui push, merge remoto, alteração de variáveis, publicação de Preview ou implantação no domínio oficial. O teste real depende de acesso autorizado ao projeto Vercel e dos bindings de teste, seguidos da migração e dos testes externos descritos acima.

@@ -14,14 +14,17 @@ test('SQL real: apenas pagamentos verificados são reivindicados; rollback e Pre
     const online = id => ({id,data:day,status:'pendente',tentativasImpressao:0,pagamento:{fluxo:'mercadopago',status:'approved',verified:true,mpOrderId:'ORD'+id.padEnd(12,'0')}});
     await insert(queue('legacy'),{status:'pendente',pagamento:{metodo:'dinheiro'}});
     await insert(queue('mesa'),{status:'pendente',pagamento:{metodo:'no_local'}});
-    for(const id of ['approved','pending','unverified','missing','reversed','changed','blocked']){
+    await insert(queue('presencial'),{status:'pendente',pagamento:{metodo:'credito',fluxo:'presencial'}});
+    const nonApproved = ['pending','rejected','canceled','cancelled','refunded','charged_back','partially_refunded'];
+    for(const id of ['approved',...nonApproved,'unverified','missing','reversed','changed','blocked','provider-mismatch']){
       const order = online(id);
-      if(id==='pending') order.pagamento.status='pending';
+      if(nonApproved.includes(id)) order.pagamento.status=id;
       if(id==='unverified') order.pagamento.verified=false;
       await insert(queue(id),order);
       if(id!=='missing'){
         const reservation = structuredClone(order);
         if(id==='reversed') reservation.pagamento.status='rejected';
+        if(id==='provider-mismatch') reservation.pagamento.mpOrderId='ORDotherprovider1234';
         await insert(waiting(id),reservation);
       }
     }
@@ -45,16 +48,32 @@ test('SQL real: apenas pagamentos verificados são reivindicados; rollback e Pre
     }
     const listed=await call('GET');
     assert.equal(listed.statusCode,200);
-    assert.deepEqual(listed.data.pedidos.map(order=>order.pathname).sort(),['approved','changed','legacy','mesa'].map(queue).sort());
-    for(const id of ['pending','unverified','missing','reversed','blocked']){
+    const expectedPrintable=['approved','changed','legacy','mesa','presencial'].map(queue).sort();
+    assert.deepEqual(listed.data.pedidos.map(order=>order.pathname).sort(),expectedPrintable);
+    process.env.MP_CARD_CHECKOUT_ENABLED='true';
+    assert.deepEqual((await call('GET')).data.pedidos.map(order=>order.pathname).sort(),expectedPrintable,
+      'habilitar novas cobranças não retira pagamento presencial nem libera pendências');
+    for(const id of [...nonApproved,'unverified','missing','reversed','blocked','provider-mismatch']){
       assert.equal((await call('PATCH',{pathname:queue(id),status:'imprimindo'})).statusCode,409,id+' cannot be claimed');
     }
     // Even a receipt fetched before a reversal must be checked again atomically.
     await db.query("UPDATE public.ferracini_store SET value=jsonb_set(value,'{pagamento,status}', '\"rejected\"'::jsonb) WHERE pathname=$1",[waiting('changed')]);
     assert.equal((await call('PATCH',{pathname:queue('changed'),status:'imprimindo'})).statusCode,409);
-    assert.equal((await call('PATCH',{pathname:queue('approved'),status:'imprimindo'})).statusCode,200);
-    assert.equal((await call('PATCH',{pathname:queue('approved'),status:'imprimindo'})).statusCode,409);
+    const claims=await Promise.all([
+      call('PATCH',{pathname:queue('approved'),status:'imprimindo'}),
+      call('PATCH',{pathname:queue('approved'),status:'imprimindo'}),
+    ]);
+    assert.deepEqual(claims.map(response=>response.statusCode).sort(),[200,409],
+      'duas notificações/agentes não autorizam dois envios à impressora');
+    const [{value:claimed}]=(await db.query('SELECT value FROM public.ferracini_store WHERE pathname=$1',[queue('approved')])).rows;
+    assert.equal(claimed.tentativasImpressao,1,'a reivindicação única incrementa somente uma tentativa');
+    // A reversal after a successful claim cannot undo a job already sent to the
+    // spooler. Preserve its acknowledgement, but never make it printable again.
+    await insert('pedidos/pagamento-bloqueado/approved.json',{id:'approved',reason:'refunded'});
     assert.equal((await call('PATCH',{pathname:queue('approved'),status:'impresso'})).statusCode,200);
+    assert.equal((await call('PATCH',{pathname:queue('approved'),status:'impresso'})).statusCode,409);
+    assert.equal((await call('PATCH',{pathname:queue('approved'),status:'pendente'})).statusCode,400);
+    assert.equal((await call('GET')).data.pedidos.some(order=>order.pathname===queue('approved')),false);
     process.env.VERCEL_ENV='preview';
     assert.equal((await call('GET')).statusCode,403);
     assert.equal((await call('PATCH',{pathname:queue('legacy'),status:'imprimindo'})).statusCode,403);

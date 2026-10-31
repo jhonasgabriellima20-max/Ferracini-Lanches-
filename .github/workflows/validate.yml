@@ -13,7 +13,7 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -26,17 +26,7 @@ jobs:
         run: npm ci
       - name: Validate snapshot
         run: npm run validate
-      - name: Test automatic order receipt
-        run: node tests/comanda-confirmacao.test.js
-      - name: Test monthly order history
-        run: node tests/historico-mensal.test.js
-      - name: Test large print queue
-        run: node tests/fila-impressao.test.js
-      - name: Test ghost-free checkout
-        run: node tests/checkout-sem-fantasma.test.js
-      - name: Check thermal receipt layout
-        run: node tests/print-layout.test.js
-      - name: Test payments, catalog and real queue SQL
+      - name: Test all order, delivery, catalog, payment and queue regressions
         run: npm test
       - name: Install Chromium for checkout tests
         run: npx playwright install --with-deps chromium

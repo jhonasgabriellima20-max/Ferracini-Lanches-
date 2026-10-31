@@ -53,7 +53,7 @@ storage.set(indexPath,{id,pathname:pendingPath});
   await pedidos({method:'POST',query:{},headers:{origin:'https://ferracinilanches.com.br','content-type':'application/json'},body:{
     clientRequestId:'late-refund-index-regression',cliente:{nome:'Cliente Teste',telefone:'43999999999'},
     itens:[{nome:'Dog Simples',quantidade:1,precoUnitarioCentavos:1200,adicionais:[]}],
-    atendimento:{tipo:'retirada'},pagamento:{metodo:'credito'},
+    atendimento:{tipo:'retirada'},pagamento:{metodo:'credito',fluxo:'mercadopago'},
   }},replayResponse);
   assert.equal(replayResponse.statusCode,200,'a retry on a later date reuses the indexed original order');
   assert.equal(replayResponse.body.duplicado,true);

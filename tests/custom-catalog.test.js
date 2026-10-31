@@ -87,7 +87,7 @@ test('validacao conjunta de marmitex, lanche, doce e sobremesa na fila unica',()
   const carrinho=[
     {nome:'Marmitex Mini',quantidade:1,precoUnitarioCentavos:1900},
     {nome:'Marmitex Média',quantidade:1,precoUnitarioCentavos:2600},
-    {nome:'X-Salada',quantidade:2,precoUnitarioCentavos:2500},
+    {nome:'X-Salada',quantidade:2,precoUnitarioCentavos:2500,tipoHamburguer:'industrializado'},
     {nome:'Brigadeiro',categoria:'x',quantidade:2,precoUnitarioCentavos:600},
     {nome:'Pudim',categoria:'x',quantidade:1,precoUnitarioCentavos:1100},
   ];
@@ -97,5 +97,9 @@ test('validacao conjunta de marmitex, lanche, doce e sobremesa na fila unica',()
   assert.equal(itens[3].categoria,'doces');
   assert.equal(itens[4].categoria,'sobremesas');
   assert.equal(itens.reduce((s,i)=>s+i.precoUnitarioCentavos*i.quantidade,0),11800);
+  assert.equal(validar({...carrinho[2],tipoHamburguer:undefined,adicionais:[]},catalog),null,'hambúrguer exige a escolha de tipo do main atual');
+  const artesanal=validar({...carrinho[2],tipoHamburguer:'artesanal',precoUnitarioCentavos:3400,adicionais:[]},catalog);
+  assert.equal(artesanal.precoUnitarioCentavos,3400,'acréscimo artesanal de R$ 9 permanece no servidor');
+  assert.equal(validar({...carrinho[2],tipoHamburguer:'artesanal',adicionais:[]},catalog),null,'não aceita artesanal pelo valor industrializado');
   assert.equal(validar({nome:'Pudim',quantidade:1,precoUnitarioCentavos:5},catalog),null);
 });

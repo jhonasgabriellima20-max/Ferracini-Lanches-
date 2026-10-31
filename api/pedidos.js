@@ -1,6 +1,9 @@
+const { dataOperacao } = require('../assets/dia-operacao');
 const crypto = require('crypto');
 const CATALOGO = require('./catalogo.json');
 const { calcularDistanciaEndereco } = require('../lib/delivery-distance');
+const { validarCotacao } = require('../lib/delivery-quote');
+const reservations = require('../lib/order-reservations');
 const { calcularTempoInternoLanches, calcularFilaTempoInterno, listarPedidosRecentes, estimarPrazo } = require('../lib/prep-estimator');
 const { isStorageUnavailable: isDatabaseUnavailable, readJson, writeJson, listBlobs } = require('../lib/postgres-storage');
 
@@ -19,14 +22,7 @@ const RATE_MAX = 15;
 const buckets = globalThis.__ferraciniPedidosRateBuckets || new Map();
 globalThis.__ferraciniPedidosRateBuckets = buckets;
 
-function dataOperacao(){
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: TIME_ZONE,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(new Date());
-}
+
 
 
 async function statusHorarioPedidos(){
@@ -52,7 +48,7 @@ function taxaServicoCentavosPorDistancia(distanciaKm){
 
 function taxaEntregaCentavosPorDistancia(distanciaKm){
   if(!Number.isFinite(distanciaKm) || distanciaKm <= 0) return null;
-  return Math.ceil((distanciaKm * 2.30) - 1e-9) * 100;
+  return Math.ceil((distanciaKm * 3.00) - 1e-9) * 100;
 }
 
 function isNotFound(err){
@@ -148,15 +144,17 @@ async function gravarJson(pathname, value, allowOverwrite){
 }
 
 async function lerUltimo(dataAtual){
-  const value = await lerJson(`${COUNTER_PATH}.${dataAtual.slice(0, 7)}`) || await lerJson(COUNTER_PATH);
-  if(!value || String(value.data || '').slice(0, 7) !== dataAtual.slice(0, 7)) return 0;
+  // Preserva a sequência do dia da implantação; dias novos começam em 01.
+  const value = await lerJson(`${COUNTER_PATH}.${dataAtual}`) ||
+    await lerJson(`${COUNTER_PATH}.${dataAtual.slice(0, 7)}`) || await lerJson(COUNTER_PATH);
+  if(!value || value.data !== dataAtual) return 0;
   return Number.isSafeInteger(value.ultimo) && value.ultimo >= 0 ? value.ultimo : 0;
 }
 
 async function reservarNumero(numero, dataAtual){
   const codigo = String(numero).padStart(2, '0');
   await gravarJson(
-    `${RESERVA_DIR}/${dataAtual.slice(0, 7)}/${String(numero).padStart(8, '0')}.json`,
+    `${RESERVA_DIR}/${dataAtual}/${String(numero).padStart(8, '0')}.json`,
     { numero, codigo, data: dataAtual, criadoEm: new Date().toISOString() },
     false
   );
@@ -169,7 +167,7 @@ async function proximoNumero(dataAtual){
     try{
       const codigo = await reservarNumero(candidato, dataAtual);
       try{
-        await gravarJson(`${COUNTER_PATH}.${dataAtual.slice(0, 7)}`, {
+        await gravarJson(`${COUNTER_PATH}.${dataAtual}`, {
           data: dataAtual,
           ultimo: candidato,
           updatedAt: new Date().toISOString(),
@@ -193,7 +191,11 @@ function validarItem(raw, catalogo = CATALOGO){
   const adicionaisRaw = Array.isArray(raw?.adicionais) ? raw.adicionais : [];
   const produto = Object.hasOwn(catalogo.produtos, nome) ? catalogo.produtos[nome] : null;
 
-  if(!produto || quantidade === null || precoUnitarioCentavos !== produto.precoCentavos ||
+  const tipoHamburguer = raw?.tipoHamburguer;
+  if(produto?.temHamburguer && !['industrializado', 'artesanal'].includes(tipoHamburguer)) return null;
+  if(!produto?.temHamburguer && tipoHamburguer) return null;
+  const acrescimoHamburguer = tipoHamburguer === 'artesanal' ? (nome === 'PROMOÇÂO 4 X-SALADA 1 GUARATUBA .' ? 3600 : 900) : 0;
+  if(!produto || quantidade === null || precoUnitarioCentavos !== produto.precoCentavos + acrescimoHamburguer ||
      adicionaisRaw.length > 20 || (!produto.aceitaAdicionais && adicionaisRaw.length > 0)){
     return null;
   }
@@ -213,7 +215,8 @@ function validarItem(raw, catalogo = CATALOGO){
   }
 
   return {
-    nome,
+    nome: tipoHamburguer ? `${nome} — ${tipoHamburguer}` : nome,
+    ...(tipoHamburguer ? { tipoHamburguer } : {}),
     quantidade,
     precoUnitarioCentavos,
     adicionais,
@@ -291,6 +294,8 @@ function validarPayload(raw, catalogo = CATALOGO){
     if(taxaServicoCentavos !== servicoEsperado) throw new Error('A taxa de serviço não confere. Calcule novamente.');
 
     atendimento.endereco = endereco;
+    const cotacaoFrete = texto(raw.atendimento?.cotacaoFrete, 1000);
+    if(cotacaoFrete) atendimento.cotacaoFrete = cotacaoFrete;
     atendimento.distanciaKm = Math.round(distanciaKm * 100) / 100;
     atendimento.taxaEntregaCentavos = taxaEntregaCentavos;
     atendimento.taxaServicoCentavos = taxaServicoCentavos;
@@ -335,6 +340,22 @@ function validarPayload(raw, catalogo = CATALOGO){
 async function validarEntregaNoServidor(payload){
   if(payload.atendimento.tipo !== 'entrega') return payload;
 
+  // Uma cotacao assinada preserva a tarifa apresentada ao cliente, mesmo
+  // que o Google encontre outra rota ao confirmar o pedido.
+  if(payload.atendimento.cotacaoFrete){
+    const autentica = validarCotacao(
+      payload.atendimento.cotacaoFrete,
+      payload.atendimento.endereco,
+      payload.atendimento.distanciaKm
+    );
+    delete payload.atendimento.cotacaoFrete;
+    if(!autentica){
+      throw new Error('A cotação do frete expirou ou o endereço mudou. Calcule novamente.');
+    }
+    return payload;
+  }
+
+  // Compatibilidade temporaria com navegadores antigos: revalida a rota.
   let resultado;
   try{
     resultado = await calcularDistanciaEndereco(payload.atendimento.endereco);
@@ -415,7 +436,7 @@ async function criarPedido(payload){
   const id = hashId(payload.clientRequestId);
   const pathname = `${AGUARDANDO_DIR}/${data}/${id}.json`;
   const mp = require('../lib/mp-checkout');
-  const previous = await mp.findOrder(id);
+  const previous = await reservations.find(id);
   if(previous){
     await mp.ensureOrderIndex(previous.order, previous.path);
     return { pedido: previous.order, pathname: previous.path, duplicado: true };
@@ -435,16 +456,18 @@ async function criarPedido(payload){
   catch(err){
     if(!isConflict(err)) throw err;
     const existente = await lerJson(pathname);
-    await mp.ensureOrderIndex(existente, pathname);
-    return { pedido: existente, duplicado: true };
+    const selected = await reservations.bind(existente, pathname);
+    await mp.ensureOrderIndex(selected.order, selected.path);
+    return { pedido: selected.order, pathname:selected.path, duplicado: true };
   }
-  await mp.ensureOrderIndex(pedido, pathname);
-  return { pedido, pathname, duplicado: false };
+  const selected = await reservations.bind(pedido, pathname);
+  await mp.ensureOrderIndex(selected.order, selected.path);
+  return { pedido:selected.order, pathname:selected.path, duplicado:selected.path !== pathname };
 }
 
 async function confirmarPedido(id){
   if(!/^[a-f0-9]{64}$/.test(id)) throw new Error('Referência inválida.');
-  const found = await require('../lib/mp-checkout').findOrder(id);
+  const found = await reservations.find(id);
   let pedido = found?.order;
   const pathname = found?.path;
   if(!pedido) throw new Error('Tentativa não encontrada hoje.');
@@ -516,37 +539,6 @@ async function listarPedidos(req){
   return pedidos;
 }
 
-async function atualizarPedido(raw){
-  const pathname = texto(raw?.pathname, 500);
-  const localPath = pathname.startsWith(STORAGE_NAMESPACE) ? pathname.slice(STORAGE_NAMESPACE.length) : '';
-  if(!/^pedidos\/fila\/\d{4}-\d{2}-\d{2}\/[a-zA-Z0-9._-]+\.json$/.test(localPath)){
-    throw new Error('Pedido inválido.');
-  }
-  const status = texto(raw?.status, 30);
-  if(!['pendente', 'imprimindo', 'impresso', 'falhou'].includes(status)){
-    throw new Error('Status inválido.');
-  }
-  const pedido = await lerJson(pathname);
-  if(!pedido) throw new Error('Pedido não encontrado.');
-  if(pedido.pagamento?.fluxo === 'mercadopago' &&
-     await lerJson(`${STORAGE_NAMESPACE}pedidos/pagamento-bloqueado/${pedido.id}.json`)){
-    throw new Error('Pagamento bloqueado. Consulte a loja.');
-  }
-  if(pedido.pagamento?.fluxo === 'mercadopago' &&
-     (pedido.pagamento.status !== 'approved' || pedido.pagamento.verified !== true || !pedido.pagamento.mpOrderId)){
-    throw new Error('Comanda aguardando pagamento aprovado.');
-  }
-  pedido.status = status;
-  pedido.atualizadoEm = new Date().toISOString();
-  if(status === 'imprimindo' || status === 'falhou'){
-    pedido.tentativasImpressao = (Number(pedido.tentativasImpressao) || 0) + 1;
-  }
-  if(status === 'impresso') pedido.impressoEm = pedido.atualizadoEm;
-  if(status === 'falhou') pedido.erroImpressao = texto(raw?.erro, 300);
-  await gravarJson(pathname, pedido, true);
-  return pedido;
-}
-
 module.exports = async function handler(req, res){
   res.setHeader('Cache-Control', 'no-store, max-age=0');
   res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -575,7 +567,25 @@ module.exports = async function handler(req, res){
       return res.status(415).json({ error: 'Conteúdo deve ser enviado em JSON.' });
     }
     try{
-      return res.status(200).json({ pedido: await atualizarPedido(req.body || {}) });
+      const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body || {};
+      if(body.status === 'pendente'){
+        return res.status(409).json({error:'Reimpressão automática bloqueada. Confira papel e histórico antes de reprocessar uma comanda.'});
+      }
+      // Keep the legacy route's response shape, but use the same atomic claim
+      // and ACK transitions as the current Windows agent. No read/write reset.
+      let statusCode = 200;
+      const relay = {
+        setHeader:(name,value)=>res.setHeader(name,value),
+        status(code){statusCode=code;return this;},
+        async json(data){
+          if(statusCode !== 200) return res.status(statusCode).json(data);
+          const pedido = await lerJson(body.pathname);
+          return res.status(200).json({...data,pedido});
+        },
+      };
+      return await require('./fila-impressao')({
+        ...req,body,headers:{...req.headers,authorization:'Bearer ' + tokenAgente(req)},
+      },relay);
     }catch(err){
       const message = err?.message || 'Não foi possível atualizar o pedido.';
       return res.status(message === 'Pedido não encontrado.' ? 404 : 400).json({ error: message });
@@ -615,8 +625,13 @@ module.exports = async function handler(req, res){
       }
       const payloadValidado = await validarEntregaNoServidor(payloadBase);
       const payload = await aplicarEstimativaInteligente(payloadValidado);
-      const onlineRequested = process.env.MP_CARD_CHECKOUT_ENABLED === 'true' && payload.atendimento.tipo !== 'mesa';
+      // Online payment is an explicit customer choice; existing presencial
+      // methods and mesa orders retain their rules when the integration is on.
+      const onlineRequested = body?.pagamento?.fluxo === 'mercadopago';
       if(onlineRequested){
+        if(payload.atendimento.tipo === 'mesa'){
+          return res.status(400).json({error:'Pedidos de mesa seguem o pagamento no local.'});
+        }
         if(!require('../lib/mp-checkout').enabled()){
           return res.status(503).json({error:'Pagamento online indisponível. Nenhuma cobrança ou comanda foi criada.',pedidoConfirmado:false});
         }
@@ -674,6 +689,7 @@ module.exports = async function handler(req, res){
         'Endereço de entrega incompleto.',
         'A entrega automática atende somente Londrina.',
         'Frete inválido. Calcule novamente.',
+        'A cotação do frete expirou ou o endereço mudou. Calcule novamente.',
         'A distância de entrega não confere. Calcule novamente.',
         'A taxa de entrega não confere. Calcule novamente.',
         'A taxa de serviço não confere. Calcule novamente.',

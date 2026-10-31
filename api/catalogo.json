@@ -27,31 +27,38 @@
     },
     "Simples Burguer": {
       "precoCentavos": 1500,
-      "aceitaAdicionais": true
+      "aceitaAdicionais": true,
+      "temHamburguer": true
     },
     "X-Burguer": {
       "precoCentavos": 2200,
-      "aceitaAdicionais": true
+      "aceitaAdicionais": true,
+      "temHamburguer": true
     },
     "X-Salada": {
       "precoCentavos": 2500,
-      "aceitaAdicionais": true
+      "aceitaAdicionais": true,
+      "temHamburguer": true
     },
     "X-Egg": {
       "precoCentavos": 3000,
-      "aceitaAdicionais": true
+      "aceitaAdicionais": true,
+      "temHamburguer": true
     },
     "X-Frango": {
       "precoCentavos": 3000,
-      "aceitaAdicionais": true
+      "aceitaAdicionais": true,
+      "temHamburguer": true
     },
     "X-Bacon (1 Kilo)": {
       "precoCentavos": 3500,
-      "aceitaAdicionais": true
+      "aceitaAdicionais": true,
+      "temHamburguer": true
     },
     "X-Tudo (2 Kilo)": {
       "precoCentavos": 10000,
-      "aceitaAdicionais": true
+      "aceitaAdicionais": true,
+      "temHamburguer": true
     },
     "Marmitex Mini": {
       "precoCentavos": null,

@@ -15,7 +15,7 @@ const id = 'a'.repeat(64);
 const pendingKey = 'ferracini-pagamento-pendente-v1';
 const createdAt = new Date().toISOString();
 const confirmed = { id, referencia: 'TESTE12345', numero: '42', criadoEm: createdAt,
-  status: 'pendente', pagamento: { fluxo: 'mercadopago', status: 'approved', verified: true } };
+  status: 'pendente', pagamento: { fluxo: 'mercadopago', status: 'approved', verified: true,mpOrderId:'ORDER-test-123456' } };
 let browser, server, base;
 
 const mockSDK = `window.MercadoPago = class {
@@ -49,7 +49,7 @@ before(async () => {
     if(/^\/assets\/[a-zA-Z0-9_.-]+$/.test(pathname)) {
       const file = path.join(root, pathname);
       if(fs.existsSync(file)) {
-        res.setHeader('Content-Type', 'image/webp');
+        res.setHeader('Content-Type', pathname.endsWith('.js')?'text/javascript':'image/webp');
         return res.end(fs.readFileSync(file));
       }
     }
@@ -89,11 +89,16 @@ async function harness({ enabled = true, requested = enabled, payment = { status
     if(url.pathname === '/api/pedidos') {
       counts.reservation++;
       state.reservationBodies.push(request.postDataJSON());
-      return json(enabled ? { pagamentoObrigatorio: true, impressaoAtiva: false, pedido: {
-        id, referencia: 'TESTE12345', criadoEm: createdAt, totalCentavos: 1500,
+      const body=state.reservationBodies.at(-1);
+      const online=enabled && body.pagamento?.fluxo==='mercadopago';
+      const total=body.itens.reduce((sum,item)=>sum+item.quantidade*(item.precoUnitarioCentavos+(item.adicionais||[]).reduce((n,a)=>n+a.precoCentavos,0)),0)+(body.atendimento.taxaEntregaCentavos||0)+(body.atendimento.taxaServicoCentavos||0);
+      return json(online ? { pagamentoObrigatorio: true, impressaoAtiva: false, pedido: {
+        id, referencia: 'TESTE12345', criadoEm: createdAt, totalCentavos: total,
         status: 'aguardando_pagamento', pagamento: { metodo: state.reservationBodies.at(-1).pagamento.metodo }
-      } } : { pedido: confirmed }, 201);
+      } } : { pedido: {...confirmed,pagamento:{metodo:body.pagamento?.metodo}} }, 201);
     }
+    if(url.pathname === '/api/distancia') return json({distanciaKm:5,cotacaoFrete:'signed-quote-fixture'});
+    if(url.pathname === '/api/estimativa') return json({estimativaMinutos:{minimo:45,maximo:60}});
     if(url.pathname === '/api/mp-pagamento') {
       counts.payment++; state.paymentBodies.push(request.postDataJSON());
       return json(state.payment, state.paymentCode);
@@ -107,18 +112,21 @@ async function harness({ enabled = true, requested = enabled, payment = { status
   return { context, page, counts, state, errors, dialogs };
 }
 
-async function openCheckout(h) {
-  await h.page.locator('.qty-stepper[data-name="Dog Simples"] .plus').click();
+async function openCheckout(h,{product='Dog Simples',burger,delivery='retirada'}={}) {
+  if(burger)await h.page.locator('.product-card[data-name="'+product+'"] input.burger-type[value="'+burger+'"]').check();
+  await h.page.locator('.qty-stepper[data-name="'+product+'"] .plus').click();
   await h.page.locator('#waTabbarBtn').click();
   await h.page.locator('#checkoutOverlay.open').waitFor();
-  await h.page.locator('#btnRetirada').click();
+  await h.page.locator(delivery==='entrega'?'#btnEntrega':'#btnRetirada').click();
   await h.page.locator('#clienteNome').fill('Cliente de Teste');
   await h.page.locator('#clienteTelefone').fill('43999999999');
 }
 async function reserve(h, method = 'credito') {
   await openCheckout(h);
-  assert.deepEqual(await h.page.locator('input[name="payment"]').evaluateAll(nodes => nodes.map(node => node.value)), ['credito', 'debito']);
+  assert.deepEqual(await h.page.locator('input[name="payment"]').evaluateAll(nodes => nodes.map(node => node.value)), ['pix', 'dinheiro', 'debito', 'credito']);
   await h.page.locator('input[name="payment"][value="' + method + '"]').check();
+  assert.equal(await h.page.locator('input[name="paymentFlow"][value="presencial"]').isChecked(),true);
+  await h.page.locator('input[name="paymentFlow"][value="online"]').check();
   await h.page.locator('#btnEnviarPedido').click();
   await h.page.locator('#mockProviderPay').waitFor();
   assert.equal(await h.page.locator('#checkoutConfirm').isVisible(), false);
@@ -156,19 +164,45 @@ test('reserva não confirma; aprovação do provedor libera confirmação e limp
   } finally { await h.context.close(); }
 });
 
-test('flag solicitada com configuração incompleta bloqueia checkout sem cair no fluxo manual', async () => {
-  const h = await harness({ enabled: false, requested: true });
-  try {
-    await h.page.locator('.qty-stepper[data-name="Dog Simples"] .plus').click();
-    const dialog = h.page.waitForEvent('dialog');
-    await h.page.locator('#waTabbarBtn').click();
-    await dialog;
-    assert.equal(h.dialogs.length, 1);
-    assert.match(h.dialogs[0], /pagamento online.*indisponível/i);
-    assert.equal(await h.page.locator('#checkoutOverlay.open').count(), 0);
-    assert.equal(h.counts.reservation, 0); assert.equal(h.counts.payment, 0);
-    assert.deepEqual(h.errors, []);
-  } finally { await h.context.close(); }
+test('configuração online incompleta preserva compra e modalidades presenciais', async () => {
+  const h=await harness({enabled:false,requested:true});
+  try{
+    await openCheckout(h);
+    await h.page.locator('input[name="payment"][value="credito"]').check();
+    assert.equal(await h.page.locator('input[name="paymentFlow"][value="presencial"]').isChecked(),true);
+    assert.equal(await h.page.locator('input[name="paymentFlow"][value="online"]').count(),0);
+    await h.page.locator('#btnEnviarPedido').click();
+    await h.page.locator('#checkoutConfirm').waitFor({state:'visible'});
+    assert.equal(h.state.reservationBodies[0].pagamento.fluxo,undefined);
+    assert.equal(h.counts.payment,0);assert.equal(h.counts.sdk,0);assert.deepEqual(h.errors,[]);
+  }finally{await h.context.close();}
+});
+
+test('pagamento online disponível mantém cartão presencial como escolha padrão',async()=>{
+  const h=await harness();
+  try{
+    await openCheckout(h);
+    await h.page.locator('input[name="payment"][value="credito"]').check();
+    assert.equal(await h.page.locator('input[name="paymentFlow"][value="presencial"]').isChecked(),true);
+    await h.page.locator('#btnEnviarPedido').click();
+    await h.page.locator('#checkoutConfirm').waitFor({state:'visible'});
+    assert.equal(h.state.reservationBodies[0].pagamento.fluxo,undefined);
+    assert.equal(h.state.reservationBodies[0].pagamento.metodo,'credito');
+    assert.equal(h.counts.payment,0);assert.equal(h.counts.sdk,0);assert.deepEqual(h.errors,[]);
+  }finally{await h.context.close();}
+});
+
+test('pagamento online disponível preserva dinheiro sem iniciar formulário ou cobrança',async()=>{
+  const h=await harness();
+  try{
+    await openCheckout(h);
+    await h.page.locator('input[name="payment"][value="dinheiro"]').check();
+    await h.page.locator('#btnEnviarPedido').click();
+    await h.page.locator('#checkoutConfirm').waitFor({state:'visible'});
+    assert.equal(h.state.reservationBodies[0].pagamento.metodo,'dinheiro');
+    assert.equal(h.state.reservationBodies[0].pagamento.fluxo,undefined);
+    assert.equal(h.counts.payment,0);assert.equal(h.counts.sdk,0);assert.deepEqual(h.errors,[]);
+  }finally{await h.context.close();}
 });
 
 test('débito reserva modalidade própria e limita formulário e cobrança a uma parcela', async () => {
@@ -279,6 +313,8 @@ test('SDK indisponível oferece recarga sem iniciar cobrança nem confirmar pedi
   const h = await harness({ sdkFailure: true });
   try {
     await openCheckout(h);
+    await h.page.locator('input[name="payment"][value="credito"]').check();
+    await h.page.locator('input[name="paymentFlow"][value="online"]').check();
     await h.page.locator('#btnEnviarPedido').click();
     await h.page.locator('#mpRetryCard').waitFor({ state: 'visible' });
     assert.match(await h.page.locator('#mpPaymentStatus').innerText(), /não carregou/);
@@ -286,4 +322,74 @@ test('SDK indisponível oferece recarga sem iniciar cobrança nem confirmar pedi
     assert.equal(await h.page.locator('#checkoutConfirm').isVisible(), false);
     assert.deepEqual(h.errors, []);
   } finally { await h.context.close(); }
+});
+
+
+test('rejeição conhecida de dados permanece recuperável após recarga sem nova cobrança automática',async()=>{
+  const result={status:'validation_rejected',needsNewOrder:true,error:'O Mercado Pago rejeitou os dados desta tentativa.'};
+  const h=await harness({payment:result,paymentCode:422,status:result});
+  try{
+    await reserve(h);
+    await h.page.locator('#mockProviderPay').click();
+    await h.page.locator('#mpRetryCard').waitFor({state:'visible'});
+    await h.page.reload({waitUntil:'domcontentloaded'});
+    await h.page.locator('#mpRecoveryButton').click();
+    await h.page.locator('#mpRetryCard').waitFor({state:'visible'});
+    assert.match(await h.page.locator('#mpPaymentStatus').innerText(),/rejeitou os dados/);
+    assert.equal(await h.page.locator('#checkoutConfirm').isVisible(),false);
+    assert.equal(await h.page.locator('#mockProviderPay').count(),0);
+    assert.equal(h.counts.reservation,1);assert.equal(h.counts.payment,1);
+    assert.notEqual(await h.page.evaluate(key=>localStorage.getItem(key),pendingKey),null);
+    h.page.removeAllListeners('dialog');h.page.on('dialog',dialog=>dialog.accept());
+    await h.page.locator('#mpRetryCard').click();
+    assert.equal(await h.page.evaluate(key=>localStorage.getItem(key),pendingKey),null);
+    assert.equal(h.counts.reservation,1);assert.equal(h.counts.payment,1);
+    assert.deepEqual(h.errors,[]);
+  }finally{await h.context.close();}
+});
+
+test('checkout online conserva artesanal +R$9, frete R$3/km e cotação assinada',async()=>{
+  const h=await harness();
+  try{
+    await openCheckout(h,{product:'Simples Burguer',burger:'artesanal',delivery:'entrega'});
+    await h.page.locator('#endRua').fill('Rua Teste');
+    await h.page.locator('#endNumero').fill('100');
+    await h.page.locator('#endBairro').fill('Centro');
+    await h.page.locator('#btnCalcularFrete').click();
+    await h.page.waitForFunction(()=>document.querySelector('#freteBox').textContent.includes('5.0 km'));
+    await h.page.locator('input[name="payment"][value="credito"]').check();
+    await h.page.locator('input[name="paymentFlow"][value="online"]').check();
+    await h.page.locator('#btnEnviarPedido').click();
+    await h.page.locator('#mockProviderPay').waitFor();
+    const body=h.state.reservationBodies[0];
+    assert.equal(body.itens[0].tipoHamburguer,'artesanal');
+    assert.equal(body.itens[0].precoUnitarioCentavos,2400);
+    assert.equal(body.atendimento.taxaEntregaCentavos,1500);
+    assert.equal(body.atendimento.cotacaoFrete,'signed-quote-fixture');
+    assert.equal(body.pagamento.fluxo,'mercadopago');
+    assert.equal(await h.page.evaluate(()=>window.__mockBrickSettings.initialization.amount),42);
+    assert.equal(h.counts.payment,0);assert.deepEqual(h.errors,[]);
+  }finally{await h.context.close();}
+});
+
+test('corrigir rejeição conhecida mantém escolha online e não muda para cobrança presencial',async()=>{
+  const result={status:'validation_rejected',needsNewOrder:true,error:'O Mercado Pago rejeitou os dados desta tentativa.'};
+  const h=await harness({payment:result,paymentCode:422,status:result});
+  try{
+    await reserve(h);
+    const first=h.state.reservationBodies[0].clientRequestId;
+    await h.page.locator('#mockProviderPay').click();
+    await h.page.locator('#mpRetryCard').waitFor({state:'visible'});
+    h.page.removeAllListeners('dialog');h.page.on('dialog',dialog=>dialog.accept());
+    await h.page.locator('#mpRetryCard').click();
+    assert.equal(await h.page.locator('input[name="paymentFlow"][value="online"]').isChecked(),true);
+    assert.equal(h.counts.reservation,1);assert.equal(h.counts.payment,1);
+    await h.page.locator('#btnEnviarPedido').click();
+    await h.page.locator('#mockProviderPay').waitFor();
+    assert.equal(h.state.reservationBodies[1].pagamento.fluxo,'mercadopago');
+    assert.notEqual(h.state.reservationBodies[1].clientRequestId,first);
+    assert.equal(h.counts.reservation,2);assert.equal(h.counts.payment,1);
+    assert.equal(await h.page.locator('#checkoutConfirm').isVisible(),false);
+    assert.deepEqual(h.errors,[]);
+  }finally{await h.context.close();}
 });

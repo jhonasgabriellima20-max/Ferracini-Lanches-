@@ -31,7 +31,7 @@ const status=require('../api/mp-status');
 const webhook=require('../api/mp-webhook');
 const pagamento=require('../api/mp-pagamento');
 const config=require('../api/mp-config');
-const draft={cliente:{nome:'Cliente Teste',telefone:'43999999999'},itens:[{nome:'Dog Simples',quantidade:1,precoUnitarioCentavos:1200,adicionais:[]}],atendimento:{tipo:'retirada'},pagamento:{metodo:'credito'}};
+const draft={cliente:{nome:'Cliente Teste',telefone:'43999999999'},itens:[{nome:'Dog Simples',quantidade:1,precoUnitarioCentavos:1200,adicionais:[]}],atendimento:{tipo:'retirada'},pagamento:{metodo:'credito',fluxo:'mercadopago'}};
 async function call(handler,method,body={},query={},extraHeaders={}){
   const response={statusCode:200,setHeader(){},status(n){this.statusCode=n;return this;},json(data){this.body=data;return this;},send(data){this.body=data;return this;}};
   await handler({method,body,query,headers:{host:'ferracinilanches.com.br',origin:'https://ferracinilanches.com.br','content-type':'application/json',...extraHeaders}},response);
