@@ -110,6 +110,9 @@
     <div class="section-title"><div><h2>Tempo de preparo por lanche</h2><p>Base usada pela fila inteligente</p></div></div>
     <div id="temposPreparo" class="grid"></div>
 
+    <div class="section-title"><div><h2>Tipos de hambúrguer</h2><p>Desligue apenas o tipo que acabou. Os lanches continuam disponíveis com o outro tipo. Depois, clique em Salvar alterações.</p></div></div>
+    <div id="hamburgueres" class="grid ingredients"></div>
+
     <div class="section-title"><div><h2>Ingredientes</h2><p>ON = disponível · OFF = em falta</p></div></div>
     <div id="ingredientes" class="grid ingredients"></div>
 
@@ -145,7 +148,11 @@ async function buscar(){
 }
 
 function renderIngredientes(){
-  $('ingredientes').innerHTML = catalogo.ingredientes.map(i=>{
+  $('hamburgueres').innerHTML = ['industrializado', 'artesanal'].map(tipo => {
+    const id = 'hamburguer_' + tipo;
+    return `<div class="row"><div class="row-main"><div class="row-name">Hambúrguer ${tipo}</div><div class="row-note">ON = disponível · OFF = em falta</div></div><label class="toggle"><input type="checkbox" data-kind="ingrediente" data-key="${id}" ${estado.ingredientes[id] !== false ? 'checked' : ''}><span class="slider"></span></label></div>`;
+  }).join('');
+  $('ingredientes').innerHTML = catalogo.ingredientes.filter(i => !['hamburguer', 'hamburguer_industrializado', 'hamburguer_artesanal'].includes(i.id)).map(i=>{
     const checked = estado.ingredientes[i.id] !== false;
     const afetados = (i.afeta||[]).map(n=>`<span class="pill">${esc(n)}</span>`).join('');
     return `<div class="row"><div class="row-main"><div class="row-name">${esc(i.nome)}</div>${afetados?`<div class="row-note">Ao faltar, bloqueia:</div><div>${afetados}</div>`:'<div class="row-note">Usado como adicional.</div>'}</div><label class="toggle"><input type="checkbox" data-kind="ingrediente" data-key="${esc(i.id)}" ${checked?'checked':''}><span class="slider"></span></label></div>`;
@@ -298,7 +305,7 @@ async function abrirPainel(){
       : (storageReady ? '' : notice('O armazenamento está indisponível. Você consegue visualizar, mas não será possível salvar até a conexão voltar.','warn'));
     $('status').textContent=data.updatedAt?`Última atualização: ${new Date(data.updatedAt).toLocaleString('pt-BR')}`:'Tudo disponível — nenhuma alteração salva ainda';
     render();
-    $('novoIngredientes').innerHTML = catalogo.ingredientes.filter(i => !i.id.startsWith('novo_')).map(i => `<label><input type="checkbox" value="${esc(i.id)}"> ${esc(i.nome)}</label>`).join('');
+    $('novoIngredientes').innerHTML = catalogo.ingredientes.filter(i => !i.id.startsWith('novo_') && !i.id.startsWith('hamburguer_')).map(i => `<label><input type="checkbox" value="${esc(i.id)}"> ${esc(i.nome)}</label>`).join('');
   }catch(e){ $('loginMsg').innerHTML=notice(e.message||'Não foi possível abrir o painel.','err'); }
 }
 

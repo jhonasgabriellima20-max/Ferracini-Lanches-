@@ -74,6 +74,8 @@ const INGREDIENTES = [
   ['pao', 'Pão'],
   ['salsicha', 'Salsicha'],
   ['hamburguer', 'Hambúrguer'],
+  ['hamburguer_industrializado', 'Hambúrguer industrializado'],
+  ['hamburguer_artesanal', 'Hambúrguer artesanal'],
   ['frango', 'Frango'],
   ['bacon', 'Bacon'],
   ['calabresa', 'Calabresa'],
@@ -263,6 +265,12 @@ function mergeState(raw){
     for(const [id] of INGREDIENTES){
       if(typeof raw.ingredientes?.[id] === 'boolean') base.ingredientes[id] = raw.ingredientes[id];
     }
+    for(const tipo of ['industrializado', 'artesanal']){
+      const id = 'hamburguer_' + tipo;
+      base.ingredientes[id] = typeof raw.ingredientes?.[id] === 'boolean'
+        ? raw.ingredientes[id] : raw.ingredientes?.hamburguer !== false;
+    }
+    base.ingredientes.hamburguer = base.ingredientes.hamburguer_industrializado || base.ingredientes.hamburguer_artesanal;
     for(const [nome] of PRODUTOS){
       if(typeof raw.produtos?.[nome] === 'boolean'){
         base.produtos[nome] = raw.produtos[nome];
@@ -632,7 +640,7 @@ module.exports = async function handler(req, res){
       if(body.editarItem) precosPersonalizados = editItemPrice(itensNovos, precosPersonalizados, body.editarItem);
       if(body.excluirItem) itensExcluidos = excludeItem(itensNovos, itensExcluidos, body.excluirItem);
       if(body.restaurarItem) itensExcluidos = restoreItem(itensNovos, itensExcluidos, body.restaurarItem);
-      const next = mergeState({...body, itensNovos, precosPersonalizados, descricoesPersonalizadas, itensExcluidos});
+      const next = mergeState({...body, ingredientes:{...current.state.ingredientes, ...body.ingredientes}, itensNovos, precosPersonalizados, descricoesPersonalizadas, itensExcluidos});
       next.updatedAt = new Date().toISOString();
       const saved = await writeState(next);
       return res.status(200).json({
@@ -655,7 +663,7 @@ module.exports = async function handler(req, res){
   return res.status(405).json({ error: 'Método não permitido.' });
 };
 
-module.exports.readOrderCatalog = async function(){ const {state} = await readState({force:true}); return orderCatalog(state.itensNovos, state.precosPersonalizados, state.itensExcluidos); };
+module.exports.readOrderCatalog = async function(){ const {state} = await readState({force:true}); return {...orderCatalog(state.itensNovos, state.precosPersonalizados, state.itensExcluidos), hamburgueres:{industrializado:state.ingredientes.hamburguer_industrializado, artesanal:state.ingredientes.hamburguer_artesanal}}; };
 module.exports.readStoreStatus = async function(){ const {state} = await readState({force:true}); return statusHorarioPedidos(state); };
 module.exports.readServiceAvailability = async function(){
   const {state} = await readState({force:true});

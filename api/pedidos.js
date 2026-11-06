@@ -192,6 +192,7 @@ function validarItem(raw, catalogo = CATALOGO){
   const tipoHamburguer = raw?.tipoHamburguer;
   if(produto?.temHamburguer && !['industrializado', 'artesanal'].includes(tipoHamburguer)) return null;
   if(!produto?.temHamburguer && tipoHamburguer) return null;
+  if(produto?.temHamburguer && catalogo.hamburgueres?.[tipoHamburguer] === false) return null;
   const acrescimoHamburguer = tipoHamburguer === 'artesanal' ? (nome === 'PROMOÇÂO 4 X-SALADA 1 GUARATUBA .' ? 3600 : 900) : 0;
   if(!produto || quantidade === null || precoUnitarioCentavos !== produto.precoCentavos + acrescimoHamburguer ||
      adicionaisRaw.length > 20 || (!produto.aceitaAdicionais && adicionaisRaw.length > 0)){

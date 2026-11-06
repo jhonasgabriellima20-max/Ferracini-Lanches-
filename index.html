@@ -890,12 +890,20 @@ const DISPONIBILIDADE_REFRESH_MS = 5 * 60 * 1000;
 let disponibilidadeUltimaTentativa = 0;
 let disponibilidadeConsultaEmAndamento = null;
 
+function temHamburguer(produto){ return (produto.ingredientes || []).includes('hamburguer') || produto.nome === 'X-Bacon normal'; }
+function hamburguerDisponivel(tipo){
+  return ['industrializado', 'artesanal'].includes(tipo) &&
+    (disponibilidade.ingredientes?.['hamburguer_' + tipo] ?? disponibilidade.ingredientes?.hamburguer) !== false;
+}
+
 function ingredienteDisponivel(id){
+  if(id === 'hamburguer') return hamburguerDisponivel('industrializado') || hamburguerDisponivel('artesanal');
   return disponibilidade.ingredientes?.[id] !== false;
 }
 
 function produtoDisponivel(produto){
   if(disponibilidade.produtos?.[produto.nome] === false) return false;
+  if(temHamburguer(produto) && !ingredienteDisponivel('hamburguer')) return false;
   return (produto.ingredientes || []).every(ingredienteDisponivel);
 }
 
@@ -908,7 +916,7 @@ function removerItensIndisponiveisDoCarrinho(){
   let precoAlterado = false;
   Object.keys(cart).forEach(nome => {
     const produto = CONFIG.produtos.find(p => p.nome === nome);
-    if(!produto || !produtoDisponivel(produto) || !Number.isFinite(produto.preco) || produto.preco <= 0){
+    if(!produto || !produtoDisponivel(produto) || (temHamburguer(produto) && !hamburguerDisponivel(cart[nome].tipoHamburguer)) || !Number.isFinite(produto.preco) || produto.preco <= 0){
       delete cart[nome];
       removeu = true;
       return;
@@ -981,7 +989,6 @@ async function carregarDisponibilidade({ silencioso = true, force = false } = {}
 
 
 const tiposHamburguer = Object.create(null);
-function temHamburguer(produto){ return (produto.ingredientes || []).includes('hamburguer') || produto.nome === 'X-Bacon normal'; }
 function diferencaHamburguer(nome){ return nome === 'PROMOÇÂO 4 X-SALADA 1 GUARATUBA .' ? 36 : 9; }
 function valorHamburguer(item){ return item.tipoHamburguer === 'artesanal' ? diferencaHamburguer(item.nomeProduto) : 0; }
 function nomeComHamburguer(nome, item){ return item.tipoHamburguer ? `${nome} — ${item.tipoHamburguer}` : nome; }
@@ -992,7 +999,7 @@ function precoUnitario(item){
 
 function setQty(nome, preco, qty){
   const produto = CONFIG.produtos.find(p => p.nome === nome);
-  if(qty > 0 && produto && temHamburguer(produto) && !tiposHamburguer[nome]) return;
+  if(qty > 0 && produto && temHamburguer(produto) && !hamburguerDisponivel(tiposHamburguer[nome])) return;
   qty = Math.max(0, qty);
   if(qty === 0){
     delete cart[nome];
@@ -1081,6 +1088,7 @@ function updateCartBar(){
 const menuGridEl = document.getElementById('menuGrid');
 
 function productCardHTML(p){
+  if(tiposHamburguer[p.nome] && !hamburguerDisponivel(tiposHamburguer[p.nome])) delete tiposHamburguer[p.nome];
   const disponivel = produtoDisponivel(p);
   const precoDefinido = Number.isFinite(p.preco);
   const vendavel = disponivel && precoDefinido;
@@ -1103,7 +1111,7 @@ function productCardHTML(p){
       <h3>${escapeHTML(p.nome)}</h3>
       ${p.descricao ? `<p class="desc">${escapeHTML(p.descricao)}</p>` : ''}
       ${vendavel && temHamburguer(p) ? `<div class="burger-types" role="group" aria-label="Escolha o hambúrguer (obrigatório)">
-        ${['industrializado', 'artesanal'].map(tipo => `<label style="display:flex;align-items:center;gap:8px;min-height:44px">
+        ${['industrializado', 'artesanal'].filter(hamburguerDisponivel).map(tipo => `<label style="display:flex;align-items:center;gap:8px;min-height:44px">
           <input type="radio" class="burger-type" name="burger-${escapeHTML(p.nome)}" value="${tipo}" ${tiposHamburguer[p.nome] === tipo ? 'checked' : ''}>
           ${tipo === 'artesanal' ? 'Hambúrguer artesanal' : 'Hambúrguer industrializado'} — ${fmtPreco(p.preco + (tipo === 'artesanal' ? diferencaHamburguer(p.nome) : 0))}
         </label>`).join('')}
@@ -1223,6 +1231,7 @@ menuGridEl.addEventListener('click', (e) => {
 
 menuGridEl.addEventListener('change', (e) => {
   if(e.target.classList.contains('burger-type')){
+    if(!hamburguerDisponivel(e.target.value)) return;
     const nome = e.target.closest('.product-card').dataset.name;
     tiposHamburguer[nome] = e.target.value;
     if(cart[nome]) cart[nome].tipoHamburguer = e.target.value;
