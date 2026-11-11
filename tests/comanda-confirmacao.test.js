@@ -95,8 +95,8 @@ async function call(handler, request){
   const afterCreate = await call(painelHandler, req('GET', {}, auth, '/api/painel-pedidos'));
   assert.equal(afterCreate.body.pedidos[0].pagamento.metodo, 'no_local');
   assert.equal(afterCreate.body.pedidos[0].subtotalCentavos, 1200);
-  assert.equal(afterCreate.body.pedidos[0].atendimento.taxaServicoCentavos, 300);
-  assert.equal(afterCreate.body.pedidos[0].totalCentavos, 1500);
+  assert.equal(afterCreate.body.pedidos[0].atendimento.taxaServicoCentavos, 0);
+  assert.equal(afterCreate.body.pedidos[0].totalCentavos, 1200);
   assert.equal(afterCreate.body.pedidos.length, 1);
   assert.equal(afterCreate.body.aguardando.length, 0);
 
@@ -128,8 +128,8 @@ async function call(handler, request){
   const finalPanel = await call(painelHandler, req('GET', {}, auth, '/api/painel-pedidos'));
   assert.equal(finalPanel.body.pedidos.length, 2);
   const pedidoMesa = finalPanel.body.pedidos.find(p => p.atendimento.mesa === 2);
-  assert.equal(pedidoMesa.atendimento.taxaServicoCentavos, 300);
-  assert.equal(pedidoMesa.totalCentavos, 1500);
+  assert.equal(pedidoMesa.atendimento.taxaServicoCentavos, 0);
+  assert.equal(pedidoMesa.totalCentavos, 1200);
   assert.equal(finalPanel.body.aguardando.length, 0);
 
   // Se o banco estiver indisponivel, nunca devolver numero inventado ou status 202.
@@ -158,8 +158,30 @@ async function call(handler, request){
   assert.equal(retryRecovery.body.pedido.numero, recovered.body.pedido.numero);
   assert.equal([...storage.keys()].filter(k => k.startsWith('pedidos/fila/')).length, 3);
 
+  // Todos os modos ignoram inclusive a taxa enviada por uma página antiga.
+  const endereco = { rua: 'Rua Teste', numero: '10', bairro: 'Centro', cidade: 'Londrina', cep: '' };
+  process.env.DELIVERY_QUOTE_SECRET = 'segredo-apenas-para-teste';
+  const { assinarCotacao } = require('../lib/delivery-quote');
+  for(const tipo of ['retirada', 'mesa', 'entrega']){
+    const atendimento = { tipo, mesa: 3, taxaServicoCentavos: 300 };
+    if(tipo === 'entrega') Object.assign(atendimento, {
+      endereco, distanciaKm: 5, taxaEntregaCentavos: 1000,
+      cotacaoFrete: assinarCotacao(endereco, 5),
+    });
+    const result = await call(pedidosHandler, req('POST', {
+      ...body, origem: 'site', clientRequestId: 'sem-servico-regressao-' + tipo,
+      atendimento, pagamento: { metodo: 'dinheiro' },
+    }));
+    assert.equal(result.statusCode, 201, JSON.stringify(result.body));
+    const pedido = [...storage.values()].find(p => p?.id === result.body.pedido.id && p?.itens);
+    assert.equal(pedido.atendimento.taxaServicoCentavos, 0);
+    assert.equal(pedido.totalCentavos, tipo === 'entrega' ? 2200 : 1200);
+    if(tipo === 'entrega') assert.equal(pedido.atendimento.taxaEntregaCentavos, 1000);
+  }
+
   console.log('OK - pedidos automaticos, falha segura do banco, idempotencia e painel sem aceite');
 })().catch(e => {
   console.error(e);
   process.exitCode = 1;
 });
+

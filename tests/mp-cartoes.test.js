@@ -42,8 +42,8 @@ const draft = {
 function providerOrder(id) {
   return {
     id:'ORD01JS2V6CM8KJ0EC4H502TGK1WP',type:'online',processing_mode:'automatic',
-    status:'processed',status_detail:'accredited',external_reference:id,total_amount:'15.00',total_paid_amount:'15.00',
-    transactions:{payments:[{id:'PAY01JS2V6CM8KJ0EC4H504R7YE34',amount:'15.00',paid_amount:'15.00',
+    status:'processed',status_detail:'accredited',external_reference:id,total_amount:'12.00',total_paid_amount:'12.00',
+    transactions:{payments:[{id:'PAY01JS2V6CM8KJ0EC4H504R7YE34',amount:'12.00',paid_amount:'12.00',
       status:'processed',status_detail:'accredited',payment_method:{id:'visa',type:'credit_card',installments:1}}]},
   };
 }
@@ -51,7 +51,7 @@ function providerOrder(id) {
   const first = await call(draft);
   assert.equal(first.statusCode,201);
   assert.equal(first.body.pedido.status,'aguardando_pagamento');
-  assert.equal(first.body.pedido.totalCentavos,1500,'server includes the service fee');
+  assert.equal(first.body.pedido.totalCentavos,1200,'server does not charge a service fee');
   assert.equal(queued().length,0,'unpaid reservation cannot reach the kitchen');
   const duplicate = await call(draft);
   assert.equal(duplicate.body.pedido.id,first.body.pedido.id);
@@ -63,7 +63,7 @@ function providerOrder(id) {
   // Provider identity captured when the charge is created; fixture models that persisted binding.
   found.order.pagamento.mpOrderId=approval.id;
   await fakeStorage.writeJson(found.path,found.order,{allowOverwrite:true});
-  const local = {id,totalCentavos:1500,pagamento:{metodo:'credito',fluxo:'mercadopago',mpOrderId:approval.id}};
+  const local = {id,totalCentavos:1200,pagamento:{metodo:'credito',fluxo:'mercadopago',mpOrderId:approval.id}};
   assert.equal(mp.validOrder(approval,local),true);
   for(const amount of ['15.001','-15.00','NaN','1e2',' 15.00','0x10']) assert.equal(mp.moneyCents(amount),null);
   assert.equal(mp.moneyCents('15.01'),1501);
@@ -170,7 +170,7 @@ function providerOrder(id) {
     global.fetch = async (url, options={}) => {
       if(options.method === 'POST') {
         const payload = JSON.parse(options.body);
-        assert.equal(payload.total_amount,'15.00');
+        assert.equal(payload.total_amount,'12.00');
         assert.equal(payload.external_reference,uncertainId);
         keys.push(options.headers['X-Idempotency-Key']);
         if(firstReplyLost) {
@@ -216,3 +216,4 @@ function providerOrder(id) {
   assert.equal((await mp.findOrder(orphanId)).order.pagamento.mpOrderId,'ORDWEBHOOK1234567890');
   console.log('OK: valores verificados, pendência/recusa sem impressão, aprovação idempotente, estorno parcial, 3DS, resposta perdida e Preview isolado');
 })().catch(error => { console.error(error);process.exitCode=1; });
+

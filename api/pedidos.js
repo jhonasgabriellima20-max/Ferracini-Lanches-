@@ -41,7 +41,7 @@ function inteiro(value, min, max){
 
 function taxaServicoCentavosPorDistancia(distanciaKm){
   if(!Number.isFinite(distanciaKm) || distanciaKm <= 0) return null;
-  return 300;
+  return 0;
 }
 
 function taxaEntregaCentavosPorDistancia(distanciaKm){
@@ -255,8 +255,8 @@ function validarPayload(raw, catalogo = CATALOGO){
 
   const atendimento = { tipo };
   if(tipo === 'retirada' || tipo === 'mesa'){
-    // Taxa fixa de serviço para retirada e consumo no local.
-    atendimento.taxaServicoCentavos = 300;
+    // Sem taxa de serviço para retirada e consumo no local.
+    atendimento.taxaServicoCentavos = 0;
   }
   if(tipo === 'mesa'){
     const mesa = inteiro(Number(raw.atendimento?.mesa), 1, 999);
@@ -281,7 +281,8 @@ function validarPayload(raw, catalogo = CATALOGO){
 
     const distanciaKm = Number(raw.atendimento?.distanciaKm);
     const taxaEntregaCentavos = inteiro(raw.atendimento?.taxaEntregaCentavos, 0, 100000);
-    const taxaServicoCentavos = inteiro(raw.atendimento?.taxaServicoCentavos, 0, 100000);
+    // Ignore a taxa enviada por páginas antigas: novos pedidos não cobram serviço.
+    const taxaServicoCentavos = 0;
     if(!Number.isFinite(distanciaKm) || distanciaKm <= 0 || distanciaKm > MAX_ROUTE_KM ||
        taxaEntregaCentavos === null || taxaEntregaCentavos % 100 !== 0 ||
        taxaServicoCentavos === null || taxaServicoCentavos % 100 !== 0){
@@ -728,3 +729,4 @@ module.exports = async function handler(req, res){
   return res.status(405).json({ error: 'Método não permitido.' });
 };
 module.exports.confirmarPedido = confirmarPedido;
+

@@ -1190,7 +1190,7 @@ let frete = { status: 'idle', distanciaKm: null, valor: 0, estimativa: null }; /
 let freteRequestId = 0;
 
 const PAYMENT_LABELS = { dinheiro: 'Dinheiro' };
-const TAXA_SERVICO_MESA = 3.00;
+const TAXA_SERVICO_MESA = 0.00;
 function paymentOptionsForMethod(){ return ['dinheiro']; }
 function totalPedidoCentavos(){
   return Math.round(cartTotals().subtotal * 100)
@@ -1405,7 +1405,6 @@ function renderCheckout(){
       entregaLinha += `<div class="summary-row"><span>Previsão de entrega</span><span>${textoEstimativa(frete.estimativa)}</span></div>`;
     }
   } else {
-    entregaLinha = `<div class="summary-row"><span>Taxa de serviço</span><span>${fmtPreco(taxaServico)}</span></div>`;
   }
 
   document.getElementById('summaryBox').innerHTML = `
@@ -1647,3 +1646,4 @@ irParaCardapio();
 </script>
 </body>
 </html>
+

@@ -37,7 +37,7 @@ async function call(handler,method,body={},query={},extraHeaders={}){
   await handler({method,body,query,headers:{host:'ferracinilanches.com.br',origin:'https://ferracinilanches.com.br','content-type':'application/json',...extraHeaders}},response);
   return response;
 }
-function providerOrder(id,providerId){return {id:providerId,type:'online',processing_mode:'automatic',status:'processed',status_detail:'accredited',external_reference:id,total_amount:'15.00',total_paid_amount:'15.00',transactions:{payments:[{amount:'15.00',paid_amount:'15.00',status:'processed',status_detail:'accredited',payment_method:{id:'visa',type:'credit_card',installments:1}}]}};}
+function providerOrder(id,providerId){return {id:providerId,type:'online',processing_mode:'automatic',status:'processed',status_detail:'accredited',external_reference:id,total_amount:'12.00',total_paid_amount:'12.00',transactions:{payments:[{amount:'12.00',paid_amount:'12.00',status:'processed',status_detail:'accredited',payment_method:{id:'visa',type:'credit_card',installments:1}}]}};}
 (async()=>{
   const approvals=new Map();
   const ids=[];
@@ -94,3 +94,4 @@ function providerOrder(id,providerId){return {id:providerId,type:'online',proces
   } finally {global.fetch=savedFetch;}
   console.log('OK: rollback bloqueia novas cobranças e mantém consulta/webhook de cobranças já aceitas');
 })().catch(error=>{console.error(error);process.exitCode=1;});
+
