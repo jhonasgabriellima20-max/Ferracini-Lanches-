@@ -46,7 +46,7 @@ function taxaServicoCentavosPorDistancia(distanciaKm){
 
 function taxaEntregaCentavosPorDistancia(distanciaKm){
   if(!Number.isFinite(distanciaKm) || distanciaKm <= 0) return null;
-  return Math.ceil((distanciaKm * 2.00) - 1e-9) * 100;
+  return Math.ceil((distanciaKm * 2.50) - 1e-9) * 100;
 }
 
 function isNotFound(err){

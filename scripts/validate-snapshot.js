@@ -31,7 +31,7 @@ function checkHtml(file, isMesa){
   if(!isMesa){
     checks.push(
       ['/api/distancia', 'endpoint de frete'],
-      [/valorPorKm\s*:\s*2\.00\b/, 'valor de R$ 2,00/km'],
+      [/valorPorKm\s*:\s*2\.50\b/, 'valor de R$ 2,50/km'],
       [/Math\.ceil\(\(data\.distanciaKm\s*\*\s*CONFIG\.entrega\.valorPorKm\)\s*-\s*1e-9\)/, 'arredondamento inteiro do frete'],
       ['endCep', 'campo CEP']
     );
@@ -102,7 +102,7 @@ if(fs.existsSync('api/pedidos.js')){
     ['MAX_BODY_BYTES', 'limite do corpo'],
     ['clientRequestId', 'idempotência'],
     ["require('../lib/postgres-storage')", 'camada persistente Neon/Postgres'],
-    ['Math.ceil((distanciaKm * 2.00) - 1e-9) * 100', 'validação do frete no servidor'],
+    ['Math.ceil((distanciaKm * 2.50) - 1e-9) * 100', 'validação do frete no servidor'],
     ['validarEntregaNoServidor', 'revalidação da distância antes de registrar pedido'],
     ['MAX_DISTANCE_DELTA_KM', 'tolerância controlada para divergência de distância'],
     ["content-type", 'validação de Content-Type'],

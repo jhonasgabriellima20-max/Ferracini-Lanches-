@@ -165,7 +165,7 @@ async function call(handler, request){
   for(const tipo of ['retirada', 'mesa', 'entrega']){
     const atendimento = { tipo, mesa: 3, taxaServicoCentavos: 300 };
     if(tipo === 'entrega') Object.assign(atendimento, {
-      endereco, distanciaKm: 5, taxaEntregaCentavos: 1000,
+      endereco, distanciaKm: 5, taxaEntregaCentavos: 1300,
       cotacaoFrete: assinarCotacao(endereco, 5),
     });
     const result = await call(pedidosHandler, req('POST', {
@@ -175,8 +175,8 @@ async function call(handler, request){
     assert.equal(result.statusCode, 201, JSON.stringify(result.body));
     const pedido = [...storage.values()].find(p => p?.id === result.body.pedido.id && p?.itens);
     assert.equal(pedido.atendimento.taxaServicoCentavos, 0);
-    assert.equal(pedido.totalCentavos, tipo === 'entrega' ? 2200 : 1200);
-    if(tipo === 'entrega') assert.equal(pedido.atendimento.taxaEntregaCentavos, 1000);
+    assert.equal(pedido.totalCentavos, tipo === 'entrega' ? 2500 : 1200);
+    if(tipo === 'entrega') assert.equal(pedido.atendimento.taxaEntregaCentavos, 1300);
   }
 
   console.log('OK - pedidos automaticos, falha segura do banco, idempotencia e painel sem aceite');
