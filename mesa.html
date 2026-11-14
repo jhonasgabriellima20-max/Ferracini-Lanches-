@@ -845,7 +845,7 @@ function aplicarItensNovos(items = [], precosPersonalizados = {}, itensExcluidos
     }));
   CONFIG.produtos = [...produtosBase, ...produtosNovos];
 }
-let disponibilidade = { ingredientes: {}, produtos: {} };
+let disponibilidade = { ingredientes: { hamburguer_artesanal: false }, produtos: {} };
 let disponibilidadeAtualizadaEm = null;
 let demandaAtual = 'normal';
 let armazenamentoDegradado = false;
@@ -928,7 +928,8 @@ async function carregarDisponibilidade({ silencioso = true, force = false } = {}
 const tiposHamburguer = Object.create(null);
 function diferencaHamburguer(nome){ return nome === 'PROMOÇÂO 4 X-SALADA 1 GUARATUBA .' ? 36 : 9; }
 function valorHamburguer(item){ return item.tipoHamburguer === 'artesanal' ? diferencaHamburguer(item.nomeProduto) : 0; }
-function nomeComHamburguer(nome, item){ return item.tipoHamburguer ? `${nome} — ${item.tipoHamburguer}` : nome; }
+function nomeComHamburguer(nome, item){ if(item.tipoHamburguer === 'industrializado' && !hamburguerDisponivel('artesanal')) return nome;
+  return item.tipoHamburguer ? `${nome} — ${item.tipoHamburguer}` : nome; }
 function precoUnitario(item){
   const addonsTotal = (item.adicionais || []).reduce((s, a) => s + a.preco, 0);
   return item.preco + valorHamburguer(item) + addonsTotal;
@@ -1012,6 +1013,8 @@ function updateCartBar(){
 const menuGridEl = document.getElementById('menuGrid');
 
 function productCardHTML(p){
+  const industrializadoPadrao = temHamburguer(p) && hamburguerDisponivel('industrializado') && !hamburguerDisponivel('artesanal');
+  if(industrializadoPadrao) tiposHamburguer[p.nome] = 'industrializado';
   if(tiposHamburguer[p.nome] && !hamburguerDisponivel(tiposHamburguer[p.nome])) delete tiposHamburguer[p.nome];
   const disponivel = produtoDisponivel(p);
   const precoDefinido = Number.isFinite(p.preco);
@@ -1034,7 +1037,7 @@ function productCardHTML(p){
     <div class="product-card ${disponivel ? '' : 'is-unavailable'}" data-name="${escapeHTML(p.nome)}" data-available="${vendavel ? '1' : '0'}">
       <h3>${escapeHTML(p.nome)}</h3>
       ${p.descricao ? `<p class="desc">${escapeHTML(p.descricao)}</p>` : ''}
-      ${vendavel && temHamburguer(p) ? `<div class="burger-types" role="group" aria-label="Escolha o hambúrguer (obrigatório)">
+      ${vendavel && temHamburguer(p) && !industrializadoPadrao ? `<div class="burger-types" role="group" aria-label="Escolha o hambúrguer (obrigatório)">
         ${['industrializado', 'artesanal'].filter(hamburguerDisponivel).map(tipo => `<label style="display:flex;align-items:center;gap:8px;min-height:44px">
           <input type="radio" class="burger-type" name="burger-${escapeHTML(p.nome)}" value="${tipo}" ${tiposHamburguer[p.nome] === tipo ? 'checked' : ''}>
           ${tipo === 'artesanal' ? 'Hambúrguer artesanal' : 'Hambúrguer industrializado'} — ${fmtPreco(p.preco + (tipo === 'artesanal' ? diferencaHamburguer(p.nome) : 0))}
