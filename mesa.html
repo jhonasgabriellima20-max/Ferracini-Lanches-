@@ -852,6 +852,7 @@ let armazenamentoDegradado = false;
 
 function temHamburguer(produto){ return (produto.ingredientes || []).includes('hamburguer') || produto.nome === 'X-Bacon normal'; }
 function hamburguerDisponivel(tipo){
+  if(tipo === 'industrializado' && disponibilidade.ingredientes?.hamburguer_artesanal === false) return true;
   return ['industrializado', 'artesanal'].includes(tipo) &&
     (disponibilidade.ingredientes?.['hamburguer_' + tipo] ?? disponibilidade.ingredientes?.hamburguer) !== false;
 }
