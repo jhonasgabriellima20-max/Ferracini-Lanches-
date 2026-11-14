@@ -248,7 +248,8 @@ function statusHorarioPedidos(state, agora = new Date()){
 
 function defaults(){
   return {
-    ingredientes: Object.fromEntries(INGREDIENTES.map(([id]) => [id, true])),
+    versaoTiposHamburguer: 2,
+    ingredientes: Object.fromEntries(INGREDIENTES.map(([id]) => [id, !['hamburguer_industrializado', 'hamburguer_artesanal'].includes(id)])),
     produtos: Object.fromEntries(PRODUTOS.map(([nome]) => [nome, true])),
     operacao: { demanda: 'normal', modoLoja: 'automatico', canaisAtendimento: { entrega: true, retirada: true }, horarios: normalizarHorarios(HORARIO_PADRAO), temposPreparo: normalizarTemposPreparo(null, []), atrasoExtraMinutos: 0, comandaEmPreparo: 0, dataComandaEmPreparo: '' },
     updatedAt: null,
@@ -270,7 +271,11 @@ function mergeState(raw){
       base.ingredientes[id] = typeof raw.ingredientes?.[id] === 'boolean'
         ? raw.ingredientes[id] : raw.ingredientes?.hamburguer !== false;
     }
-    base.ingredientes.hamburguer = base.ingredientes.hamburguer_industrializado || base.ingredientes.hamburguer_artesanal;
+    // Migra a configuração antiga de industrializado único para o modo padrão.
+    if(raw.versaoTiposHamburguer !== 2 && !base.ingredientes.hamburguer_artesanal){
+      base.ingredientes.hamburguer_industrializado = false;
+    }
+    base.ingredientes.hamburguer = true;
     for(const [nome] of PRODUTOS){
       if(typeof raw.produtos?.[nome] === 'boolean'){
         base.produtos[nome] = raw.produtos[nome];
@@ -640,7 +645,7 @@ module.exports = async function handler(req, res){
       if(body.editarItem) precosPersonalizados = editItemPrice(itensNovos, precosPersonalizados, body.editarItem);
       if(body.excluirItem) itensExcluidos = excludeItem(itensNovos, itensExcluidos, body.excluirItem);
       if(body.restaurarItem) itensExcluidos = restoreItem(itensNovos, itensExcluidos, body.restaurarItem);
-      const next = mergeState({...body, ingredientes:{...current.state.ingredientes, ...body.ingredientes}, itensNovos, precosPersonalizados, descricoesPersonalizadas, itensExcluidos});
+      const next = mergeState({...body, versaoTiposHamburguer:2, ingredientes:{...current.state.ingredientes, ...body.ingredientes}, itensNovos, precosPersonalizados, descricoesPersonalizadas, itensExcluidos});
       next.updatedAt = new Date().toISOString();
       const saved = await writeState(next);
       return res.status(200).json({
@@ -663,7 +668,7 @@ module.exports = async function handler(req, res){
   return res.status(405).json({ error: 'Método não permitido.' });
 };
 
-module.exports.readOrderCatalog = async function(){ const {state} = await readState({force:true}); return {...orderCatalog(state.itensNovos, state.precosPersonalizados, state.itensExcluidos), hamburgueres:{industrializado:state.ingredientes.hamburguer_industrializado, artesanal:state.ingredientes.hamburguer_artesanal}}; };
+module.exports.readOrderCatalog = async function(){ const {state} = await readState({force:true}); return {...orderCatalog(state.itensNovos, state.precosPersonalizados, state.itensExcluidos), hamburgueres:{industrializado:state.ingredientes.hamburguer_industrializado || !state.ingredientes.hamburguer_artesanal, artesanal:state.ingredientes.hamburguer_artesanal}}; };
 module.exports.readStoreStatus = async function(){ const {state} = await readState({force:true}); return statusHorarioPedidos(state); };
 module.exports.readServiceAvailability = async function(){
   const {state} = await readState({force:true});
