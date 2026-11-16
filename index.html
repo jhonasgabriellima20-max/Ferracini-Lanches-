@@ -990,7 +990,7 @@ async function carregarDisponibilidade({ silencioso = true, force = false } = {}
 
 
 const tiposHamburguer = Object.create(null);
-function diferencaHamburguer(nome){ return nome === 'PROMOÇÂO 4 X-SALADA 1 GUARATUBA .' ? 36 : 9; }
+function diferencaHamburguer(nome){ return nome === 'PROMOÇÂO 4 X-SALADA 1 GUARATUBA .' ? 40 : 10; }
 function valorHamburguer(item){ return item.tipoHamburguer === 'artesanal' ? diferencaHamburguer(item.nomeProduto) : 0; }
 function nomeComHamburguer(nome, item){ if(item.tipoHamburguer === 'industrializado' && !hamburguerDisponivel('artesanal')) return nome;
   return item.tipoHamburguer ? `${nome} — ${item.tipoHamburguer}` : nome; }
