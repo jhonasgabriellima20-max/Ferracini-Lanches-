@@ -1551,7 +1551,7 @@ function atualizarPrevisaoEntrega(){
 async function buscarEstimativaDinamica(tipo, distanciaKm = 0){
   const { items } = cartTotals();
   if(!items.length) return null;
-  const resp = await fetch('/api/estimativa', {
+  const opcoes = {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -1559,7 +1559,12 @@ async function buscarEstimativaDinamica(tipo, distanciaKm = 0){
       distanciaKm: tipo === 'entrega' ? distanciaKm : undefined,
       itens: items.map(([nome, item]) => ({ nome, quantidade: item.qty })),
     }),
-  });
+  };
+  let resp = await fetch('/api/estimativa', opcoes);
+  if(resp.status === 503){
+    await new Promise(resolve => setTimeout(resolve, 600));
+    resp = await fetch('/api/estimativa', opcoes);
+  }
   const data = await resp.json().catch(() => ({}));
   if(!resp.ok || !data?.estimativaMinutos) throw new Error(data?.error || 'Previsão indisponível');
   return data.estimativaMinutos;
